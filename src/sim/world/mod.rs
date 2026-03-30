@@ -8,7 +8,7 @@
 //! - `world_commands.rs` — command dispatch and selection/ownership helpers
 //! - `world_hash.rs` — deterministic state hashing
 //! - `world_spawn.rs` — entity spawning from map data and production
-//! - `world_orders.rs` — order-intent tick systems (attack-move, guard)
+//! - `world_orders.rs` — order-intent tick systems (attack-move, guard, area-guard)
 
 mod world_commands;
 mod world_hash;
