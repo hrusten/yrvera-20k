@@ -8,6 +8,8 @@ Red Alert 2: Yuri's Revenge — rebuilt from scratch in Rust for large multiplay
 
 Main repository for the **Yrvera-20k Engine** and **Yrvera-20k: Allied Uprising**, a standalone game built on RA2:YR game assets.
 
+This project stands on the shoulders of giants. Thanks to OpenRA team, ModEnc team, PPM team, EA for open source RA1, Modders, World Altering Editor, Final Alert,YRpp and much more.
+
 ---
 
 ## Project Goals
