@@ -14,7 +14,7 @@ use crate::sim::intern::InternedId;
 /// Created once per player at game start, lives for the duration of the match.
 /// Heavy subsystems (power, fog, production queues, AI) remain in their own
 /// containers — HouseState holds the lightweight scalars.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HouseState {
     /// Owner name as interned ID (resolve via interner for display).
     pub name: InternedId,

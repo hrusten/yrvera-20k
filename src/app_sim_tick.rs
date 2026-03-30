@@ -205,8 +205,8 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
     }
 
     if let Some(sim) = &mut state.simulation {
-        if state.replay_log.is_none() {
-            state.replay_log = Some(ReplayLog::new(ReplayHeader {
+        if sim.replay_log.is_none() {
+            sim.replay_log = Some(ReplayLog::new(ReplayHeader {
                 version: 1,
                 tick_hz: SIM_TICK_HZ,
                 seed: sim.rng.state(),
@@ -217,20 +217,6 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
     }
 
     for _ in 0..schedule.steps {
-        let execute_tick = state
-            .simulation
-            .as_ref()
-            .map_or(1, |sim| sim.tick.saturating_add(1));
-        let mut due_commands: Vec<crate::sim::command::CommandEnvelope> = Vec::new();
-        state.pending_commands.retain(|cmd| {
-            if state.simulation.is_some() && cmd.execute_tick <= execute_tick {
-                due_commands.push(cmd.clone());
-                false
-            } else {
-                true
-            }
-        });
-
         // Compute local owner before mutable borrow of simulation.
         let local_owner_for_fog = preferred_local_owner_name(state);
 
@@ -244,6 +230,7 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
                 sim.ai_players.clear();
             }
             sim.sound_events.clear();
+            let due_commands = sim.take_due_commands();
             let tick_result = sim.advance_tick(
                 &due_commands,
                 state.rules.as_ref(),
@@ -370,38 +357,38 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
                     } = &cmd.payload
                     {
                         // Trigger one-shot crane animation on ConYard for each owner that placed a building.
-                        if let Some(sim) = &state.simulation {
-                            let owner_str = sim.interner.resolve(*owner).to_string();
-                            let type_str = sim.interner.resolve(*type_id).to_string();
-                            crane_owners.push(owner_str);
-                            // Walls are overlays — inject OverlayEntry so the overlay renderer
-                            // draws them with auto-tiled connectivity frames.
-                            let is_wall = state
-                                .rules
-                                .as_ref()
-                                .and_then(|r| r.object(&type_str))
-                                .map(|o| o.wall)
-                                .unwrap_or(false);
-                            if is_wall {
-                                placed_walls.push((*rx, *ry, type_str));
-                            }
+                        let owner_str = sim.interner.resolve(*owner).to_string();
+                        let type_str = sim.interner.resolve(*type_id).to_string();
+                        crane_owners.push(owner_str);
+                        // Walls are overlays — inject OverlayEntry so the overlay renderer
+                        // draws them with auto-tiled connectivity frames.
+                        let is_wall = state
+                            .rules
+                            .as_ref()
+                            .and_then(|r| r.object(&type_str))
+                            .map(|o| o.wall)
+                            .unwrap_or(false);
+                        if is_wall {
+                            placed_walls.push((*rx, *ry, type_str));
                         }
                     }
                 }
             }
-            if let Some(log) = &mut state.replay_log {
+            if let Some(log) = &mut sim.replay_log {
                 log.record_tick(tick_result.tick, due_commands, tick_result.state_hash);
             }
         }
 
-        let trigger_effects = state.trigger_runtime.advance(
-            1,
-            &state.trigger_graph,
-            &state.triggers,
-            &state.events,
-            &state.actions,
-            state.simulation.as_ref(),
-        );
+        let trigger_effects = if let Some(sim) = &mut state.simulation {
+            sim.advance_triggers(
+                &state.trigger_graph,
+                &state.triggers,
+                &state.events,
+                &state.actions,
+            )
+        } else {
+            Vec::new()
+        };
         apply_trigger_effects(state, &trigger_effects);
     }
 

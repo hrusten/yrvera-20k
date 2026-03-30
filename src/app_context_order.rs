@@ -53,8 +53,8 @@ pub(crate) fn try_queue_context_order_at_screen_point(
     let mut attack_voice = false;
     let mut consumed_order_mode = false;
 
-    if let Some(sim) = &state.simulation {
-        let execute_tick = sim.tick.saturating_add(state.input_delay_ticks);
+    if let Some(sim) = &mut state.simulation {
+        let execute_tick = sim.tick.saturating_add(sim.input_delay_ticks);
         let selected_ids: Vec<u64> = selected_stable_ids_sorted(&sim.entities);
         if selected_ids.is_empty() {
             return false;
@@ -257,7 +257,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             ));
                         }
                         for cmd in queued {
-                            state.pending_commands.push(cmd);
+                            sim.pending_commands.push(cmd);
                         }
                         emit_order_voice(state, "VoiceMove");
                         return true;
@@ -315,7 +315,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             ));
                         }
                         for cmd in queued {
-                            state.pending_commands.push(cmd);
+                            sim.pending_commands.push(cmd);
                         }
                         emit_order_voice(state, "VoiceMove");
                         return true;
@@ -370,7 +370,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             if let Some(cmd) = cmd {
                                 queued.push(CommandEnvelope::new(owner_id, execute_tick, cmd));
                                 for cmd in queued {
-                                    state.pending_commands.push(cmd);
+                                    sim.pending_commands.push(cmd);
                                 }
                                 return true;
                             }
@@ -547,6 +547,8 @@ pub(crate) fn try_queue_context_order_at_screen_point(
     let current_tick = state.simulation.as_ref().map_or(0, |s| s.tick);
     crate::app_target_lines::record_command_lines(&mut state.target_lines, &queued, current_tick);
 
-    state.pending_commands.extend(queued);
+    if let Some(sim) = &mut state.simulation {
+        sim.pending_commands.extend(queued);
+    }
     true
 }

@@ -77,7 +77,7 @@ pub(crate) fn queue_default_build(state: &mut AppState) {
         "Build command queued: owner={} type={} execute_tick>=current+{}",
         owner,
         type_name,
-        state.input_delay_ticks
+        state.configured_input_delay_ticks
     );
 }
 
@@ -98,7 +98,7 @@ pub(crate) fn queue_build_by_type(state: &mut AppState, type_id: &str) {
         "Build command queued: owner={} type={} execute_tick>=current+{}",
         owner,
         type_id,
-        state.input_delay_ticks
+        state.configured_input_delay_ticks
     );
 }
 
@@ -120,7 +120,7 @@ pub(crate) fn toggle_pause_build_queue(
         "Build pause/resume command queued: owner={} category={} execute_tick>=current+{}",
         owner,
         category.label(),
-        state.input_delay_ticks
+        state.configured_input_delay_ticks
     );
 }
 
@@ -142,7 +142,7 @@ pub(crate) fn cycle_active_producer(
         "Producer focus cycle queued: owner={} category={} execute_tick>=current+{}",
         owner,
         category.label(),
-        state.input_delay_ticks
+        state.configured_input_delay_ticks
     );
 }
 
@@ -159,7 +159,7 @@ pub(crate) fn cancel_last_build(state: &mut AppState) {
     log::info!(
         "Build cancel command queued: owner={} execute_tick>=current+{}",
         owner,
-        state.input_delay_ticks
+        state.configured_input_delay_ticks
     );
 }
 
@@ -179,7 +179,7 @@ pub(crate) fn cancel_build_by_type(state: &mut AppState, type_id: &str) {
         "Build cancel-by-type queued: owner={} type={} execute_tick>=current+{}",
         owner,
         type_id,
-        state.input_delay_ticks
+        state.configured_input_delay_ticks
     );
 }
 
@@ -264,7 +264,7 @@ pub(crate) fn place_ready_building_at_cursor(state: &mut AppState, type_id: &str
         type_id,
         rx,
         ry,
-        state.input_delay_ticks
+        state.configured_input_delay_ticks
     );
 
     // Wall fill: if the placed type is a wall, flood-fill free overlay segments
@@ -414,7 +414,7 @@ pub(crate) fn place_starter_base_for_local_owner(state: &mut AppState) {
             "Starter opening queued: owner={} count={} execute_tick>=current+{}",
             owner,
             queued,
-            state.input_delay_ticks
+            state.configured_input_delay_ticks
         );
     } else {
         log::warn!(
@@ -654,19 +654,13 @@ pub(crate) fn schedule_command(state: &mut AppState, owner: &str, payload: Comma
     let execute_tick = state
         .simulation
         .as_ref()
-        .map_or(state.input_delay_ticks, |s| {
-            s.tick.saturating_add(state.input_delay_ticks)
+        .map_or(state.configured_input_delay_ticks, |s| {
+            s.tick.saturating_add(s.input_delay_ticks)
         });
-    let owner_id = state
-        .simulation
-        .as_mut()
-        .map(|s| s.interner.intern(owner))
-        .unwrap_or_default();
-    state.pending_commands.push(CommandEnvelope::new(
-        owner_id,
-        execute_tick,
-        payload,
-    ));
+    if let Some(sim) = &mut state.simulation {
+        let owner_id = sim.interner.intern(owner);
+        sim.queue_command(CommandEnvelope::new(owner_id, execute_tick, payload));
+    }
 }
 
 pub(crate) fn is_playable_house_name(name: &str) -> bool {

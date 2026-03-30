@@ -97,6 +97,9 @@ pub(crate) fn transition_to_in_game(state: &mut AppState) {
     state.terrain_grid = result.terrain_grid;
     state.resolved_terrain = result.resolved_terrain;
     state.simulation = result.simulation;
+    if let Some(sim) = &mut state.simulation {
+        sim.input_delay_ticks = state.configured_input_delay_ticks;
+    }
     state.unit_atlas = result.unit_atlas;
     state.sprite_atlas = result.sprite_atlas;
     state.overlay_atlas = result.overlay_atlas;
@@ -144,7 +147,9 @@ pub(crate) fn transition_to_in_game(state: &mut AppState) {
     state.events = result.events;
     state.actions = result.actions;
     state.trigger_graph = result.trigger_graph;
-    state.trigger_runtime = result.trigger_runtime;
+    if let Some(sim) = &mut state.simulation {
+        sim.trigger_runtime = result.trigger_runtime;
+    }
     state.overlay_names = result.overlay_names;
     state.tiberium_radar_colors = result.tiberium_radar_colors;
     state.overlay_registry = Some(result.overlay_registry);
@@ -241,8 +246,6 @@ pub(crate) fn transition_to_in_game(state: &mut AppState) {
 
     state.last_update_time = Instant::now();
     state.sim_accumulator_ms = 0;
-    state.pending_commands.clear();
-    state.replay_log = None;
     state.queued_order_mode = app_render::OrderMode::Move;
     for group in &mut state.control_groups {
         group.clear();

@@ -35,7 +35,6 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::tags::TagMap;
 use crate::map::terrain::TerrainGrid;
 use crate::map::trigger_graph::TriggerGraph;
-use crate::sim::trigger_runtime::TriggerRuntime;
 use crate::map::triggers::TriggerMap;
 use crate::map::waypoints::Waypoint;
 use crate::render::batch::BatchRenderer;
@@ -56,10 +55,8 @@ use crate::rules::infantry_sequence::InfantrySequenceRegistry;
 use crate::rules::sound_ini::SoundRegistry;
 use crate::sidebar::{SidebarChromeLayoutSpec, SidebarTab};
 use crate::sim::animation::SequenceSet;
-use crate::sim::command::CommandEnvelope;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production::BuildingPlacementPreview;
-use crate::sim::replay::ReplayLog;
 use crate::sim::selection::SelectionState;
 use crate::sim::world::Simulation;
 use crate::ui::game_screen::GameScreen;
@@ -95,7 +92,6 @@ pub(crate) struct AppState {
     pub(crate) events: EventMap,
     pub(crate) actions: ActionMap,
     pub(crate) trigger_graph: TriggerGraph,
-    pub(crate) trigger_runtime: TriggerRuntime,
     /// Overlay ID → type name mapping for atlas lookups at render time.
     pub(crate) overlay_names: BTreeMap<u8, String>,
     /// Precomputed average pixel color for each tiberium overlay (id, frame) pair,
@@ -203,14 +199,10 @@ pub(crate) struct AppState {
     pub(crate) last_update_time: Instant,
     /// Accumulated real time waiting to be consumed by fixed simulation ticks.
     pub(crate) sim_accumulator_ms: u64,
-    /// Pending gameplay commands waiting for deterministic execute tick.
-    pub(crate) pending_commands: Vec<CommandEnvelope>,
     /// Target/action lines — colored lines from selected units to command destinations.
     pub(crate) target_lines: crate::app_target_lines::TargetLineState,
-    /// Input delay in ticks for lockstep-style scheduling.
-    pub(crate) input_delay_ticks: u64,
-    /// Current in-memory replay log for this match.
-    pub(crate) replay_log: Option<ReplayLog>,
+    /// Config-sourced input delay — copied to each new Simulation instance at game start.
+    pub(crate) configured_input_delay_ticks: u64,
     /// Pending order mode for the next right-click command.
     pub(crate) queued_order_mode: app_render::OrderMode,
     /// Control group slots (0-9) storing stable entity ids.
@@ -544,7 +536,6 @@ impl App {
             events: HashMap::new(),
             actions: HashMap::new(),
             trigger_graph: TriggerGraph::default(),
-            trigger_runtime: TriggerRuntime::default(),
             overlay_names: BTreeMap::new(),
             tiberium_radar_colors: HashMap::new(),
             overlay_registry: None,
@@ -604,10 +595,8 @@ impl App {
             theater_ext: "tem".to_string(),
             last_update_time: Instant::now(),
             sim_accumulator_ms: 0,
-            pending_commands: Vec::new(),
             target_lines: crate::app_target_lines::TargetLineState::default(),
-            input_delay_ticks,
-            replay_log: None,
+            configured_input_delay_ticks: input_delay_ticks,
             queued_order_mode: app_render::OrderMode::Move,
             control_groups: vec![Vec::new(); 10],
             local_owner_override: None,

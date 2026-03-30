@@ -8,7 +8,7 @@
 //! - `world_commands.rs` — command dispatch and selection/ownership helpers
 //! - `world_hash.rs` — deterministic state hashing
 //! - `world_spawn.rs` — entity spawning from map data and production
-//! - `world_orders.rs` — order-intent tick systems (attack-move, guard)
+//! - `world_orders.rs` — order-intent tick systems (attack-move, guard, area-guard)
 
 mod world_commands;
 mod world_hash;
@@ -51,6 +51,12 @@ use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
 use crate::sim::power_system::{self, PowerState};
 use crate::sim::production::{self, ProductionState};
 use crate::sim::radar::{RadarEventQueue, RadarEventType};
+use crate::map::actions::ActionMap;
+use crate::map::events::EventMap;
+use crate::map::trigger_graph::TriggerGraph;
+use crate::sim::trigger_runtime::{TriggerEffect, TriggerRuntime};
+use crate::map::triggers::TriggerMap;
+use crate::sim::replay::ReplayLog;
 use crate::sim::rng::SimRng;
 use crate::sim::vision::{self, FogState};
 use crate::util::fixed_math::SimFixed;
@@ -195,6 +201,20 @@ pub struct Simulation {
     /// When true, newly spawned entities get a `DebugEventLog` allocated.
     /// Toggled by the debug inspector hotkey (X). Debug-only — not included in state hashing.
     pub debug_event_logging: bool,
+    /// In-memory replay log for this match — records commands + state hashes per tick.
+    /// Initialized lazily on the first tick. Observer artifact — not included in state hashing.
+    pub replay_log: Option<ReplayLog>,
+    /// Input delay in ticks for lockstep-style command scheduling.
+    /// Commands are scheduled `now_tick + input_delay_ticks` into the future.
+    /// Set once from config at game start, read-only during gameplay.
+    pub input_delay_ticks: u64,
+    /// Pending gameplay commands waiting for their scheduled execution tick.
+    /// Pushed by the app layer (user input, sidebar, AI), drained each tick
+    /// in `advance_tick()` when `cmd.execute_tick <= current_tick + 1`.
+    pub pending_commands: Vec<CommandEnvelope>,
+    /// Map trigger runtime state — tracks global/local variables, disabled triggers,
+    /// fired one-shot triggers, and elapsed scenario ticks. Initialized from map data.
+    pub trigger_runtime: TriggerRuntime,
 }
 
 impl Default for Simulation {
@@ -242,6 +262,10 @@ impl Simulation {
             effect_frame_counts: BTreeMap::new(),
             game_options: GameOptions::default(),
             debug_event_logging: false,
+            replay_log: None,
+            input_delay_ticks: 2,
+            pending_commands: Vec::new(),
+            trigger_runtime: TriggerRuntime::default(),
         }
     }
 
@@ -255,6 +279,43 @@ impl Simulation {
     #[inline]
     pub fn intern(&mut self, s: &str) -> crate::sim::intern::InternedId {
         self.interner.intern(s)
+    }
+
+    /// Queue a command for future execution at its scheduled tick.
+    pub fn queue_command(&mut self, cmd: CommandEnvelope) {
+        self.pending_commands.push(cmd);
+    }
+
+    /// Drain commands that are due for the next tick from `pending_commands`.
+    /// Returns owned commands; remaining commands stay queued.
+    pub fn take_due_commands(&mut self) -> Vec<CommandEnvelope> {
+        let execute_tick = self.tick.saturating_add(1);
+        let mut due = Vec::new();
+        let mut kept = Vec::new();
+        for cmd in std::mem::take(&mut self.pending_commands) {
+            if cmd.execute_tick <= execute_tick {
+                due.push(cmd);
+            } else {
+                kept.push(cmd);
+            }
+        }
+        self.pending_commands = kept;
+        due
+    }
+
+    /// Advance map triggers by one tick. Uses `std::mem::take` to avoid
+    /// self-borrow conflict (advance reads entity/interner state via `&Simulation`).
+    pub fn advance_triggers(
+        &mut self,
+        graph: &TriggerGraph,
+        triggers: &TriggerMap,
+        events: &EventMap,
+        actions: &ActionMap,
+    ) -> Vec<TriggerEffect> {
+        let mut rt = std::mem::take(&mut self.trigger_runtime);
+        let effects = rt.advance(1, graph, triggers, events, actions, Some(self));
+        self.trigger_runtime = rt;
+        effects
     }
 
     /// Returns true if the given house name is human-controlled.

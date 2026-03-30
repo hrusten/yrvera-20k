@@ -28,7 +28,7 @@ pub struct BridgeRuntimeCell {
     pub bridge_group_id: Option<u16>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BridgeRuntimeState {
     width: u16,
     height: u16,

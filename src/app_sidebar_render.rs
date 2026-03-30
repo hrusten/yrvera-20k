@@ -216,7 +216,7 @@ fn minimap_move_order_if_selected(state: &mut AppState) -> bool {
     let owner = crate::app_commands::preferred_local_owner_name(state)
         .unwrap_or_else(|| "Americans".to_string());
     let owner_id = sim.interner.get(&owner).unwrap_or_default();
-    let execute_tick = sim.tick.saturating_add(state.input_delay_ticks);
+    let execute_tick = sim.tick.saturating_add(sim.input_delay_ticks);
     let order_mode = state.queued_order_mode;
     let shift_held: bool = crate::app_input::is_shift_held(state);
     let mut queued: Vec<crate::sim::command::CommandEnvelope> = Vec::new();
@@ -270,7 +270,9 @@ fn minimap_move_order_if_selected(state: &mut AppState) -> bool {
     if order_mode != crate::app_render::OrderMode::Move {
         state.queued_order_mode = crate::app_render::OrderMode::Move;
     }
-    state.pending_commands.extend(queued);
+    if let Some(sim) = &mut state.simulation {
+        sim.pending_commands.extend(queued);
+    }
     true
 }
 
