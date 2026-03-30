@@ -7,7 +7,7 @@
 //! ## Design notes
 //! - Position stores both isometric cell coords AND pre-computed screen coords.
 //!   Screen coords are updated whenever position changes (avoids per-frame math).
-//! - Some types here (Facing, Owner, TypeRef, VoxelModel, etc.) are legacy wrappers
+//! - Some types here (Facing, Owner, VoxelModel, etc.) are legacy wrappers
 //!   kept for any remaining call sites. The canonical data lives in GameEntity fields.
 //!
 //! ## Dependency rules
@@ -88,17 +88,6 @@ pub struct Health {
     /// Maximum HP from rules.ini. Used for health bar display.
     pub max: u16,
 }
-
-/// Reference to this entity's type definition in rules.ini (legacy wrapper — prefer InternedId directly).
-#[derive(Debug, Clone, Copy)]
-pub struct TypeRef(pub InternedId);
-
-/// Stable deterministic entity ID (legacy wrapper — prefer `u64` directly).
-///
-/// This ID is serialized into replay logs and used for deterministic command
-/// targeting and state hashing. Prefer the `u64` key in EntityStore directly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StableEntityId(pub u64);
 
 /// Vision radius in grid cells used for fog/shroud reveal.
 #[derive(Debug, Clone, Copy)]
@@ -599,8 +588,6 @@ mod tests {
         assert_send_sync::<TurretFacing>();
         assert_send_sync::<Owner>();
         assert_send_sync::<Health>();
-        assert_send_sync::<TypeRef>();
-        assert_send_sync::<StableEntityId>();
         assert_send_sync::<Vision>();
         assert_send_sync::<VoxelModel>();
         assert_send_sync::<SpriteModel>();
