@@ -36,7 +36,7 @@ use crate::map::tags::TagMap;
 use crate::map::terrain::{self, LocalBounds, TerrainGrid};
 use crate::map::theater;
 use crate::map::trigger_graph::TriggerGraph;
-use crate::map::trigger_runtime::TriggerRuntime;
+use crate::sim::trigger_runtime::TriggerRuntime;
 use crate::map::triggers::TriggerMap;
 use crate::map::waypoints::{self, Waypoint};
 use crate::render::batch::BatchRenderer;

@@ -62,6 +62,9 @@ pub mod radar;
 pub mod game_options;
 pub mod house_state;
 
+// --- Trigger runtime (map trigger evaluation during gameplay) ---
+pub mod trigger_runtime;
+
 // --- AI, replay, selection, debug ---
 pub mod ai;
 pub mod debug_event_log;

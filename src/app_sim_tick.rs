@@ -19,7 +19,7 @@ use crate::assets::pal_file::Palette;
 use crate::audio::events::GameSoundEvent;
 use crate::map::entities::EntityCategory;
 use crate::map::terrain;
-use crate::map::trigger_runtime::TriggerEffect;
+use crate::sim::trigger_runtime::TriggerEffect;
 use crate::render::sprite_atlas;
 use crate::render::unit_atlas;
 use crate::sim::animation::{self, SequenceSet};
