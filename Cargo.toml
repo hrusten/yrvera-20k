@@ -7,7 +7,7 @@ autobins = false
 
 # Main game client
 [[bin]]
-name = "yrvera"
+name = "vera20k"
 path = "src/main.rs"
 
 [[bin]]

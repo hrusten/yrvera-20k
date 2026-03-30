@@ -1,4 +1,4 @@
-# Yrvera-20k 
+# Vera 20k 
 
 **Early development**
 
@@ -30,7 +30,7 @@ A multiplayer client embedded directly into the game, supporting both original R
 
 ### 4. Allied Uprising
 
-A full game built on the Yrvera-20k engine using RA2:YR game assets. Same Westwood RA2 atmosphere and core gameplay, but with added strategic depth tailored for large team games, co-op, and FFA.
+A full game built on the Vera 20k engine using RA2:YR game assets. Same Westwood RA2 atmosphere and core gameplay, but with added strategic depth tailored for large team games, co-op, and FFA.
 
 All new art assets stay true to the original Westwood RA2 style.
 
@@ -76,7 +76,7 @@ Feature scope is still being defined:
 
 3. Build and run:
    ```
-   cargo run --bin yrvera
+   cargo run --bin vera20k
    ```
 
 ## Contributing
