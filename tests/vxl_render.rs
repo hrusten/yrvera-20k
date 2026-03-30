@@ -20,6 +20,7 @@ fn ra2_dir() -> String {
 const VXL_CANDIDATES: &[&str] = &["htnk.vxl", "mtnk.vxl", "harv.vxl", "sref.vxl"];
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn render_real_vxl_to_png() {
     let _ = env_logger::try_init();
 

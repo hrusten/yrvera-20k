@@ -24,6 +24,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn diagnose_tile_coverage() {
     let _ = env_logger::try_init();
 

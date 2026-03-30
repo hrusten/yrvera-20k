@@ -54,6 +54,7 @@ fn ore_positions(data: &[u8]) -> Vec<(u16, u16)> {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn lcw_vs_lzo_on_real_overlay_pack() {
     let _ = env_logger::try_init();
     let ra2_dir_str = ra2_dir();
@@ -149,6 +150,7 @@ fn lcw_vs_lzo_on_real_overlay_pack() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn overlay_pack_first_bytes_identify_codec() {
     // LCW streams start with a command byte.
     // LZO1X streams: first chunk header is [u16 src_len][u16 dst_len], then

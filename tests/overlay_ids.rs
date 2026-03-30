@@ -20,6 +20,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn print_overlay_id_mapping_for_dustbowl() {
     let _ = env_logger::try_init();
 
@@ -172,6 +173,7 @@ fn print_overlay_id_mapping_for_dustbowl() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_tib20_frames() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -249,6 +251,7 @@ fn inspect_tib20_frames() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_problem_overlay_assets() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -284,6 +287,7 @@ fn inspect_problem_overlay_assets() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_problem_overlay_frames() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -314,6 +318,7 @@ fn inspect_problem_overlay_frames() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn dump_raw_overlaytypes_ranges() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -379,6 +384,7 @@ fn dump_raw_overlaytypes_ranges() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn compare_overlay_index_modes() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -441,6 +447,7 @@ fn compare_overlay_index_modes() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn yr_overlay_registry_matches_ra2_resource_families() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -466,6 +473,7 @@ fn yr_overlay_registry_matches_ra2_resource_families() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_tib01_palette_indices() {
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -667,6 +675,7 @@ fn inspect_tib01_palette_indices() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn dustbowl_overlay_168_stays_non_resource() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -690,6 +699,7 @@ fn dustbowl_overlay_168_stays_non_resource() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn print_overlay_id_mapping_for_goldst() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);
@@ -748,6 +758,7 @@ fn print_overlay_id_mapping_for_goldst() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_pips_shp() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir: &Path = Path::new(&ra2_dir_str);

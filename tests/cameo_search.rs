@@ -121,6 +121,7 @@ const KNOWN_CAMEO_NAMES: &[&str] = &[
 ];
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn find_cameo_icon_files() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {

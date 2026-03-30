@@ -9,6 +9,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_buildngz() {
     let mut asset_manager = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
     // Try both extensions
@@ -113,6 +114,7 @@ fn inspect_buildngz() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_buildngz_vertical() {
     let mut asset_manager = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
     let data = asset_manager

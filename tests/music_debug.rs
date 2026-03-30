@@ -9,6 +9,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn debug_music_pipeline() {
     let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
 

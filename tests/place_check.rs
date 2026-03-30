@@ -9,6 +9,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_place_shp() {
     let _ = env_logger::try_init();
     let ra2_dir_str = ra2_dir();

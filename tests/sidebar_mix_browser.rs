@@ -446,6 +446,7 @@ fn browse_mix(asset_manager: &AssetManager, mix_name: &str, dict: &[(String, i32
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn browse_sidebar_mix_files() {
     let config = match GameConfig::load() {
         Ok(c) => c,

@@ -45,6 +45,7 @@ fn save_shp_frame_png(
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn debug_probe_sidebar_assets() {
     let ra2_dir = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {

@@ -202,6 +202,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires RA2_DIR env var pointing to retail game files
     fn parse_real_game_fnt() {
         use crate::assets::asset_manager::AssetManager;
         use std::path::Path;

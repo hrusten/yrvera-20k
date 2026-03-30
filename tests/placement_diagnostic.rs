@@ -18,6 +18,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn diagnose_placement_constraints() {
     let _ = env_logger::try_init();
 

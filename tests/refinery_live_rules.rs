@@ -59,6 +59,7 @@ fn load_merged_rules_ini(asset_manager: &AssetManager) -> IniFile {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn real_garefn_resolves_chrono_miner() {
     let _ = env_logger::try_init();
 
@@ -109,6 +110,7 @@ fn real_garefn_resolves_chrono_miner() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn real_garefn_placement_spawns_cmin() {
     let _ = env_logger::try_init();
 

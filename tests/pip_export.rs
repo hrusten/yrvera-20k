@@ -78,6 +78,7 @@ fn blit_rgba(
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn export_pipbrd_pngs() {
     let ra2_dir = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {

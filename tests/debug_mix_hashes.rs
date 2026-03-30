@@ -78,6 +78,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn debug_dump_ra2_mix_ids() {
     let ra2_dir_path = std::path::PathBuf::from(ra2_dir());
     let ra2_mix_path = ra2_dir_path.join("ra2.mix");
@@ -111,6 +112,7 @@ fn debug_dump_ra2_mix_ids() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn debug_compare_hash_algorithms() {
     // Known filenames expected inside ra2.mix
     let names = [

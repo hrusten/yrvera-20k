@@ -13,6 +13,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_bayopig_bridges() {
     let _ = env_logger::try_init();
     let ra2_dir_str = ra2_dir();
@@ -81,6 +82,7 @@ fn inspect_bayopig_bridges() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn dump_bridge_shp_frames() {
     let ra2_dir_str = ra2_dir();
     let ra2_dir = std::path::Path::new(&ra2_dir_str);

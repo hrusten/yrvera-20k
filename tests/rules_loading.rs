@@ -15,6 +15,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn test_load_real_rules_ini() {
     let _ = env_logger::try_init();
 

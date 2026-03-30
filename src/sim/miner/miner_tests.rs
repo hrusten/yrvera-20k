@@ -422,8 +422,10 @@ fn chrono_miner_teleports_to_refinery_on_return() {
         "Position should be at queue cell after Relocate"
     );
 
-    // Run enough ticks for the chrono delay to expire.
-    // Distance ~93 cells → delay = 93*256/48 = 496 ticks.
+    // Run enough ticks for the chrono delay to expire and dock sequence to complete.
+    // Distance ~95 cells → delay ≈ 95*256/48 ≈ 509 ticks. After the delay, the
+    // miner enters the dock sequence (WaitForDock → EnterPad → Unloading → ExitPad)
+    // and ends up at the exit cell (11, 11) for a 4x3 refinery at (10, 10).
     tick_miners_n(&mut sim, &rules, 550);
 
     let entity = sim.entities.get(miner_id).expect("entity");
@@ -431,10 +433,11 @@ fn chrono_miner_teleports_to_refinery_on_return() {
         entity.teleport_state.is_none(),
         "Teleport should be complete"
     );
+    // After teleport + dock sequence, miner exits at the refinery exit cell.
     assert_eq!(
         (entity.position.rx, entity.position.ry),
-        (14, 11),
-        "Chrono Miner should be at dock cell after teleport completes"
+        (11, 11),
+        "Chrono Miner should be at exit cell after completing dock sequence"
     );
 }
 
@@ -745,7 +748,7 @@ fn forced_return_chrono_teleports() {
         "Position should be at queue cell after Relocate"
     );
 
-    // Run enough ticks for the chrono delay to expire (~496 ticks for 93 cells).
+    // Run enough ticks for the chrono delay to expire and dock sequence to complete.
     tick_miners_n(&mut sim, &rules, 550);
 
     let entity = sim.entities.get(miner_id).expect("entity");
@@ -753,10 +756,11 @@ fn forced_return_chrono_teleports() {
         entity.teleport_state.is_none(),
         "Teleport should be complete"
     );
+    // After teleport + dock sequence, miner exits at the refinery exit cell.
     assert_eq!(
         (entity.position.rx, entity.position.ry),
-        (14, 11),
-        "Forced return should have teleported Chrono Miner to dock cell"
+        (11, 11),
+        "Forced return should have teleported and docked — now at exit cell"
     );
 }
 

@@ -238,6 +238,7 @@ fn inspect_sidebar_mix(asset_manager: &AssetManager, mix_name: &str) {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn sidebar_unknown_entries_probe() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {
@@ -304,6 +305,7 @@ fn sidebar_unknown_entries_probe() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn export_suspicious_unknown_sidebar_shps() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {
@@ -414,6 +416,7 @@ fn export_suspicious_unknown_sidebar_shps() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn sidebar_chrome_inspect() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {
@@ -442,6 +445,7 @@ fn sidebar_chrome_inspect() {
 /// For each row y, finds the horizontal span (min_x, max_x) of dark pixels.
 /// Groups contiguous dark columns into bounding boxes to identify cameo slots.
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn sidebar_chrome_slot_positions() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {
@@ -657,6 +661,7 @@ fn sidebar_chrome_slot_positions() {
 /// For each SHP file: prints frame count, overall width/height, and per-frame
 /// dimensions (frame_width, frame_height, frame_x, frame_y).
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn inspect_tab_and_button_frames() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {
@@ -735,6 +740,7 @@ fn inspect_tab_and_button_frames() {
 /// Export all frames of unknown SHP entries that could be power bar pieces.
 /// Also tries "powerp.shp" name hash against sidec01.mix entries.
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn export_power_bar_candidates() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {
@@ -860,6 +866,7 @@ fn export_power_bar_candidates() {
 
 /// Dump raw pixel RGBA values for each powerp.shp frame to see transparency/spacing.
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn dump_powerp_pixels() {
     let ra2_dir: PathBuf = PathBuf::from(ra2_dir());
     if !ra2_dir.exists() {

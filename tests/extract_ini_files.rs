@@ -7,6 +7,7 @@ use std::fs;
 use std::path::Path;
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn extract_original_ini_files() {
     let game_dir = match std::env::var("RA2_DIR") {
         Ok(val) => std::path::PathBuf::from(val),

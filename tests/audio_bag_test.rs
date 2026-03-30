@@ -12,6 +12,7 @@ fn ra2_dir() -> String {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn test_load_audio_idx_from_mix() {
     let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
 
@@ -62,6 +63,7 @@ fn test_load_audio_idx_from_mix() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn test_lookup_known_gi_voice() {
     let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
 
@@ -129,6 +131,7 @@ fn test_lookup_known_gi_voice() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn test_lookup_eva_sounds() {
     let assets = AssetManager::new(Path::new(&ra2_dir())).expect("AssetManager");
 
@@ -192,6 +195,7 @@ fn test_lookup_eva_sounds() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn test_sound_registry_with_real_soundmd() {
     use vera20k::rules::ini_parser::IniFile;
     use vera20k::rules::sound_ini::SoundRegistry;
@@ -223,6 +227,7 @@ fn test_sound_registry_with_real_soundmd() {
 }
 
 #[test]
+#[ignore] // Requires RA2_DIR (retail game files)
 fn test_eva_registry_with_real_evamd() {
     use vera20k::rules::ini_parser::IniFile;
     use vera20k::rules::sound_ini::EvaRegistry;
