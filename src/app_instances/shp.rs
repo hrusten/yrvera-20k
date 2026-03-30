@@ -614,6 +614,7 @@ mod tests {
             rate: 100,
             start_frame: 0,
             ping_pong: false,
+            is_primary: false,
         };
 
         assert_eq!(resting_building_anim_frame(&anim), 7);
@@ -634,6 +635,7 @@ mod tests {
             rate: 100,
             start_frame: 3,
             ping_pong: false,
+            is_primary: false,
         };
 
         assert_eq!(resting_building_anim_frame(&anim), 3);
