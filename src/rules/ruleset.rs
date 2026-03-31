@@ -119,6 +119,9 @@ pub struct GeneralRules {
     /// When true, terrain 4+ levels above the viewer at the midpoint blocks sight.
     /// Default true (the standard RA2/YR setting).
     pub reveal_by_height: bool,
+    /// How impassable cells behind ≥4-level cliffs are (CliffBackImpassability= in [General]).
+    /// 0 = disabled, 2 = enabled (marks cells as Rock). Default 2 in standard YR.
+    pub cliff_back_impassability: u8,
     /// Underground travel speed for Tunnel locomotor units (TunnelSpeed=).
     /// Default 6.0 cells/second matching RA2 default.
     pub tunnel_speed: SimFixed,
@@ -383,6 +386,7 @@ impl Default for GeneralRules {
             // BlockagePathDelay=60 frames (directly in frames, not minutes).
             blockage_path_delay_ticks: 60,
             concrete_walls: Vec::new(),
+            cliff_back_impassability: 2,
         }
     }
 }
@@ -640,6 +644,7 @@ impl GeneralRules {
                         .collect()
                 })
                 .unwrap_or_default(),
+            cliff_back_impassability: general.get_i32("CliffBackImpassability").unwrap_or(2).clamp(0, 2) as u8,
         }
     }
 
