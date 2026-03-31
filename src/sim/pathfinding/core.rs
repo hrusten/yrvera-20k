@@ -36,9 +36,25 @@ const MAX_SEARCH_NODES: u32 = 65_527;
 pub const MAX_PATH_SEGMENT_STEPS: usize = 24;
 
 /// Cost multiplier for cells with height transitions (ramps, slopes).
-/// Original engine applies 4.0x base cost for cliff cells.
+/// Original engine applies 4.0x base cost for cliff cells (0x007e37bc = 4.0).
 /// With CARDINAL_COST=10, a height step costs 40 instead of 10.
 const CLIFF_COST_MULTIPLIER: i32 = 4;
+
+/// Per-direction tie-breaker offsets added to g-cost.
+/// Original engine adds tiny floats (0.001–0.008) from table at 0x0081872c.
+/// We scale by 10000 to stay in integer math: cardinals get lower values than
+/// diagonals, preventing path oscillation when multiple routes have equal cost.
+/// Index order matches NEIGHBORS: N, NE, E, SE, S, SW, W, NW.
+const DIR_TIEBREAK: [i32; 8] = [
+    1,  // N   (original ≈0.001)
+    5,  // NE  (original ≈0.005)
+    2,  // E   (original ≈0.002)
+    6,  // SE  (original ≈0.006)
+    3,  // S   (original ≈0.003)
+    7,  // SW  (original ≈0.007)
+    4,  // W   (original ≈0.004)
+    8,  // NW  (original ≈0.008)
+];
 
 /// 8-directional neighbor offsets: (dx, dy, is_diagonal).
 /// Order: N, NE, E, SE, S, SW, W, NW.
@@ -939,7 +955,7 @@ fn find_path_with_costs_corridor_inner(
             return None;
         }
 
-        for &(dx, dy, is_diagonal) in &NEIGHBORS {
+        for (dir_index, &(dx, dy, is_diagonal)) in NEIGHBORS.iter().enumerate() {
             let nx_i: i32 = cx as i32 + dx;
             let ny_i: i32 = cy as i32 + dy;
 
@@ -984,7 +1000,6 @@ fn find_path_with_costs_corridor_inner(
                 continue;
             }
 
-            // Reuse bounds-checked nx/ny: (cx+dx, cy) = (nx, cy), (cx, cy+dy) = (cx, ny).
             if is_diagonal {
                 let adj_ok_1: bool =
                     is_cell_passable_for_mover(grid, nx, cy, movement_zone, resolved_terrain)
@@ -997,12 +1012,23 @@ fn find_path_with_costs_corridor_inner(
                 }
             }
 
-            let step_cost: i32 = if is_diagonal {
+            let base_cost: i32 = if is_diagonal {
                 DIAGONAL_COST
             } else {
                 CARDINAL_COST
             };
-            let tentative_g: i32 = current.g_cost + step_cost;
+            let mut step_cost: i32 = base_cost * 100 / terrain_cost as i32;
+
+            // Cliff ramp cost: height transitions cost 4× more.
+            if let Some(rt) = resolved_terrain {
+                if let (Some(cur), Some(nxt)) = (rt.cell(cx, cy), rt.cell(nx, ny)) {
+                    if cur.level != nxt.level {
+                        step_cost *= CLIFF_COST_MULTIPLIER;
+                    }
+                }
+            }
+
+            let tentative_g: i32 = current.g_cost + step_cost + DIR_TIEBREAK[dir_index];
 
             if tentative_g < g_cost[n_idx] {
                 g_cost[n_idx] = tentative_g;
@@ -1082,7 +1108,7 @@ fn find_path_with_costs_inner(
             return None;
         }
 
-        for &(dx, dy, is_diagonal) in &NEIGHBORS {
+        for (dir_index, &(dx, dy, is_diagonal)) in NEIGHBORS.iter().enumerate() {
             let nx_i: i32 = cx as i32 + dx;
             let ny_i: i32 = cy as i32 + dy;
 
@@ -1134,17 +1160,27 @@ fn find_path_with_costs_inner(
             }
 
             // Weighted step cost — higher terrain_cost (faster terrain) = cheaper A* step.
-            // Roads (120) are slightly preferred over clear (100) over rough (75).
-            // Formula: base_cost * 100 / terrain_cost. Road: 83%, Clear: 100%, Rough: 133%.
-            // NOTE: the original engine uses uniform cost (no terrain preference).
-            // This is a deliberate enhancement for more natural-looking paths.
             let base_cost: i32 = if is_diagonal {
                 DIAGONAL_COST
             } else {
                 CARDINAL_COST
             };
-            let step_cost: i32 = base_cost * 100 / terrain_cost as i32;
-            let tentative_g: i32 = current.g_cost + step_cost;
+            let mut step_cost: i32 = base_cost * 100 / terrain_cost as i32;
+
+            // Cliff ramp cost: cells with height transitions cost 4× more.
+            // Original engine checks cell.Flags & 0x40000 and multiplies by 4.0.
+            if let Some(rt) = resolved_terrain {
+                if let (Some(cur), Some(nxt)) = (rt.cell(cx, cy), rt.cell(nx, ny)) {
+                    if cur.level != nxt.level {
+                        step_cost *= CLIFF_COST_MULTIPLIER;
+                    }
+                }
+            }
+
+            // Direction tie-breaker: small per-direction offset prevents path
+            // oscillation when multiple routes have equal cost. Cardinals get
+            // lower values than diagonals, matching original engine (0x0081872c).
+            let tentative_g: i32 = current.g_cost + step_cost + DIR_TIEBREAK[dir_index];
 
             if tentative_g < g_cost[n_idx] {
                 g_cost[n_idx] = tentative_g;
