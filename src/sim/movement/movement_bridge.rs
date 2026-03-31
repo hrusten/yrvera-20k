@@ -7,6 +7,14 @@
 //! - Ramp entry: `src_z == dst_ground + 4` with bridge flag → going UP onto bridge
 //! Path layers are NOT used for bridge state decisions; the unit's Z relative to the
 //! cell's ground height determines everything at runtime.
+//!
+//! TODO: Once the underlying bridge Z issues are fixed, this module should switch
+//! from height heuristics to using the pathfinder's `next_layer` (path_layers) as the
+//! primary bridge/ground decision. The pathfinder already produces correct per-cell
+//! Bridge/Ground layer assignments — the `_next_layer` parameter is passed in at every
+//! call site but currently ignored. Using it would fix ramp-entry edge cases where
+//! the height heuristic fails (unit at ground Z approaching a bridge deck cell with
+//! matching ground_level).
 
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::components::{BridgeOccupancy, Position};
@@ -14,7 +22,7 @@ use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::pathfinding::LayeredPathGrid;
 use crate::util::fixed_math::SimFixed;
 
-/// Threshold for ground vs bridge level detection (original engine uses < 2).
+/// Threshold for ground vs bridge level detection.
 /// If `abs(unit_z - cell.ground_level) >= HEIGHT_THRESHOLD`, unit is at bridge level.
 const HEIGHT_THRESHOLD: u8 = 2;
 
@@ -31,8 +39,9 @@ pub(super) const BRIDGE_Z_OFFSET: SimFixed = SimFixed::lit("360");
 /// Resolve bridge layer state at a cell boundary crossing using reactive height
 /// comparison.
 ///
-/// Instead of trusting the path's layer assignment, compares the unit's current Z
-/// to the destination cell's ground height to decide ground vs bridge level.
+/// Compares the unit's current Z to the destination cell's ground height to decide
+/// ground vs bridge level. The `_next_layer` parameter from path_layers is available
+/// but currently unused — see module-level TODO.
 pub(super) fn resolve_cell_transition_bridge_state(
     position: &mut Position,
     layered_grid: Option<&LayeredPathGrid>,
@@ -92,10 +101,12 @@ pub(super) fn apply_pending_bridge_render_state(
 
 /// Preemptive bridge detection for units approaching a bridge cell.
 ///
-/// Uses height comparison (not path layers) to decide if the unit should be
-/// elevated to bridge deck level. Only fires when bridge_occupancy is not
-/// already set and the unit's Z indicates it's at bridge level relative to
-/// the next cell.
+/// Uses height comparison to decide if the unit should be elevated to bridge
+/// deck level. Only fires when bridge_occupancy is not already set and the
+/// unit's Z indicates it's at bridge level relative to the next cell.
+///
+/// The `_next_step_layer` from path_layers is available but currently unused —
+/// see module-level TODO.
 pub(super) fn apply_bridge_lookahead_if_needed(
     position: &mut Position,
     bridge_occupancy: &mut Option<BridgeOccupancy>,
