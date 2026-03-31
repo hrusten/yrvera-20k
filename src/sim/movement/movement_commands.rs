@@ -23,6 +23,36 @@ use super::movement_path::{
 };
 use super::{facing_from_delta, PathfindingContext};
 use crate::rules::locomotor_type::MovementZone;
+use crate::sim::components::OrderIntent;
+use crate::sim::game_entity::GameEntity;
+
+use super::droppod_movement::DropPodPhase;
+
+/// Check if an entity can accept a new movement destination.
+///
+/// Mirrors gamemd.exe `DriveLocomotionClass::Set_Destination` (0x4AFD40) which
+/// has 4 guard checks preventing destination changes during special states:
+/// deploying, undeploying, falling, and unloading. We add `dying` as a fifth
+/// guard since dead entities should never accept move orders.
+fn can_accept_destination(entity: &GameEntity) -> bool {
+    if entity.dying {
+        return false;
+    }
+    if entity.building_up.is_some() || entity.building_down.is_some() {
+        return false;
+    }
+    if entity
+        .droppod_state
+        .as_ref()
+        .is_some_and(|s| s.phase == DropPodPhase::Falling)
+    {
+        return false;
+    }
+    if matches!(entity.order_intent, Some(OrderIntent::Unloading)) {
+        return false;
+    }
+    true
+}
 
 /// Issue a move command: compute an A* path and attach a MovementTarget to the entity.
 ///
@@ -72,6 +102,9 @@ pub fn issue_direct_move(
     let Some(entity) = entities.get(entity_id) else {
         return false;
     };
+    if !can_accept_destination(entity) {
+        return false;
+    }
     let start = (entity.position.rx, entity.position.ry);
     if start == target {
         return true; // Already there.
@@ -125,6 +158,9 @@ pub fn issue_move_command_with_layered(
         log::warn!("issue_move_command: entity {} not found", entity_id);
         return false;
     };
+    if !can_accept_destination(entity) {
+        return false;
+    }
     let start_rx: u16 = entity.position.rx;
     let start_ry: u16 = entity.position.ry;
     let current_layer = entity.movement_layer_or_ground();
