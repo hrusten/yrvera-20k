@@ -379,13 +379,10 @@ fn phase_unloading(
         return;
     }
 
-    // Pop one bale and award credits (with Ore Purifier bonus if applicable).
+    // Pop one bale and award base credits. Accumulate total for purifier bonus.
     if let Some(bale) = snap.miner.cargo.pop() {
-        let mut value: i32 = i32::from(bale.value);
-        if player_has_purifier(sim, rules, sim.interner.resolve(snap.owner)) {
-            let bonus_pct: i32 = (rules.general.purifier_bonus * 100.0) as i32;
-            value += value * bonus_pct / 100;
-        }
+        let value: i32 = i32::from(bale.value);
+        snap.miner.unload_base_total += value as u32;
         let owner_str = sim.interner.resolve(snap.owner).to_string();
         let credits = credits_entry_for_owner(sim, &owner_str);
         *credits = credits.saturating_add(value);
@@ -393,7 +390,19 @@ fn phase_unloading(
         return;
     }
 
-    // Cargo empty — release dock and transition to exit.
+    // Cargo empty — apply purifier bonus on the accumulated total, then finish.
+    if snap.miner.unload_base_total > 0
+        && player_has_purifier(sim, rules, sim.interner.resolve(snap.owner))
+    {
+        let bonus_pct: i32 = (rules.general.purifier_bonus * 100.0) as i32;
+        let bonus: i32 = snap.miner.unload_base_total as i32 * bonus_pct / 100;
+        let owner_str = sim.interner.resolve(snap.owner).to_string();
+        let credits = credits_entry_for_owner(sim, &owner_str);
+        *credits = credits.saturating_add(bonus);
+    }
+    snap.miner.unload_base_total = 0;
+
+    // Release dock and transition to exit.
     sim.production.dock_reservations.release(ref_sid);
     snap.miner.home_refinery = Some(ref_sid);
 

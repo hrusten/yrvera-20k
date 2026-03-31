@@ -518,14 +518,10 @@ fn handle_unload(
         return;
     }
 
-    // Pop one bale and award credits (with Ore Purifier bonus if applicable).
+    // Pop one bale and award base credits. Accumulate total for purifier bonus.
     if let Some(bale) = snap.miner.cargo.pop() {
-        let mut value: i32 = i32::from(bale.value);
-        if player_has_purifier(sim, rules, sim.interner.resolve(snap.owner)) {
-            // Integer math for determinism: bonus_pct = purifier_bonus * 100 (e.g., 25).
-            let bonus_pct: i32 = (rules.general.purifier_bonus * 100.0) as i32;
-            value += value * bonus_pct / 100;
-        }
+        let value: i32 = i32::from(bale.value);
+        snap.miner.unload_base_total += value as u32;
         let owner_str = sim.interner.resolve(snap.owner).to_string();
         let credits = credits_entry_for_owner(sim, &owner_str);
         *credits = credits.saturating_add(value);
@@ -533,7 +529,20 @@ fn handle_unload(
         return;
     }
 
-    // Cargo empty — done unloading.
+    // Cargo empty — apply purifier bonus on the accumulated total.
+    // gamemd computes the bonus on the full cargo in one pass
+    // (DepositOreFromStorage at 0x00522D50), so we do the same to avoid
+    // per-bale integer truncation drift (~10 credits per full load).
+    if snap.miner.unload_base_total > 0
+        && player_has_purifier(sim, rules, sim.interner.resolve(snap.owner))
+    {
+        let bonus_pct: i32 = (rules.general.purifier_bonus * 100.0) as i32;
+        let bonus: i32 = snap.miner.unload_base_total as i32 * bonus_pct / 100;
+        let owner_str = sim.interner.resolve(snap.owner).to_string();
+        let credits = credits_entry_for_owner(sim, &owner_str);
+        *credits = credits.saturating_add(bonus);
+    }
+    snap.miner.unload_base_total = 0;
     if let Some(ref_sid) = snap.miner.reserved_refinery {
         sim.production.dock_reservations.release(ref_sid);
         snap.miner.home_refinery = Some(ref_sid);

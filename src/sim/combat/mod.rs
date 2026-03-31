@@ -17,6 +17,7 @@
 //! - Part of sim/ — depends on sim/components and rules/ (RuleSet).
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+pub(crate) mod cell_spread;
 mod combat_aoe;
 mod combat_fire_gate;
 pub(crate) mod combat_targeting;
@@ -27,6 +28,8 @@ pub(crate) mod combat_weapon;
 mod combat_tests;
 
 use std::collections::BTreeMap;
+
+use crate::sim::miner::ResourceNode;
 
 use self::combat_weapon::select_weapon_with_ifv;
 use crate::map::entities::EntityCategory;
@@ -220,8 +223,8 @@ pub(crate) fn cell_distance(ax: u16, ay: u16, bx: u16, by: u16) -> f32 {
 use self::combat_targeting::{acquire_best_target, AttackerSnapshot, GarrisonSnapshot};
 
 /// Advance combat for all entities with AttackTarget components.
-pub fn tick_combat(entities: &mut EntityStore, rules: &RuleSet, interner: &mut StringInterner, tick_ms: u32) -> CombatTickResult {
-    tick_combat_with_fog(entities, rules, interner, None, &BTreeMap::new(), None, tick_ms)
+pub fn tick_combat(entities: &mut EntityStore, rules: &RuleSet, interner: &mut StringInterner, resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>, tick_ms: u32) -> CombatTickResult {
+    tick_combat_with_fog(entities, rules, interner, None, &BTreeMap::new(), None, resource_nodes, tick_ms)
 }
 
 /// Destroyed crewed building — survivor ejection is deferred to the caller
@@ -299,6 +302,7 @@ fn handle_entity_deaths(
     interner: &mut StringInterner,
     dead_entities: &[u64],
     damage_events: &[(u64, u16, u64, InternedId)],
+    resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
 ) -> DeathEffects {
     let mut death_sounds: Vec<(InternedId, u16, u16)> = Vec::new();
     let mut death_aoe: Vec<(u16, u16, i32, InternedId, InternedId)> = Vec::new();
@@ -438,6 +442,8 @@ fn handle_entity_deaths(
                     target.health.current = target.health.current.saturating_sub(aoe_dmg);
                 }
             }
+            // Ore destruction from death explosion.
+            destroy_ore_at_impact(resource_nodes, *rx, *ry, *dmg, warhead.cell_spread);
         }
     }
 
@@ -464,6 +470,35 @@ fn clear_targets_on_dead_entity(entities: &mut EntityStore, dead_id: u64) {
     }
 }
 
+/// Destroy ore/gem resources at cells affected by a warhead detonation.
+///
+/// Iterates cells in the warhead's CellSpread radius and reduces ore density
+/// by `base_damage / 10` at each cell. Matches gamemd's `Apply_area_damage`
+/// ore destruction logic (0x00489280).
+///
+/// ALL warheads destroy ore unconditionally — the `Tiberium=` INI flag only
+/// gates vein destruction (not implemented).
+fn destroy_ore_at_impact(
+    resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
+    impact_rx: u16,
+    impact_ry: u16,
+    base_damage: i32,
+    cell_spread: SimFixed,
+) {
+    let ore_damage = (base_damage / 10).max(0) as u16;
+    if ore_damage == 0 {
+        return;
+    }
+    let spread_radius = cell_spread.to_num::<u32>();
+    for &(dx, dy) in self::cell_spread::cells_in_spread(spread_radius) {
+        let cx = impact_rx as i32 + dx as i32;
+        let cy = impact_ry as i32 + dy as i32;
+        if cx >= 0 && cy >= 0 {
+            crate::sim::miner::reduce_tiberium(resource_nodes, (cx as u16, cy as u16), ore_damage);
+        }
+    }
+}
+
 /// Advance combat with optional owner visibility gating and sound event sink.
 /// Returns reveal events and stable IDs of entities despawned this tick.
 pub fn tick_combat_with_fog(
@@ -473,6 +508,7 @@ pub fn tick_combat_with_fog(
     fog: Option<&FogState>,
     power_states: &BTreeMap<InternedId, PowerState>,
     sound_sink: Option<&mut Vec<SimSoundEvent>>,
+    resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
     tick_ms: u32,
 ) -> CombatTickResult {
     if tick_ms == 0 {
@@ -968,6 +1004,10 @@ pub fn tick_combat_with_fog(
             }
         }
 
+        // Ore destruction: all warheads unconditionally destroy ore at impact cells.
+        // CellSpreadTable[0] = 1, so even CellSpread=0 weapons check the center cell.
+        destroy_ore_at_impact(resource_nodes, target_rx, target_ry, base_damage, warhead.cell_spread);
+
         if let Some(ref report_id) = weapon.report {
             fire_sounds.push((interner.intern(report_id), snap.pos_rx, snap.pos_ry));
         }
@@ -1085,7 +1125,7 @@ pub fn tick_combat_with_fog(
     }
 
     // Phase 6: handle death effects — death weapons, passengers, explosions, despawn.
-    let death = handle_entity_deaths(entities, rules, interner, &dead_entities, &damage_events);
+    let death = handle_entity_deaths(entities, rules, interner, &dead_entities, &damage_events, resource_nodes);
     bridge_damage_events.extend(death.bridge_damage_events);
 
     // Phase 7: push sound events to the sink.

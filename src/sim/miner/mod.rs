@@ -18,6 +18,8 @@ mod miner_tests;
 
 pub(crate) use self::miner_system::{extract_bale, player_has_purifier, search_local_ore};
 
+use std::collections::BTreeMap;
+
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::GeneralRules;
 
@@ -229,6 +231,10 @@ pub struct Miner {
     /// Current phase of the refinery docking sequence.
     /// Only meaningful when `state == MinerState::Dock`.
     pub dock_phase: RefineryDockPhase,
+    /// Accumulated base credit value of bales deposited during current unload.
+    /// Used to compute purifier bonus on the total at end of unload, matching
+    /// gamemd's single-pass DepositOreFromStorage (avoids per-bale truncation).
+    pub unload_base_total: u32,
 }
 
 impl Miner {
@@ -255,6 +261,7 @@ impl Miner {
             rescan_cooldown: 0,
             last_harvest_cell: None,
             dock_phase: RefineryDockPhase::default(),
+            unload_base_total: 0,
         }
     }
 
@@ -299,6 +306,47 @@ pub fn miner_kind_for_object(object: &ObjectType) -> Option<MinerKind> {
         Some(MinerKind::Chrono)
     } else {
         Some(MinerKind::War)
+    }
+}
+
+/// Reduce ore/gem density on a cell by `amount` density levels.
+///
+/// Returns the number of density levels actually removed. If the cell is
+/// fully depleted, removes the resource node entirely.
+///
+/// Mirrors `CellClass::Reduce_Tiberium` (0x00480a80) in gamemd.exe.
+/// Called by the combat system after warhead detonation.
+pub(crate) fn reduce_tiberium(
+    resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
+    cell: (u16, u16),
+    amount: u16,
+) -> u16 {
+    if amount == 0 {
+        return 0;
+    }
+    // Read type and density before deciding partial vs full removal.
+    let (base, density_levels) = match resource_nodes.get(&cell) {
+        Some(node) => {
+            let base: u16 = match node.resource_type {
+                ResourceType::Ore => 120,
+                ResourceType::Gem => 180,
+            };
+            (base, node.remaining / base)
+        }
+        None => return 0,
+    };
+    if density_levels == 0 {
+        return 0;
+    }
+
+    if amount < density_levels {
+        // Partial reduction: reduce remaining by amount × base.
+        resource_nodes.get_mut(&cell).unwrap().remaining -= amount * base;
+        amount
+    } else {
+        // Full removal: destroy the resource node entirely.
+        resource_nodes.remove(&cell);
+        density_levels
     }
 }
 
@@ -417,5 +465,62 @@ mod tests {
         // Bale values stay at defaults.
         assert_eq!(cfg.ore_bale_value, 25);
         assert_eq!(cfg.gem_bale_value, 50);
+    }
+
+    #[test]
+    fn reduce_tiberium_partial_ore() {
+        let mut nodes = BTreeMap::new();
+        // 6 density levels of ore: remaining = 6 * 120 = 720.
+        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 720 });
+        let removed = reduce_tiberium(&mut nodes, (5, 5), 2);
+        assert_eq!(removed, 2);
+        assert_eq!(nodes.get(&(5, 5)).unwrap().remaining, 720 - 2 * 120);
+    }
+
+    #[test]
+    fn reduce_tiberium_full_removal_ore() {
+        let mut nodes = BTreeMap::new();
+        // 3 density levels: remaining = 360.
+        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 360 });
+        let removed = reduce_tiberium(&mut nodes, (5, 5), 12);
+        assert_eq!(removed, 3, "should return old density_levels");
+        assert!(nodes.get(&(5, 5)).is_none(), "node should be removed");
+    }
+
+    #[test]
+    fn reduce_tiberium_exact_density_is_full_removal() {
+        let mut nodes = BTreeMap::new();
+        // 5 density levels: remaining = 600.
+        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 600 });
+        // amount(5) >= density_levels(5) → full removal (amount < density is false).
+        let removed = reduce_tiberium(&mut nodes, (5, 5), 5);
+        assert_eq!(removed, 5);
+        assert!(nodes.get(&(5, 5)).is_none(), "exact match = full removal");
+    }
+
+    #[test]
+    fn reduce_tiberium_empty_cell() {
+        let mut nodes: BTreeMap<(u16, u16), ResourceNode> = BTreeMap::new();
+        let removed = reduce_tiberium(&mut nodes, (5, 5), 10);
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn reduce_tiberium_zero_amount() {
+        let mut nodes = BTreeMap::new();
+        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 720 });
+        let removed = reduce_tiberium(&mut nodes, (5, 5), 0);
+        assert_eq!(removed, 0);
+        assert_eq!(nodes.get(&(5, 5)).unwrap().remaining, 720, "unchanged");
+    }
+
+    #[test]
+    fn reduce_tiberium_gem_base_rate() {
+        let mut nodes = BTreeMap::new();
+        // 4 density levels of gems: remaining = 4 * 180 = 720.
+        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Gem, remaining: 720 });
+        let removed = reduce_tiberium(&mut nodes, (5, 5), 2);
+        assert_eq!(removed, 2);
+        assert_eq!(nodes.get(&(5, 5)).unwrap().remaining, 720 - 2 * 180);
     }
 }
