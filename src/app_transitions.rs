@@ -12,10 +12,10 @@ use crate::map::basic::BasicSection;
 use crate::map::houses::HouseRoster;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::trigger_graph::TriggerGraph;
-use crate::sim::trigger_runtime::TriggerRuntime;
 use crate::render::minimap::MinimapRenderer;
 use crate::render::selection_overlay::SelectionOverlay;
 use crate::sidebar::SidebarTab;
+use crate::sim::trigger_runtime::TriggerRuntime;
 use crate::ui::game_screen::GameScreen;
 
 use crate::app::AppState;
@@ -217,8 +217,8 @@ pub(crate) fn transition_to_in_game(state: &mut AppState) {
     // Loads SHROUD.SHP brightness data and the 256-byte edge LUT.
     if let Some(ref am) = state.asset_manager {
         if let Some(ref grid) = state.path_grid {
-            if let Some(shp_data) = am.get("shroud.shp") {
-                if let Ok(shp) = crate::assets::shp_file::ShpFile::from_bytes(&shp_data) {
+            if let Some(shp_data) = am.get_ref("shroud.shp") {
+                if let Ok(shp) = crate::assets::shp_file::ShpFile::from_bytes(shp_data) {
                     let (frame_pixels, cw, ch) =
                         crate::render::shroud_buffer::extract_shp_brightness(&shp);
                     state.shroud_buffer = Some(crate::render::shroud_buffer::ShroudBuffer::new(
@@ -262,9 +262,7 @@ pub(crate) fn transition_to_in_game(state: &mut AppState) {
     }
 
     // Start music playback: prefer map's Theme= field, otherwise play first playlist track.
-    if let (Some(player), Some(assets)) =
-        (&mut state.music_player, &state.asset_manager)
-    {
+    if let (Some(player), Some(assets)) = (&mut state.music_player, &state.asset_manager) {
         let started: bool = if let Some(ref theme) = state.map_basic.theme {
             player.play_track(theme, assets)
         } else {
@@ -322,28 +320,19 @@ fn load_audio_indices(
     assets: &crate::assets::asset_manager::AssetManager,
 ) -> Vec<crate::assets::audio_bag::AudioIndex> {
     use crate::assets::audio_bag::AudioIndex;
-    use crate::assets::mix_archive::MixArchive;
 
     let mut indices = Vec::new();
 
     // Both AUDIO.MIX and AUDIOMD.MIX contain entries named "audio.idx" and "audio.bag"
     // internally. We need to load each MIX explicitly and extract from within, because
-    // the AssetManager's first-match behavior would return the base RA2 version for both.
+    // the generic first-match lookup would conflate the shared internal filenames.
     // YR (AUDIOMD.MIX) is loaded first so its sounds take priority in the search.
     for mix_name in ["AUDIOMD.MIX", "AUDIO.MIX"] {
-        let mix_data = match assets.get(mix_name) {
-            Some(d) => d,
-            None => continue,
-        };
-        let mix = match MixArchive::from_bytes(mix_data) {
-            Ok(m) => m,
-            Err(e) => {
-                log::warn!("Failed to parse {}: {}", mix_name, e);
-                continue;
-            }
+        let Some(mix) = assets.archive(mix_name) else {
+            continue;
         };
         let idx_data = match mix.get_by_name("audio.idx") {
-            Some(d) => d.to_vec(),
+            Some(d) => d,
             None => {
                 log::warn!("{} has no audio.idx entry", mix_name);
                 continue;
@@ -356,7 +345,7 @@ fn load_audio_indices(
                 continue;
             }
         };
-        match AudioIndex::from_idx_bag(&idx_data, bag_data) {
+        match AudioIndex::from_idx_bag(idx_data, bag_data) {
             Some(index) => {
                 log::info!(
                     "Loaded audio.idx/bag from {}: {} entries",

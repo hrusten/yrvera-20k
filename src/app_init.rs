@@ -36,7 +36,6 @@ use crate::map::tags::TagMap;
 use crate::map::terrain::{self, LocalBounds, TerrainGrid};
 use crate::map::theater;
 use crate::map::trigger_graph::TriggerGraph;
-use crate::sim::trigger_runtime::TriggerRuntime;
 use crate::map::triggers::TriggerMap;
 use crate::map::waypoints::{self, Waypoint};
 use crate::render::batch::BatchRenderer;
@@ -54,6 +53,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::{GeneralRules, RuleSet};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production;
+use crate::sim::trigger_runtime::TriggerRuntime;
 use crate::sim::world::Simulation;
 use crate::util::config::GameConfig;
 
@@ -137,10 +137,10 @@ fn load_csf(asset_manager: &AssetManager) -> Option<crate::assets::csf_file::Csf
         "stringtablemd.csf",
         "stringtable.csf",
     ] {
-        let Some(bytes) = asset_manager.get(name) else {
+        let Some(bytes) = asset_manager.get_ref(name) else {
             continue;
         };
-        match crate::assets::csf_file::CsfFile::from_bytes(&bytes) {
+        match crate::assets::csf_file::CsfFile::from_bytes(bytes) {
             Ok(csf) => {
                 log::info!("Loaded CSF string table: {name}");
                 return Some(csf);
@@ -393,8 +393,7 @@ pub fn load_map(
         sim.house_alliances = house_roster.alliance_map();
         // Populate per-player HouseState from the map's house roster.
         for house in &house_roster.houses {
-            let side_idx =
-                crate::sim::house_state::side_index_from_name(house.side.as_deref());
+            let side_idx = crate::sim::house_state::side_index_from_name(house.side.as_deref());
             let is_human = house.player_control == Some(true);
             let name_id = sim.interner.intern(&house.name);
             let country_id = house.country.as_deref().map(|c| sim.interner.intern(c));
@@ -662,8 +661,8 @@ pub fn load_map(
         build_sidebar_cameo_atlas(gpu, batch, &asset_manager, rules.as_ref(), art.as_ref());
     let sidebar_chrome =
         crate::render::sidebar_chrome::build_sidebar_chrome_set(gpu, batch, &asset_manager);
-    let fnt_file = asset_manager.get("GAME.FNT").and_then(|data| {
-        crate::assets::fnt_file::FntFile::from_bytes(&data)
+    let fnt_file = asset_manager.get_ref("GAME.FNT").and_then(|data| {
+        crate::assets::fnt_file::FntFile::from_bytes(data)
             .map_err(|e| log::warn!("Failed to parse GAME.FNT: {e}"))
             .ok()
     });
@@ -746,7 +745,8 @@ fn setup_ai_players(
         if house.name.eq_ignore_ascii_case(local_owner) {
             continue;
         }
-        sim.ai_players.push(AiPlayerState::new(sim.interner.intern(&house.name)));
+        sim.ai_players
+            .push(AiPlayerState::new(sim.interner.intern(&house.name)));
         log::info!("AI player registered: {}", house.name);
     }
 }

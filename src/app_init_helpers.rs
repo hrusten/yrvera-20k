@@ -86,8 +86,8 @@ pub(crate) fn load_sidebar_cameo_palette(asset_manager: &AssetManager) -> Option
         "temperat.pal",
     ];
     for name in palette_names {
-        if let Some(data) = asset_manager.get(name) {
-            if let Ok(palette) = Palette::from_bytes(&data) {
+        if let Some(data) = asset_manager.get_ref(name) {
+            if let Ok(palette) = Palette::from_bytes(data) {
                 log::info!("Sidebar cameos using palette {}", name);
                 return Some(palette);
             }
@@ -173,11 +173,7 @@ pub(crate) fn parse_debug_spawn_units_env() -> Option<Vec<String>> {
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect();
-    if items.is_empty() {
-        None
-    } else {
-        Some(items)
-    }
+    if items.is_empty() { None } else { Some(items) }
 }
 
 /// Build a texture atlas from pre-loaded theater data and the terrain grid.
@@ -364,7 +360,9 @@ pub(crate) fn spawn_entities(
     );
     sim.bridge_explosions = rules
         .map(|r| {
-            r.bridge_rules.explosions.iter()
+            r.bridge_rules
+                .explosions
+                .iter()
                 .map(|s| sim.interner.intern(s))
                 .collect()
         })
@@ -441,7 +439,8 @@ pub(crate) fn build_entity_atlases(
         )
     });
     // Pre-load building types that can be spawned at runtime (e.g., ConYards from MCV deploy).
-    let extra_buildings: Vec<&str> = deployable_building_types(&sim.entities, rules, Some(&sim.interner));
+    let extra_buildings: Vec<&str> =
+        deployable_building_types(&sim.entities, rules, Some(&sim.interner));
     let shp_atlas: Option<SpriteAtlas> = palette.as_ref().and_then(|pal| {
         sprite_atlas::build_sprite_atlas(
             gpu,

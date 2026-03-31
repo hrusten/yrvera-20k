@@ -165,15 +165,14 @@ fn build_theme_atlas(
     radar_name: &str,
     background_names: Option<(&str, &str, &str)>,
 ) -> Option<SidebarChromeAtlas> {
-    let mix_bytes = asset_manager.get(mix_name)?;
-    let mix = MixArchive::from_bytes(mix_bytes).ok()?;
+    let mix = asset_manager.archive(mix_name)?;
     let palette = mix
         .get_by_name(palette_name)
         .and_then(|bytes| Palette::from_bytes(bytes).ok())
         .or_else(|| {
             asset_manager
-                .get(palette_name)
-                .and_then(|bytes| Palette::from_bytes(&bytes).ok())
+                .get_ref(palette_name)
+                .and_then(|bytes| Palette::from_bytes(bytes).ok())
         })?;
     // For sidebar inspection/fidelity work, decode every sidebar-side MIX SHP
     // with the theme's main sidebar palette so unknown pieces are comparable
@@ -547,8 +546,10 @@ fn render_all_radar_frames(
     radar_name: &str,
     palette: &Palette,
 ) -> (Vec<Vec<u8>>, [u32; 2], [u32; 4]) {
-    let owned_bytes = asset_manager.get(radar_name);
-    let shp_bytes = match mix.get_by_name(radar_name).or(owned_bytes.as_deref()) {
+    let shp_bytes = match mix
+        .get_by_name(radar_name)
+        .or_else(|| asset_manager.get_ref(radar_name))
+    {
         Some(b) => b,
         None => return (Vec::new(), [0, 0], [0; 4]),
     };
@@ -707,8 +708,9 @@ fn render_entry(
     palette: &Palette,
     frame_index: usize,
 ) -> Option<RenderedChromeEntry> {
-    let owned_bytes = asset_manager.get(shp_name);
-    let shp_bytes = mix.get_by_name(shp_name).or(owned_bytes.as_deref())?;
+    let shp_bytes = mix
+        .get_by_name(shp_name)
+        .or_else(|| asset_manager.get_ref(shp_name))?;
     let shp = ShpFile::from_bytes(shp_bytes).ok()?;
     render_shp(&shp, palette, frame_index)
 }

@@ -35,8 +35,8 @@ pub struct AssetManager {
     archives: Vec<NamedArchive>,
     /// Precomputed first-match lookup across all archives.
     lookup_index: HashMap<i32, AssetLocation>,
-    /// Case-insensitive display-name index for direct archive access.
-    archive_name_index: HashMap<String, usize>,
+    /// Case-insensitive archive lookup index for full names and leaf aliases.
+    archive_lookup_index: HashMap<String, usize>,
     /// Path to the RA2 installation directory.
     ra2_dir: PathBuf,
 }
@@ -101,7 +101,7 @@ impl AssetManager {
         let mut manager = Self {
             archives: Vec::new(),
             lookup_index: HashMap::new(),
-            archive_name_index: HashMap::new(),
+            archive_lookup_index: HashMap::new(),
             ra2_dir: ra2_dir.to_path_buf(),
         };
 
@@ -263,18 +263,34 @@ impl AssetManager {
 
     /// Look up a file by name across all loaded archives.
     pub fn get(&self, name: &str) -> Option<Vec<u8>> {
-        let (named, entry_id) = self.lookup_archive_entry(name)?;
+        let (named, entry_id) = self.lookup_asset_entry(name)?;
         log::trace!("Found '{}' in {}", name, named.name);
         named.archive.get_by_id(entry_id).map(|data| data.to_vec())
     }
 
+    /// Look up a file by name without copying the asset bytes.
+    pub fn get_ref(&self, name: &str) -> Option<&[u8]> {
+        let (named, entry_id) = self.lookup_asset_entry(name)?;
+        log::trace!("Found '{}' in {}", name, named.name);
+        named.archive.get_by_id(entry_id)
+    }
+
     /// Look up a file by name and return both the bytes and source archive name.
     pub fn get_with_source(&self, name: &str) -> Option<(Vec<u8>, String)> {
-        let (named, entry_id) = self.lookup_archive_entry(name)?;
+        let (named, entry_id) = self.lookup_asset_entry(name)?;
         named
             .archive
             .get_by_id(entry_id)
             .map(|data| (data.to_vec(), named.name.clone()))
+    }
+
+    /// Look up a file by name and return both the borrowed bytes and source archive name.
+    pub fn get_with_source_ref(&self, name: &str) -> Option<(&[u8], &str)> {
+        let (named, entry_id) = self.lookup_asset_entry(name)?;
+        named
+            .archive
+            .get_by_id(entry_id)
+            .map(|data| (data, named.name.as_str()))
     }
 
     /// Load an additional nested archive from within already-loaded archives.
@@ -369,7 +385,7 @@ impl AssetManager {
 
     /// Look up a loaded archive by its display/debug name.
     pub fn archive(&self, name: &str) -> Option<&MixArchive> {
-        let index = self.archive_name_index.get(&name.to_ascii_lowercase())?;
+        let index = self.archive_lookup_index.get(&name.to_ascii_lowercase())?;
         self.archives.get(*index).map(|archive| &archive.archive)
     }
 
@@ -402,7 +418,7 @@ impl AssetManager {
         &self.ra2_dir
     }
 
-    fn lookup_archive_entry(&self, name: &str) -> Option<(&NamedArchive, i32)> {
+    fn lookup_asset_entry(&self, name: &str) -> Option<(&NamedArchive, i32)> {
         let location = self.lookup_location_for_name(name)?;
         let archive = self.archives.get(location.archive_index)?;
         Some((archive, location.entry_id))
@@ -434,12 +450,14 @@ impl AssetManager {
 
     fn rebuild_indexes(&mut self) {
         self.lookup_index.clear();
-        self.archive_name_index.clear();
+        self.archive_lookup_index.clear();
 
         for (archive_index, named) in self.archives.iter().enumerate() {
-            self.archive_name_index
-                .entry(named.name.to_ascii_lowercase())
-                .or_insert(archive_index);
+            for key in archive_lookup_keys(&named.name) {
+                self.archive_lookup_index
+                    .entry(key)
+                    .or_insert(archive_index);
+            }
             for entry in named.archive.entries() {
                 self.lookup_index.entry(entry.id).or_insert(AssetLocation {
                     archive_index,
@@ -455,6 +473,22 @@ fn guess_nested_mix_name(entry_id: i32) -> Option<&'static str> {
         .iter()
         .copied()
         .find(|name| mix_hash(name) == entry_id)
+}
+
+fn archive_lookup_keys(name: &str) -> Vec<String> {
+    let mut keys = Vec::with_capacity(3);
+    keys.push(name.to_ascii_lowercase());
+
+    if let Some(rest) = name.strip_prefix("nested:") {
+        keys.push(rest.trim().to_ascii_lowercase());
+    }
+    if let Some((_, leaf)) = name.rsplit_once("->") {
+        keys.push(leaf.trim().to_ascii_lowercase());
+    }
+
+    keys.sort();
+    keys.dedup();
+    keys
 }
 
 #[cfg(test)]
@@ -505,7 +539,7 @@ mod tests {
                 },
             ],
             lookup_index: HashMap::new(),
-            archive_name_index: HashMap::new(),
+            archive_lookup_index: HashMap::new(),
             ra2_dir: PathBuf::new(),
         };
         manager.rebuild_indexes();
@@ -525,12 +559,29 @@ mod tests {
                 archive: make_new_format_mix("rules.ini", b"test"),
             }],
             lookup_index: HashMap::new(),
-            archive_name_index: HashMap::new(),
+            archive_lookup_index: HashMap::new(),
             ra2_dir: PathBuf::new(),
         };
         manager.rebuild_indexes();
 
         assert!(manager.archive("ra2.mix").is_some());
         assert!(manager.archive("RA2.MIX").is_some());
+    }
+
+    #[test]
+    fn archive_lookup_matches_nested_leaf_aliases() {
+        let mut manager = AssetManager {
+            archives: vec![NamedArchive {
+                name: "language.mix -> audio.mix".to_string(),
+                archive: make_new_format_mix("audio.idx", b"test"),
+            }],
+            lookup_index: HashMap::new(),
+            archive_lookup_index: HashMap::new(),
+            ra2_dir: PathBuf::new(),
+        };
+        manager.rebuild_indexes();
+
+        assert!(manager.archive("audio.mix").is_some());
+        assert!(manager.archive("language.mix -> audio.mix").is_some());
     }
 }

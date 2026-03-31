@@ -93,11 +93,7 @@ pub fn calc_spatial_volume(
         vol = min_vol;
     }
 
-    if vol < MIN_VOLUME_CUTOFF {
-        0.0
-    } else {
-        vol
-    }
+    if vol < MIN_VOLUME_CUTOFF { 0.0 } else { vol }
 }
 
 const FADE_MS: u32 = 3;
@@ -375,17 +371,18 @@ fn load_sfx(
     }
 
     // Try MIX asset lookup (exact name, then with .wav extension).
-    let data: Vec<u8> = assets
-        .get(filename)
-        .or_else(|| assets.get(&format!("{}.wav", filename)))?;
+    let exact_name = format!("{}.wav", filename);
+    let data: &[u8] = assets
+        .get_ref(filename)
+        .or_else(|| assets.get_ref(&exact_name))?;
 
     // Try WAV first (most SFX are .wav).
     if data.len() >= 44 && &data[0..4] == b"RIFF" {
-        return decode_wav(&data, filename);
+        return decode_wav(data, filename);
     }
 
     // Fall back to .aud format.
-    let (header, samples) = aud_file::decode_aud(&data)?;
+    let (header, samples) = aud_file::decode_aud(data)?;
     if samples.is_empty() {
         return None;
     }
@@ -542,12 +539,11 @@ pub(crate) fn decode_wav(data: &[u8], filename: &str) -> Option<DecodedAudio> {
 
 /// IMA ADPCM step size table — standard IMA/DVI specification.
 const IMA_STEP_TABLE: [i32; 89] = [
-    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60,
-    66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371,
-    408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878,
-    2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845,
-    8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086,
-    29794, 32767,
+    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66,
+    73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449,
+    494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272,
+    2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493,
+    10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
 ];
 
 /// IMA ADPCM index adjustment table for each nibble value.
@@ -584,8 +580,7 @@ fn decode_ima_adpcm(data: &[u8], channels: u16, block_align: u16) -> Vec<f32> {
         let mut step_index = [0i32; 2];
         for c in 0..ch {
             let base = c * 4;
-            predictor[c] =
-                i16::from_le_bytes([block[base], block[base + 1]]) as i32;
+            predictor[c] = i16::from_le_bytes([block[base], block[base + 1]]) as i32;
             step_index[c] = block[base + 2] as i32;
             step_index[c] = step_index[c].clamp(0, 88);
             // First sample from header.
@@ -608,9 +603,15 @@ fn decode_ima_adpcm(data: &[u8], channels: u16, block_align: u16) -> Vec<f32> {
                     let nibble = ((byte >> shift) & 0x0F) as usize;
                     let step = IMA_STEP_TABLE[step_index[0] as usize];
                     let mut diff = step >> 3;
-                    if nibble & 4 != 0 { diff += step; }
-                    if nibble & 2 != 0 { diff += step >> 1; }
-                    if nibble & 1 != 0 { diff += step >> 2; }
+                    if nibble & 4 != 0 {
+                        diff += step;
+                    }
+                    if nibble & 2 != 0 {
+                        diff += step >> 1;
+                    }
+                    if nibble & 1 != 0 {
+                        diff += step >> 2;
+                    }
                     if nibble & 8 != 0 {
                         predictor[0] -= diff;
                     } else {
@@ -635,9 +636,15 @@ fn decode_ima_adpcm(data: &[u8], channels: u16, block_align: u16) -> Vec<f32> {
                             let nibble = ((byte >> shift) & 0x0F) as usize;
                             let step = IMA_STEP_TABLE[step_index[c] as usize];
                             let mut diff = step >> 3;
-                            if nibble & 4 != 0 { diff += step; }
-                            if nibble & 2 != 0 { diff += step >> 1; }
-                            if nibble & 1 != 0 { diff += step >> 2; }
+                            if nibble & 4 != 0 {
+                                diff += step;
+                            }
+                            if nibble & 2 != 0 {
+                                diff += step >> 1;
+                            }
+                            if nibble & 1 != 0 {
+                                diff += step >> 2;
+                            }
                             if nibble & 8 != 0 {
                                 predictor[c] -= diff;
                             } else {
