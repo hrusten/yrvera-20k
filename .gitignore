@@ -25,7 +25,7 @@ Thumbs.db
 # RE docs (kept locally outside the repo)
 /docs/
 
-# Local dev config (personal paths, Claude/Ghidra setup)
+# Local dev config (personal paths, Claude setup)
 CLAUDE.md
 .mcp.json
 /.claude/
