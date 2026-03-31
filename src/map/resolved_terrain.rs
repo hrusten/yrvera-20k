@@ -163,6 +163,7 @@ impl ResolvedTerrainGrid {
         terrain_rules: Option<&TerrainRules>,
         overlay_registry: Option<&OverlayTypeRegistry>,
         lat_enabled: bool,
+        cliff_back_impassability: u8,
     ) -> Self {
         let (width, height) = grid_dimensions(&map.cells);
         if width == 0 || height == 0 {
@@ -725,6 +726,67 @@ impl ResolvedTerrainGrid {
             );
         }
 
+        // CliffBackImpassability: mark cells at the base of ≥4-level cliffs as
+        // impassable. Matches gamemd.exe CellClass::RecalcAttributes (0x0047d2b0).
+        // When value == 2 (YR default), cells where ANY of 6 isometric neighbors
+        // is ≥4 levels above get land_type=Rock and ground_walk_blocked=true.
+        // Only overrides Clear(0), Water(4), Beach(3) land types.
+        if cliff_back_impassability == 2 {
+            const CLIFF_BACK_HEIGHT_DIFF: u8 = 4;
+            // 6 neighbor offsets in (dx, dy) matching gamemd.exe RecalcAttributes:
+            // (X, Y-1), (X-1, Y), (X+2, Y+2), (X+1, Y+1), (X-1, Y+1), (X+1, Y-1)
+            const NEIGHBOR_OFFSETS: [(i32, i32); 6] = [
+                (0, -1),
+                (-1, 0),
+                (2, 2),
+                (1, 1),
+                (-1, 1),
+                (1, -1),
+            ];
+            let rock_lt = crate::sim::pathfinding::passability::LandType::Rock.as_index();
+            let clear_lt = crate::sim::pathfinding::passability::LandType::Clear.as_index();
+            let water_lt = crate::sim::pathfinding::passability::LandType::Water.as_index();
+            let beach_lt = crate::sim::pathfinding::passability::LandType::Beach.as_index();
+
+            let mut cliff_back_count: usize = 0;
+            for idx in 0..cells.len() {
+                let lt = cells[idx].land_type;
+                if lt != clear_lt && lt != water_lt && lt != beach_lt {
+                    continue;
+                }
+                let cell_level = cells[idx].level;
+                let rx = cells[idx].rx as i32;
+                let ry = cells[idx].ry as i32;
+
+                let mut behind_cliff = false;
+                for &(dx, dy) in &NEIGHBOR_OFFSETS {
+                    let nx = rx + dx;
+                    let ny = ry + dy;
+                    if nx >= 0 && ny >= 0 && nx < width as i32 && ny < height as i32 {
+                        let nidx = ny as usize * width as usize + nx as usize;
+                        if nidx < cells.len()
+                            && cells[nidx].level >= cell_level + CLIFF_BACK_HEIGHT_DIFF
+                        {
+                            behind_cliff = true;
+                            break;
+                        }
+                    }
+                }
+                if behind_cliff {
+                    cells[idx].land_type = rock_lt;
+                    cells[idx].ground_walk_blocked = true;
+                    cells[idx].is_cliff_like = true;
+                    cliff_back_count += 1;
+                }
+            }
+            if cliff_back_count > 0 {
+                log::info!(
+                    "ResolvedTerrain: {} cells marked impassable by CliffBackImpassability",
+                    cliff_back_count,
+                );
+            }
+        }
+
         // Assign random tile visual variants (FA2 bRNDImage, MapData.cpp:3292-3306).
         // Uses deterministic hash of (rx, ry) for reproducibility across sessions.
         // Tiles with HasDamagedData (bridges) use variants for damage states, not
@@ -1175,7 +1237,7 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
-        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false);
+        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false, 0);
         assert_eq!(grid.width(), 2);
         assert_eq!(grid.height(), 2);
 
@@ -1468,7 +1530,7 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
-        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false);
+        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false, 0);
         let cell = grid.cell(3, 3).expect("high cell");
         assert!(
             cell.is_cliff_redraw,
@@ -1506,11 +1568,72 @@ mod tests {
             Vec::new(),
             Vec::new(),
         );
-        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false);
+        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false, 0);
         let cell = grid.cell(3, 3).expect("slightly elevated cell");
         assert!(
             !cell.is_cliff_redraw,
             "height diff 3 < 4 should NOT flag cliff redraw"
         );
+    }
+
+    #[test]
+    fn cliff_back_impassability_marks_low_cell() {
+        // Cell (1,1) at level 0, cell (1,0) at level 4.
+        // Neighbor offset (0,-1) means (1,0) is checked from (1,1).
+        // Height diff = 4 >= 4 → cell (1,1) should be marked impassable.
+        let map = make_map(
+            vec![
+                MapCell { rx: 0, ry: 0, tile_index: -1, sub_tile: 0, z: 0 },
+                MapCell { rx: 1, ry: 0, tile_index: -1, sub_tile: 0, z: 4 },
+                MapCell { rx: 0, ry: 1, tile_index: -1, sub_tile: 0, z: 0 },
+                MapCell { rx: 1, ry: 1, tile_index: -1, sub_tile: 0, z: 0 },
+            ],
+            Vec::new(),
+            Vec::new(),
+        );
+        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false, 2);
+        let cell = grid.cell(1, 1).unwrap();
+        assert!(cell.ground_walk_blocked, "Cell at base of cliff should be blocked");
+        assert!(cell.is_cliff_like, "Cell at base of cliff should be cliff-like");
+        assert_eq!(
+            cell.land_type,
+            crate::sim::pathfinding::passability::LandType::Rock.as_index(),
+            "Cell at base of cliff should have Rock land type"
+        );
+    }
+
+    #[test]
+    fn cliff_back_impassability_skips_when_disabled() {
+        let map = make_map(
+            vec![
+                MapCell { rx: 0, ry: 0, tile_index: -1, sub_tile: 0, z: 0 },
+                MapCell { rx: 1, ry: 0, tile_index: -1, sub_tile: 0, z: 4 },
+                MapCell { rx: 0, ry: 1, tile_index: -1, sub_tile: 0, z: 0 },
+                MapCell { rx: 1, ry: 1, tile_index: -1, sub_tile: 0, z: 0 },
+            ],
+            Vec::new(),
+            Vec::new(),
+        );
+        // cliff_back_impassability = 0 → disabled
+        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false, 0);
+        let cell = grid.cell(1, 1).unwrap();
+        assert!(!cell.ground_walk_blocked, "Should NOT be blocked when disabled");
+    }
+
+    #[test]
+    fn cliff_back_impassability_ignores_small_height_diff() {
+        let map = make_map(
+            vec![
+                MapCell { rx: 0, ry: 0, tile_index: -1, sub_tile: 0, z: 0 },
+                MapCell { rx: 1, ry: 0, tile_index: -1, sub_tile: 0, z: 3 },
+                MapCell { rx: 0, ry: 1, tile_index: -1, sub_tile: 0, z: 0 },
+                MapCell { rx: 1, ry: 1, tile_index: -1, sub_tile: 0, z: 0 },
+            ],
+            Vec::new(),
+            Vec::new(),
+        );
+        let grid = ResolvedTerrainGrid::build(&map, None, None, None, None, false, 2);
+        let cell = grid.cell(1, 1).unwrap();
+        assert!(!cell.ground_walk_blocked, "Height diff 3 should NOT trigger (threshold is 4)");
     }
 }

@@ -286,6 +286,10 @@ pub fn load_map(
     // Compute playable area bounds from LocalSize (border filler hidden by shroud).
     let local_bounds: Option<LocalBounds> = Some(LocalBounds::from_header(&map_data.header));
 
+    let cliff_back = rules
+        .as_ref()
+        .map(|r| r.general.cliff_back_impassability)
+        .unwrap_or(2);
     let resolved_terrain = ResolvedTerrainGrid::build(
         &map_data,
         theater_result.as_ref(),
@@ -293,6 +297,7 @@ pub fn load_map(
         rules.as_ref().map(|r| &r.terrain_rules),
         Some(&overlay_registry),
         lat_enabled,
+        cliff_back,
     );
     let mut grid: TerrainGrid =
         terrain::build_terrain_grid_from_resolved(&resolved_terrain, local_bounds);
