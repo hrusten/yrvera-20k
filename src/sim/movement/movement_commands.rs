@@ -30,10 +30,8 @@ use super::droppod_movement::DropPodPhase;
 
 /// Check if an entity can accept a new movement destination.
 ///
-/// Mirrors gamemd.exe `DriveLocomotionClass::Set_Destination` (0x4AFD40) which
-/// has 4 guard checks preventing destination changes during special states:
-/// deploying, undeploying, falling, and unloading. We add `dying` as a fifth
-/// guard since dead entities should never accept move orders.
+/// Prevents destination changes during special states: dying, deploying,
+/// undeploying, falling, and unloading passengers.
 fn can_accept_destination(entity: &GameEntity) -> bool {
     if entity.dying {
         return false;
