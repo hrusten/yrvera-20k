@@ -567,6 +567,10 @@ pub(crate) fn load_save_file(state: &mut AppState, path: &std::path::Path) {
     // Rebuild the app-layer dynamic path grid (building footprints + walls).
     crate::app_sim_tick::rebuild_dynamic_path_grid(state);
 
+    // Rebuild sprite/unit atlases so all entity types in the loaded save have
+    // atlas entries before the first render frame.
+    crate::app_sim_tick::refresh_entity_atlases(state);
+
     // Reset timing to prevent a burst of ticks after the load.
     state.last_update_time = std::time::Instant::now();
     state.sim_accumulator_ms = 0;
