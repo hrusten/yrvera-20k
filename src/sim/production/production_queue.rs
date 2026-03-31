@@ -13,11 +13,13 @@ use crate::sim::world::Simulation;
 use super::production_economy::tick_resource_economy;
 use super::production_spawn::find_spawn_cell_for_owner;
 use super::production_tech::{
-    build_option_for_owner, build_time_base_ms, effective_progress_rate_ppm_for_category,
-    effective_progress_rate_ppm_for_type, estimated_real_time_ms, production_category_for_object,
-    should_use_relaxed_build_mode, supports_live_production,
+    build_option_for_owner, build_time_base_frames, effective_progress_rate_ppm_for_type,
+    effective_time_to_build_frames_for_type, estimated_real_time_ms,
+    production_category_for_object, should_use_relaxed_build_mode, supports_live_production,
 };
 use super::production_types::*;
+
+const RA2_QUEUE_FRAME_MS: u64 = 66;
 
 /// Set rally point for an owner's production output.
 pub fn set_rally_point_for_owner(sim: &mut Simulation, owner: &InternedId, rx: u16, ry: u16) {
@@ -28,13 +30,15 @@ pub fn set_rally_point_for_owner(sim: &mut Simulation, owner: &InternedId, rx: u
 
 /// Return current rally point for owner, if one has been set.
 pub fn rally_point_for_owner(sim: &Simulation, owner: &str) -> Option<(u16, u16)> {
-    sim.interner.get(owner)
+    sim.interner
+        .get(owner)
         .and_then(|id| sim.houses.get(&id))
         .and_then(|h| h.rally_point)
 }
 
 pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
-    sim.interner.get(owner)
+    sim.interner
+        .get(owner)
         .and_then(|id| sim.houses.get(&id))
         .map(|h| h.credits)
         .unwrap_or(STARTING_CREDITS)
@@ -73,14 +77,7 @@ pub(in crate::sim) fn credits_entry_for_owner<'a>(
     if !sim.houses.contains_key(&key) {
         sim.houses.insert(
             key,
-            crate::sim::house_state::HouseState::new(
-                key,
-                0,
-                None,
-                false,
-                STARTING_CREDITS,
-                10,
-            ),
+            crate::sim::house_state::HouseState::new(key, 0, None, false, STARTING_CREDITS, 10),
         );
     }
     &mut sim.houses.get_mut(&key).unwrap().credits
@@ -209,7 +206,7 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
     if obj.cost <= 0 || owner_credits < obj.cost {
         return false;
     }
-    let total_base_ms: u32 = build_time_base_ms(rules, obj);
+    let total_base_frames: u32 = build_time_base_frames(rules, obj);
     *credits_entry_for_owner(sim, owner) -= obj.cost;
     let owner_id = sim.interner.intern(owner);
     let type_interned = sim.interner.intern(type_id);
@@ -219,8 +216,8 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
         type_id: type_interned,
         queue_category,
         state: BuildQueueState::Queued,
-        total_base_ms,
-        remaining_base_ms: total_base_ms,
+        total_base_frames,
+        remaining_base_frames: total_base_frames,
         progress_carry: 0,
         enqueue_order,
     });
@@ -259,7 +256,10 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
         }
         log::warn!(
             "[BUILD-DIAG] owner='{}' tick={} total_items={} reasons={:?}",
-            owner, sim.tick, strict.len(), reason_counts
+            owner,
+            sim.tick,
+            strict.len(),
+            reason_counts
         );
         // Log owned structures and their factory status.
         for e in sim.entities.values() {
@@ -269,7 +269,9 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
                 let ts = sim.interner.resolve(e.type_ref);
                 log::warn!(
                     "[BUILD-DIAG]   structure '{}' building_up={} factory_type={:?}",
-                    ts, e.building_up.is_some(), rules.factory_type(ts)
+                    ts,
+                    e.building_up.is_some(),
+                    rules.factory_type(ts)
                 );
             }
         }
@@ -278,7 +280,8 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
             let type_str = sim.interner.resolve(opt.type_id);
             log::warn!(
                 "[BUILD-DIAG]   sample: '{}' reason={:?}",
-                type_str, opt.reason
+                type_str,
+                opt.reason
             );
         }
     }
@@ -341,7 +344,11 @@ fn dedupe_visible_build_options(
     deduped
 }
 
-fn build_option_sidebar_key(rules: &RuleSet, option: &BuildOption, interner: &crate::sim::intern::StringInterner) -> Option<String> {
+fn build_option_sidebar_key(
+    rules: &RuleSet,
+    option: &BuildOption,
+    interner: &crate::sim::intern::StringInterner,
+) -> Option<String> {
     let type_str = interner.resolve(option.type_id);
     let obj = rules.object(type_str)?;
     let image_key = if obj.image.trim().is_empty() {
@@ -359,10 +366,16 @@ fn prefers_sidebar_variant(
     existing: &BuildOption,
     interner: &crate::sim::intern::StringInterner,
 ) -> bool {
-    sidebar_variant_rank(rules, owner, candidate, interner) > sidebar_variant_rank(rules, owner, existing, interner)
+    sidebar_variant_rank(rules, owner, candidate, interner)
+        > sidebar_variant_rank(rules, owner, existing, interner)
 }
 
-fn sidebar_variant_rank(rules: &RuleSet, owner: &str, option: &BuildOption, interner: &crate::sim::intern::StringInterner) -> (u8, u16, u8) {
+fn sidebar_variant_rank(
+    rules: &RuleSet,
+    owner: &str,
+    option: &BuildOption,
+    interner: &crate::sim::intern::StringInterner,
+) -> (u8, u16, u8) {
     let type_str = interner.resolve(option.type_id);
     let Some(obj) = rules.object(type_str) else {
         return (0, 0, 0);
@@ -440,7 +453,7 @@ pub fn tick_production(
                     None
                 } else {
                     advance_queue_item(front, tick_ms, progress_rate);
-                    if front.remaining_base_ms > 0 {
+                    if front.remaining_base_frames > 0 {
                         None
                     } else {
                         front.state = BuildQueueState::Done;
@@ -465,9 +478,7 @@ pub fn tick_production(
                 .or_default()
                 .push_back(done.type_id);
             sim.sound_events
-                .push(crate::sim::world::SimSoundEvent::BuildingComplete {
-                    owner: done.owner,
-                });
+                .push(crate::sim::world::SimSoundEvent::BuildingComplete { owner: done.owner });
             continue;
         }
         let is_naval: bool = rules.object(&done_type_str).map_or(false, |o| o.naval);
@@ -484,14 +495,11 @@ pub fn tick_production(
         let spawned = sim.spawn_object(&done_type_str, &owner_str, rx, ry, 64, rules, height_map);
         if let Some(stable_id) = spawned {
             sim.sound_events
-                .push(crate::sim::world::SimSoundEvent::UnitComplete {
-                    owner: done.owner,
-                });
+                .push(crate::sim::world::SimSoundEvent::UnitComplete { owner: done.owner });
             // Auto-move newly produced unit to rally point (if set).
-            if let (Some(grid), Some((tx, ty))) = (
-                path_grid,
-                rally_point_for_owner(sim, &owner_str),
-            ) {
+            if let (Some(grid), Some((tx, ty))) =
+                (path_grid, rally_point_for_owner(sim, &owner_str))
+            {
                 let obj = rules.object(&done_type_str);
                 let loco_mult = sim
                     .entities
@@ -551,22 +559,38 @@ pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> V
         .into_iter()
         .map(|q| {
             let type_str = sim.interner.resolve(q.type_id);
-            let (display_name, rate_ppm) = rules
+            let (display_name, remaining_frames, total_frames) = rules
                 .object(type_str)
                 .map(|obj| {
                     (
                         obj.name.clone().unwrap_or_else(|| type_str.to_string()),
-                        effective_progress_rate_ppm_for_category(sim, rules, owner, obj.category),
+                        effective_time_to_build_frames_for_type(
+                            sim,
+                            rules,
+                            owner,
+                            type_str,
+                            q.remaining_base_frames,
+                        ),
+                        effective_time_to_build_frames_for_type(
+                            sim,
+                            rules,
+                            owner,
+                            type_str,
+                            q.total_base_frames.max(1),
+                        ),
                     )
                 })
-                .unwrap_or_else(|| (type_str.to_string(), PRODUCTION_RATE_SCALE));
+                .unwrap_or_else(|| {
+                    let frames = q.remaining_base_frames;
+                    (type_str.to_string(), frames, q.total_base_frames.max(1))
+                });
             QueueItemView {
                 type_id: q.type_id,
                 display_name,
                 queue_category: q.queue_category,
                 state: q.state,
-                remaining_ms: estimated_real_time_ms(q.remaining_base_ms, rate_ppm),
-                total_ms: estimated_real_time_ms(q.total_base_ms.max(1), rate_ppm),
+                remaining_ms: estimated_real_time_ms(remaining_frames, PRODUCTION_RATE_SCALE),
+                total_ms: estimated_real_time_ms(total_frames, PRODUCTION_RATE_SCALE),
             }
         })
         .collect()
@@ -726,22 +750,29 @@ fn cancel_ready_by_type_for_owner(
 }
 
 fn advance_queue_item(item: &mut BuildQueueItem, tick_ms: u32, rate_ppm: u64) {
-    if item.remaining_base_ms == 0 || tick_ms == 0 {
+    if item.remaining_base_frames == 0 || tick_ms == 0 {
         return;
     }
-    let scaled_progress = u64::from(tick_ms).saturating_mul(rate_ppm) + item.progress_carry;
-    let progressed_base_ms = (scaled_progress / PRODUCTION_RATE_SCALE) as u32;
-    item.progress_carry = scaled_progress % PRODUCTION_RATE_SCALE;
+    let frame_scale = RA2_QUEUE_FRAME_MS.saturating_mul(PRODUCTION_RATE_SCALE);
+    let scaled_progress = u64::from(tick_ms)
+        .saturating_mul(rate_ppm)
+        .saturating_add(item.progress_carry);
+    let progressed_base_frames = (scaled_progress / frame_scale) as u32;
+    item.progress_carry = scaled_progress % frame_scale;
 
-    if progressed_base_ms >= item.remaining_base_ms {
-        item.remaining_base_ms = 0;
+    if progressed_base_frames >= item.remaining_base_frames {
+        item.remaining_base_frames = 0;
         item.progress_carry = 0;
     } else {
-        item.remaining_base_ms -= progressed_base_ms;
+        item.remaining_base_frames -= progressed_base_frames;
     }
 }
 
-fn pick_default_buildable_unit(sim: &Simulation, rules: &RuleSet, owner: &str) -> Option<InternedId> {
+fn pick_default_buildable_unit(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: &str,
+) -> Option<InternedId> {
     let mode = if should_use_relaxed_build_mode(sim, rules, owner) {
         BuildMode::PrototypeRelaxed
     } else {

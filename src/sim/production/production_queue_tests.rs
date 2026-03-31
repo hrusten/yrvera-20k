@@ -4,14 +4,14 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use super::{
-    build_options_for_owner, credits_for_owner, queue_view_for_owner, tick_production,
-    toggle_pause_for_owner_category, BuildQueueState, ProductionCategory,
+    BuildQueueState, ProductionCategory, build_options_for_owner, credits_for_owner,
+    queue_view_for_owner, tick_production, toggle_pause_for_owner_category,
 };
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::PathGrid;
+use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::world::Simulation;
 
 // Re-use test helpers from the main production_tests module.
@@ -55,22 +55,27 @@ fn build_catalog_exposes_sidebar_categories_and_required_houses() {
             ProductionCategory::Aircraft,
         ]
     );
-    assert!(americans
-        .iter()
-        .filter(|opt| {
-            matches!(
-                opt.queue_category,
-                ProductionCategory::Infantry
-                    | ProductionCategory::Vehicle
-                    | ProductionCategory::Aircraft
-            )
-        })
-        .all(|opt| opt.enabled));
+    assert!(
+        americans
+            .iter()
+            .filter(|opt| {
+                matches!(
+                    opt.queue_category,
+                    ProductionCategory::Infantry
+                        | ProductionCategory::Vehicle
+                        | ProductionCategory::Aircraft
+                )
+            })
+            .all(|opt| opt.enabled)
+    );
 
     // Alliance should NOT see GTUR — it has RequiredHouses=Americans,
     // so it's hidden (not just greyed out) per RA2 behavior.
     assert!(
-        alliance.iter().find(|opt| opt.type_id == sim.interner.intern("GTUR")).is_none(),
+        alliance
+            .iter()
+            .find(|opt| opt.type_id == sim.interner.intern("GTUR"))
+            .is_none(),
         "GTUR should be hidden for Alliance (RequiredHouses=Americans)"
     );
 
@@ -109,8 +114,22 @@ fn queue_view_uses_owner_power_modifier() {
 
     let americans_id = sim.interner.intern("Americans");
     let soviet_id = sim.interner.intern("Soviet");
-    let qi_am = queued_item_via(&mut sim.interner, "Americans", "E1", ProductionCategory::Infantry, 60_000, 60_000);
-    let qi_so = queued_item_via(&mut sim.interner, "Soviet", "E1", ProductionCategory::Infantry, 60_000, 60_000);
+    let qi_am = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "E1",
+        ProductionCategory::Infantry,
+        900,
+        900,
+    );
+    let qi_so = queued_item_via(
+        &mut sim.interner,
+        "Soviet",
+        "E1",
+        ProductionCategory::Infantry,
+        900,
+        900,
+    );
     sim.production.queues_by_owner.insert(
         americans_id,
         BTreeMap::from([(ProductionCategory::Infantry, VecDeque::from([qi_am]))]),
@@ -123,8 +142,8 @@ fn queue_view_uses_owner_power_modifier() {
     let americans = queue_view_for_owner(&sim, &rules, "Americans");
     let soviet = queue_view_for_owner(&sim, &rules, "Soviet");
 
-    assert_eq!(americans[0].total_ms, 120_000);
-    assert_eq!(soviet[0].total_ms, 60_000);
+    assert_eq!(americans[0].total_ms, 118_800);
+    assert_eq!(soviet[0].total_ms, 59_400);
 }
 
 #[test]
@@ -144,6 +163,63 @@ fn matching_factory_bonus_is_category_specific() {
 
     assert_eq!(infantry_rate, 1_250_000);
     assert_eq!(vehicle_rate, 1_000_000);
+}
+
+#[test]
+fn base_build_frames_follow_ra2_cost_buildspeed_formula() {
+    let rules = production_modifier_rules();
+    let obj = rules.object("E1").expect("E1 should exist");
+
+    assert_eq!(super::build_time_base_frames(&rules, obj), 900);
+}
+
+#[test]
+fn wall_build_speed_coefficient_applies_after_factory_scaling() {
+    let mut sim = Simulation::new();
+    let ini = IniFile::from_str(
+        "[General]\n\
+             BuildSpeed=1.0\n\
+             MultipleFactory=0.8\n\
+             WallBuildSpeedCoefficient=0.5\n\
+             [InfantryTypes]\n\
+             [VehicleTypes]\n\
+             [AircraftTypes]\n\
+             [BuildingTypes]\n\
+             0=GACNST\n\
+             1=NACNST\n\
+             2=GAWALL\n\
+             [GACNST]\n\
+             Factory=BuildingType\n\
+             Owner=Americans\n\
+             [NACNST]\n\
+             Factory=BuildingType\n\
+             Owner=Americans\n\
+             [GAWALL]\n\
+             Name=Wall\n\
+             Cost=1000\n\
+             Strength=100\n\
+             Armor=wood\n\
+             TechLevel=1\n\
+             Owner=Americans\n\
+             Wall=yes\n",
+    );
+    let rules = RuleSet::from_ini(&ini).expect("wall rules should parse");
+
+    spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
+    spawn_structure(&mut sim, 2, "Americans", "NACNST", 12, 10);
+
+    let wall = rules.object("GAWALL").expect("wall should exist");
+    let base_frames = super::build_time_base_frames(&rules, wall);
+    let total_frames = super::effective_time_to_build_frames_for_type(
+        &sim,
+        &rules,
+        "Americans",
+        "GAWALL",
+        base_frames,
+    );
+
+    assert_eq!(base_frames, 900);
+    assert_eq!(total_frames, 360);
 }
 
 #[test]
@@ -170,8 +246,22 @@ fn low_power_and_factory_bonus_apply_per_owner_and_category() {
 
     let americans_id = sim.interner.intern("Americans");
     let soviet_id = sim.interner.intern("Soviet");
-    let qi_am = queued_item_via(&mut sim.interner, "Americans", "E1", ProductionCategory::Infantry, 60_000, 60_000);
-    let qi_so = queued_item_via(&mut sim.interner, "Soviet", "MTNK", ProductionCategory::Vehicle, 60_000, 60_000);
+    let qi_am = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "E1",
+        ProductionCategory::Infantry,
+        60_000,
+        60_000,
+    );
+    let qi_so = queued_item_via(
+        &mut sim.interner,
+        "Soviet",
+        "MTNK",
+        ProductionCategory::Vehicle,
+        60_000,
+        60_000,
+    );
     sim.production.queues_by_owner.insert(
         americans_id,
         BTreeMap::from([(ProductionCategory::Infantry, VecDeque::from([qi_am]))]),
@@ -189,7 +279,7 @@ fn low_power_and_factory_bonus_apply_per_owner_and_category() {
         .get(&americans_id)
         .and_then(|queues| queues.get(&ProductionCategory::Infantry))
         .and_then(|queue| queue.front())
-        .map(|item| item.remaining_base_ms)
+        .map(|item| item.remaining_base_frames)
         .expect("americans queue should still exist");
     let soviet_remaining = sim
         .production
@@ -197,11 +287,11 @@ fn low_power_and_factory_bonus_apply_per_owner_and_category() {
         .get(&soviet_id)
         .and_then(|queues| queues.get(&ProductionCategory::Vehicle))
         .and_then(|queue| queue.front())
-        .map(|item| item.remaining_base_ms)
+        .map(|item| item.remaining_base_frames)
         .expect("soviet queue should still exist");
 
-    assert_eq!(americans_remaining, 59_375);
-    assert_eq!(soviet_remaining, 59_000);
+    assert_eq!(americans_remaining, 59_991);
+    assert_eq!(soviet_remaining, 59_985);
 }
 
 #[test]
@@ -234,7 +324,14 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
     if let Some(h) = sim.houses.get_mut(&americans_key) {
         h.rally_point = Some((26, 21));
     }
-    let qi_naval = queued_item_via(&mut sim.interner, "Americans", "DEST", ProductionCategory::Vehicle, 100, 0);
+    let qi_naval = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "DEST",
+        ProductionCategory::Vehicle,
+        100,
+        0,
+    );
     sim.production.queues_by_owner.insert(
         americans_display,
         BTreeMap::from([(ProductionCategory::Vehicle, VecDeque::from([qi_naval]))]),
@@ -246,7 +343,11 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
     let ship = sim
         .entities
         .values()
-        .find(|e| sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("DEST"))
+        .find(|e| {
+            sim.interner
+                .resolve(e.type_ref)
+                .eq_ignore_ascii_case("DEST")
+        })
         .expect("spawned destroyer");
     assert!(
         ship.movement_target.is_some(),
@@ -324,8 +425,22 @@ fn tick_production_advances_each_owner_queue() {
 
     let americans_id = sim.interner.intern("Americans");
     let soviet_id = sim.interner.intern("Soviet");
-    let qi_am = queued_item_via(&mut sim.interner, "Americans", "E1", ProductionCategory::Infantry, 100, 10);
-    let qi_so = queued_item_via(&mut sim.interner, "Soviet", "E1", ProductionCategory::Infantry, 100, 10);
+    let qi_am = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "E1",
+        ProductionCategory::Infantry,
+        100,
+        10,
+    );
+    let qi_so = queued_item_via(
+        &mut sim.interner,
+        "Soviet",
+        "E1",
+        ProductionCategory::Infantry,
+        100,
+        10,
+    );
     sim.production.queues_by_owner.insert(
         americans_id,
         BTreeMap::from([(ProductionCategory::Infantry, VecDeque::from([qi_am]))]),
@@ -346,13 +461,19 @@ fn tick_production_advances_each_owner_queue() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans") && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1")
         })
         .count();
     let soviet = sim
         .entities
         .values()
-        .filter(|e| sim.interner.resolve(e.owner).eq_ignore_ascii_case("Soviet") && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1"))
+        .filter(|e| {
+            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Soviet")
+                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1")
+        })
         .count();
     assert_eq!(americans, 1);
     assert_eq!(soviet, 1);
@@ -368,8 +489,22 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
     spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 14, 10);
 
     let americans_id = sim.interner.intern("Americans");
-    let qi_inf = queued_item_via(&mut sim.interner, "Americans", "E1", ProductionCategory::Infantry, 100, 10);
-    let qi_veh = queued_item_via(&mut sim.interner, "Americans", "MTNK", ProductionCategory::Vehicle, 100, 10);
+    let qi_inf = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "E1",
+        ProductionCategory::Infantry,
+        100,
+        10,
+    );
+    let qi_veh = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "MTNK",
+        ProductionCategory::Vehicle,
+        100,
+        10,
+    );
     sim.production.queues_by_owner.insert(
         americans_id,
         BTreeMap::from([
@@ -389,14 +524,23 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans") && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1")
         })
         .count();
     let vehicles = sim
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans") && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("MTNK")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim
+                    .interner
+                    .resolve(e.type_ref)
+                    .eq_ignore_ascii_case("MTNK")
         })
         .count();
     assert_eq!(infantry, 1);
@@ -413,8 +557,22 @@ fn paused_queue_category_does_not_advance_while_other_category_does() {
     spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 14, 10);
 
     let americans_id = sim.interner.intern("Americans");
-    let qi_inf = queued_item_via(&mut sim.interner, "Americans", "E1", ProductionCategory::Infantry, 1000, 1000);
-    let qi_veh = queued_item_via(&mut sim.interner, "Americans", "MTNK", ProductionCategory::Vehicle, 1000, 1000);
+    let qi_inf = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "E1",
+        ProductionCategory::Infantry,
+        1000,
+        1000,
+    );
+    let qi_veh = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "MTNK",
+        ProductionCategory::Vehicle,
+        1000,
+        1000,
+    );
     sim.production.queues_by_owner.insert(
         americans_id,
         BTreeMap::from([
@@ -445,9 +603,9 @@ fn paused_queue_category_does_not_advance_while_other_category_does() {
         .expect("vehicle queue should remain");
 
     assert_eq!(infantry.state, BuildQueueState::Paused);
-    assert_eq!(infantry.remaining_base_ms, 1000);
+    assert_eq!(infantry.remaining_base_frames, 1000);
     assert_eq!(vehicle.state, BuildQueueState::Building);
-    assert_eq!(vehicle.remaining_base_ms, 900);
+    assert_eq!(vehicle.remaining_base_frames, 899);
 }
 
 #[test]
@@ -501,7 +659,14 @@ fn cancel_by_type_prefers_build_queue_over_ready_queue() {
     // Put GAREFN in both the build queue AND ready queue.
     let americans_id = sim.interner.intern("Americans");
     let garefn_id = sim.interner.intern("GAREFN");
-    let qi = queued_item_via(&mut sim.interner, "Americans", "GAREFN", ProductionCategory::Building, 10000, 5000);
+    let qi = queued_item_via(
+        &mut sim.interner,
+        "Americans",
+        "GAREFN",
+        ProductionCategory::Building,
+        10000,
+        5000,
+    );
     sim.production
         .ready_by_owner
         .entry(americans_id)

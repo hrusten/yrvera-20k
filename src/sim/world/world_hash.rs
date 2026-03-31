@@ -98,8 +98,8 @@ impl Simulation {
                     item.type_id.hash(hasher);
                     item.queue_category.hash(hasher);
                     item.state.hash(hasher);
-                    item.total_base_ms.hash(hasher);
-                    item.remaining_base_ms.hash(hasher);
+                    item.total_base_frames.hash(hasher);
+                    item.remaining_base_frames.hash(hasher);
                     item.progress_carry.hash(hasher);
                     item.enqueue_order.hash(hasher);
                 }

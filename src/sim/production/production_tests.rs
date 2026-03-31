@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 
 use super::{
-    credits_for_owner, find_spawn_cell_for_owner, is_matching_factory,
-    seed_resource_nodes_from_overlays, structure_satisfies_prerequisite, BuildQueueItem,
-    BuildQueueState, ProductionCategory, STARTING_CREDITS,
+    BuildQueueItem, BuildQueueState, ProductionCategory, STARTING_CREDITS, credits_for_owner,
+    find_spawn_cell_for_owner, is_matching_factory, seed_resource_nodes_from_overlays,
+    structure_satisfies_prerequisite,
 };
 use crate::map::overlay::OverlayEntry;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
@@ -523,16 +523,16 @@ pub(super) fn queued_item_via(
     owner: &str,
     type_id: &str,
     queue_category: ProductionCategory,
-    total_base_ms: u32,
-    remaining_base_ms: u32,
+    total_base_frames: u32,
+    remaining_base_frames: u32,
 ) -> BuildQueueItem {
     BuildQueueItem {
         owner: interner.intern(owner),
         type_id: interner.intern(type_id),
         queue_category,
         state: BuildQueueState::Queued,
-        total_base_ms,
-        remaining_base_ms,
+        total_base_frames,
+        remaining_base_frames,
         progress_carry: 0,
         enqueue_order: 1,
     }

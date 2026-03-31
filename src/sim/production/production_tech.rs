@@ -174,7 +174,9 @@ fn count_owned_and_queued(sim: &Simulation, owner: &str, type_id: &str) -> u32 {
     let type_interned = sim.interner.get(type_id);
 
     let owned = match (owner_id, type_interned) {
-        (Some(oid), Some(tid)) => sim.entities.values()
+        (Some(oid), Some(tid)) => sim
+            .entities
+            .values()
             .filter(|e| e.owner == oid && e.type_ref == tid)
             .count() as u32,
         _ => 0,
@@ -183,7 +185,8 @@ fn count_owned_and_queued(sim: &Simulation, owner: &str, type_id: &str) -> u32 {
     let queued = owner_id
         .and_then(|oid| sim.production.queues_by_owner.get(&oid))
         .map(|queues| {
-            queues.values()
+            queues
+                .values()
                 .flat_map(|queue| queue.iter())
                 .filter(|item| type_interned.map_or(false, |tid| item.type_id == tid))
                 .count() as u32
@@ -193,7 +196,8 @@ fn count_owned_and_queued(sim: &Simulation, owner: &str, type_id: &str) -> u32 {
     let ready = owner_id
         .and_then(|oid| sim.production.ready_by_owner.get(&oid))
         .map(|ready| {
-            ready.iter()
+            ready
+                .iter()
                 .filter(|&&tid| type_interned.map_or(false, |expected| tid == expected))
                 .count() as u32
         })
@@ -289,29 +293,36 @@ pub(super) fn is_production_factory(
     }
 }
 
-pub(super) fn build_time_base_ms(
+const RA2_QUEUE_FRAME_MS: u64 = 66;
+const RA2_BUILD_SPEED_TICK_SCALE: f64 = 0.9;
+
+#[inline]
+fn trunc_to_i32(value: f64) -> i32 {
+    value.trunc() as i32
+}
+
+pub(in crate::sim) fn build_time_base_frames(
     rules: &RuleSet,
     obj: &crate::rules::object_type::ObjectType,
 ) -> u32 {
     if obj.cost <= 0 {
         return 0;
     }
-    // Integer-scaled computation: cost * build_speed * build_time_multiplier * 60 ms.
-    // Uses pre-computed ×1000 integer values from INI parse time (no f32 at tick time).
+    // RE-proven base path:
+    //   baseValue = trunc(cost * BuildSpeed * 0.9)
+    //   rawFrames = trunc(baseValue * typeBuildTimeMult) then
+    //   trunc(rawFrames * technoTypeBuildTimeMult)
     //
-    // Formula: base_ms = (cost / 1000) * build_speed * build_time_multiplier * 60000
-    // Rearranged to avoid intermediate fractions:
-    //   base_ms = cost * build_speed_x1000 * btm_x1000 * 60 / 1_000_000
-    let build_speed_x1000: u64 = rules.production.build_speed_x1000;
-    let btm_x1000: u64 = obj.build_time_multiplier_x1000;
-    let cost: u64 = obj.cost.max(0) as u64;
-    // cost * speed * btm * 60, then divide by 1_000_000 (the two x1000 scalings).
-    let millis: u64 = cost * build_speed_x1000 * btm_x1000 * 60 / 1_000_000;
-    let base: u32 = millis.min(u64::from(u32::MAX)).max(1) as u32;
-    // Dev-time speed divisor. If this needs to be configurable, move to
-    // GameOptions so it stays synced across multiplayer peers.
-    const BUILD_SPEED_DIVISOR: u32 = 10;
-    base / BUILD_SPEED_DIVISOR
+    // The local sim does not yet model the separate house/type build-time
+    // multiplier helper, so that term stays at 1.0 here and the per-object
+    // `BuildTimeMultiplier` remains the only type-specific multiplier.
+    let base_value = trunc_to_i32(
+        obj.cost.max(0) as f64
+            * rules.production.build_speed.max(0.0) as f64
+            * RA2_BUILD_SPEED_TICK_SCALE,
+    );
+    let raw_frames = trunc_to_i32(base_value as f64 * obj.build_time_multiplier as f64).max(0);
+    raw_frames as u32
 }
 
 pub(in crate::sim) fn effective_progress_rate_ppm_for_type(
@@ -344,42 +355,97 @@ pub(super) fn effective_progress_rate_ppm_for_category(
     rate.max(1)
 }
 
-pub(super) fn estimated_real_time_ms(base_ms: u32, rate_ppm: u64) -> u32 {
-    if base_ms == 0 {
+pub(super) fn estimated_real_time_ms(base_frames: u32, rate_ppm: u64) -> u32 {
+    if base_frames == 0 {
         return 0;
     }
     let denom = u128::from(rate_ppm.max(1));
-    let numer = u128::from(base_ms) * u128::from(PRODUCTION_RATE_SCALE);
+    let numer = u128::from(base_frames)
+        * u128::from(RA2_QUEUE_FRAME_MS)
+        * u128::from(PRODUCTION_RATE_SCALE);
     let rounded_up = numer.div_ceil(denom);
     rounded_up.min(u128::from(u32::MAX)) as u32
 }
 
-/// Power-speed multiplier scaled by PRODUCTION_RATE_SCALE (1M = 1.0×).
-/// Uses integer arithmetic to avoid platform-dependent f64 rounding.
-fn owner_power_speed_multiplier_ppm(sim: &Simulation, rules: &RuleSet, owner: &str) -> u64 {
-    let (produced, drained) = sim.interner.get(owner)
+pub(in crate::sim) fn effective_time_to_build_frames_for_type(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: &str,
+    type_id: &str,
+    base_frames: u32,
+) -> u32 {
+    let Some(obj) = rules.object(type_id) else {
+        return base_frames;
+    };
+    effective_time_to_build_frames_for_object(sim, rules, owner, obj, base_frames)
+}
+
+fn effective_time_to_build_frames_for_object(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: &str,
+    obj: &crate::rules::object_type::ObjectType,
+    base_frames: u32,
+) -> u32 {
+    let speed = owner_effective_production_speed(sim, rules, owner);
+    let mut time_to_build = trunc_to_i32(base_frames as f64 / speed.max(0.01));
+    time_to_build = apply_multiple_factory_scaling(
+        time_to_build,
+        rules.production.multiple_factory,
+        matching_factory_count_for_owner(&sim.entities, rules, owner, obj.category, &sim.interner),
+    );
+    if obj.category == ObjectCategory::Building && obj.wall {
+        time_to_build = trunc_to_i32(
+            time_to_build as f64 * rules.production.wall_build_speed_coefficient as f64,
+        );
+    }
+    time_to_build.max(0) as u32
+}
+
+fn apply_multiple_factory_scaling(
+    time_to_build: i32,
+    multiple_factory: f32,
+    queue_factory_count: u32,
+) -> i32 {
+    if multiple_factory <= 0.0 || queue_factory_count <= 1 {
+        return time_to_build;
+    }
+    let mut scaled = time_to_build;
+    for _ in 1..queue_factory_count {
+        scaled = trunc_to_i32(scaled as f64 * multiple_factory as f64);
+    }
+    scaled
+}
+
+fn owner_effective_production_speed(sim: &Simulation, rules: &RuleSet, owner: &str) -> f64 {
+    let power_pct = owner_power_percentage(sim, owner);
+    let mut speed = 1.0 - (1.0 - power_pct) * rules.production.low_power_penalty_modifier as f64;
+    speed = speed.max(rules.production.min_low_power_production_speed as f64);
+    if power_pct < 1.0 {
+        speed = speed.min(rules.production.max_low_power_production_speed as f64);
+    }
+    if speed == 0.0 { 0.01 } else { speed }
+}
+
+fn owner_power_percentage(sim: &Simulation, owner: &str) -> f64 {
+    let (produced, drained) = sim
+        .interner
+        .get(owner)
         .and_then(|id| sim.power_states.get(&id))
         .map(|state| (state.total_output, state.total_drain))
         .unwrap_or((0, 0));
 
-    if drained <= 0 || produced >= drained {
-        return PRODUCTION_RATE_SCALE; // 1.0×
+    if drained <= 0 {
+        return 1.0;
     }
 
-    let shortage: i32 = drained - produced;
-    let drained_pos: u64 = drained.max(1) as u64;
+    ((produced.max(0) as f64) / (drained as f64)).clamp(0.0, 1.0)
+}
 
-    // Use pre-computed PPM values from rules (converted at INI parse time, not tick time).
-    let penalty_mod_ppm: u64 = rules.production.low_power_penalty_modifier_ppm;
-    // shortage_ratio * penalty_modifier, scaled to ppm.
-    let shortage_penalty_ppm: u64 = (shortage as u64) * penalty_mod_ppm / drained_pos;
-    // penalized = 1.0 - shortage_ratio * penalty_modifier (in ppm).
-    let penalized_ppm: u64 = PRODUCTION_RATE_SCALE.saturating_sub(shortage_penalty_ppm);
-
-    let min_ppm: u64 = rules.production.min_low_power_production_speed_ppm;
-    let max_ppm: u64 = rules.production.max_low_power_production_speed_ppm;
-
-    penalized_ppm.clamp(min_ppm, max_ppm)
+/// Power-speed multiplier scaled by PRODUCTION_RATE_SCALE (1M = 1.0×).
+fn owner_power_speed_multiplier_ppm(sim: &Simulation, rules: &RuleSet, owner: &str) -> u64 {
+    (owner_effective_production_speed(sim, rules, owner) * PRODUCTION_RATE_SCALE as f64).trunc()
+        as u64
 }
 
 /// Factory time multiplier scaled by PRODUCTION_RATE_SCALE (1M = 1.0×).
@@ -391,7 +457,8 @@ fn matching_factory_time_multiplier_ppm(
     category: ObjectCategory,
     interner: &crate::sim::intern::StringInterner,
 ) -> u64 {
-    let factory_count: u32 = matching_factory_count_for_owner(entities, rules, owner, category, interner);
+    let factory_count: u32 =
+        matching_factory_count_for_owner(entities, rules, owner, category, interner);
     if factory_count <= 1 {
         return PRODUCTION_RATE_SCALE; // 1.0×
     }

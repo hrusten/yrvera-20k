@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::rules::object_type::ObjectCategory;
 use crate::sim::intern::InternedId;
-use crate::sim::miner::miner_dock::DockReservations;
 use crate::sim::miner::ResourceNode;
+use crate::sim::miner::miner_dock::DockReservations;
 use crate::sim::ore_growth::{OreGrowthConfig, OreGrowthState};
 
 /// Initial credits for the local player.
@@ -25,8 +25,10 @@ pub struct BuildQueueItem {
     pub type_id: InternedId,
     pub queue_category: ProductionCategory,
     pub state: BuildQueueState,
-    pub total_base_ms: u32,
-    pub remaining_base_ms: u32,
+    /// Base build time in RA2 production frames before live power/factory/wall scaling.
+    pub total_base_frames: u32,
+    /// Remaining base build time in RA2 production frames before live scaling.
+    pub remaining_base_frames: u32,
     pub progress_carry: u64,
     pub enqueue_order: u64,
 }
@@ -191,7 +193,8 @@ pub(super) enum BuildMode {
 /// Player production state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProductionState {
-    pub queues_by_owner: BTreeMap<InternedId, BTreeMap<ProductionCategory, VecDeque<BuildQueueItem>>>,
+    pub queues_by_owner:
+        BTreeMap<InternedId, BTreeMap<ProductionCategory, VecDeque<BuildQueueItem>>>,
     pub ready_by_owner: BTreeMap<InternedId, VecDeque<InternedId>>,
     pub active_producer_by_owner: BTreeMap<InternedId, BTreeMap<ProductionCategory, u64>>,
     pub next_enqueue_order: u64,

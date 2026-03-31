@@ -18,11 +18,11 @@ mod production_types;
 
 // Re-export everything so external code can still use `production::X`.
 pub use self::production_economy::is_harvester_type;
+pub(crate) use self::production_placement::structure_occupies_cell;
 pub use self::production_placement::{
     active_producer_for_owner_category, cycle_active_producer_for_owner_category,
     place_ready_building, placement_preview_for_owner, toggle_pause_for_owner_category,
 };
-pub(crate) use self::production_placement::structure_occupies_cell;
 pub use self::production_queue::{
     build_options_for_owner, cancel_by_type_for_owner, cancel_last_for_owner, credits_for_owner,
     enqueue_by_type, enqueue_default_unit_for_owner, has_strict_build_option_for_owner,
@@ -47,7 +47,10 @@ pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
 
 // Re-exports used by test sub-modules (via `super::` in test files).
 #[cfg(test)]
-pub(in crate::sim) use self::production_tech::effective_progress_rate_ppm_for_type;
+pub(in crate::sim) use self::production_tech::{
+    build_time_base_frames, effective_progress_rate_ppm_for_type,
+    effective_time_to_build_frames_for_type,
+};
 
 #[cfg(test)]
 #[path = "production_tests.rs"]

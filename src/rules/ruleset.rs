@@ -27,7 +27,7 @@ use crate::rules::radar_event_config::RadarEventConfig;
 use crate::rules::terrain_rules::TerrainRules;
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
-use crate::util::fixed_math::{sim_from_f32, SimFixed};
+use crate::util::fixed_math::{SimFixed, sim_from_f32};
 
 /// Registry section names in rules.ini and their corresponding category.
 const TYPE_REGISTRIES: &[(&str, ObjectCategory)] = &[
@@ -65,6 +65,9 @@ pub struct ProductionRules {
     pub max_low_power_production_speed_ppm: u64,
     /// `build_speed` pre-scaled ×1000 for deterministic build-time computation.
     pub build_speed_x1000: u64,
+    /// Speed coefficient applied to wall building production after all other
+    /// queue time scaling. Parsed from `WallBuildSpeedCoefficient=` in [General].
+    pub wall_build_speed_coefficient: f32,
 }
 
 /// PPM scale constant (1_000_000 = 1.0×) used for f32→integer conversion at parse time.
@@ -88,6 +91,7 @@ impl Default for ProductionRules {
             min_low_power_production_speed_ppm: f32_to_ppm(0.5, 0.0),
             max_low_power_production_speed_ppm: f32_to_ppm(0.9, 0.0),
             build_speed_x1000: (0.05f64 * 1000.0) as u64,
+            wall_build_speed_coefficient: 1.0,
         }
     }
 }
@@ -644,7 +648,10 @@ impl GeneralRules {
                         .collect()
                 })
                 .unwrap_or_default(),
-            cliff_back_impassability: general.get_i32("CliffBackImpassability").unwrap_or(2).clamp(0, 2) as u8,
+            cliff_back_impassability: general
+                .get_i32("CliffBackImpassability")
+                .unwrap_or(2)
+                .clamp(0, 2) as u8,
         }
     }
 
@@ -704,12 +711,9 @@ impl ProductionRules {
         let bs = general.get_f32("BuildSpeed").unwrap_or(0.1);
         let mf = general.get_f32("MultipleFactory").unwrap_or(0.8);
         let lpp = general.get_f32("LowPowerPenaltyModifier").unwrap_or(1.0);
-        let min_lp = general
-            .get_f32("MinLowPowerProductionSpeed")
-            .unwrap_or(0.5);
-        let max_lp = general
-            .get_f32("MaxLowPowerProductionSpeed")
-            .unwrap_or(0.9);
+        let min_lp = general.get_f32("MinLowPowerProductionSpeed").unwrap_or(0.5);
+        let max_lp = general.get_f32("MaxLowPowerProductionSpeed").unwrap_or(0.9);
+        let wall_coeff = general.get_f32("WallBuildSpeedCoefficient").unwrap_or(1.0);
         let result = Self {
             build_speed: bs,
             multiple_factory: mf,
@@ -721,6 +725,7 @@ impl ProductionRules {
             min_low_power_production_speed_ppm: f32_to_ppm(min_lp, 0.0),
             max_low_power_production_speed_ppm: f32_to_ppm(max_lp.max(min_lp), 0.0),
             build_speed_x1000: (bs.max(0.01) as f64 * 1000.0) as u64,
+            wall_build_speed_coefficient: wall_coeff,
         };
         log::info!(
             "ProductionRules: BuildSpeed={}, MultipleFactory={}, LowPowerPenalty={}",

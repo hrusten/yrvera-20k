@@ -4,10 +4,11 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use super::{
+    BuildQueueItem, BuildQueueState, BuildingPlacementError, ProductionCategory,
     cancel_last_for_owner, credits_for_owner, cycle_active_producer_for_owner_category,
     find_spawn_cell_for_owner, place_ready_building, placement_preview_for_owner,
     producer_candidates_for_owner_category, ready_buildings_for_owner, sell_building,
-    tick_production, BuildQueueItem, BuildQueueState, BuildingPlacementError, ProductionCategory,
+    tick_production,
 };
 use crate::map::resolved_terrain::{RampDirection, ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
@@ -121,10 +122,7 @@ fn completed_building_moves_into_ready_placement_pool() {
     let gacnst = sim.interner.intern("GACNST");
     sim.production.queues_by_owner.insert(
         americans,
-        BTreeMap::from([(
-            ProductionCategory::Building,
-            VecDeque::from([qi]),
-        )]),
+        BTreeMap::from([(ProductionCategory::Building, VecDeque::from([qi]))]),
     );
 
     let spawned = tick_production(&mut sim, &rules, &height_map, None, 33);
@@ -149,10 +147,9 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
 
     let americans = sim.interner.intern("Americans");
     let gacnst = sim.interner.intern("GACNST");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gacnst]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gacnst]));
 
     assert!(place_ready_building(
         &mut sim,
@@ -170,8 +167,13 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans")
-                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("GACNST")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim
+                    .interner
+                    .resolve(e.type_ref)
+                    .eq_ignore_ascii_case("GACNST")
                 && e.position.rx == 20
                 && e.position.ry == 20
                 && e.category == crate::map::entities::EntityCategory::Structure
@@ -189,10 +191,9 @@ fn refinery_placement_spawns_one_starter_harvester() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
     let americans = sim.interner.intern("Americans");
     let garefn = sim.interner.intern("GAREFN");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([garefn]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([garefn]));
 
     assert!(place_ready_building(
         &mut sim,
@@ -209,8 +210,13 @@ fn refinery_placement_spawns_one_starter_harvester() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans")
-                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("HARV")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim
+                    .interner
+                    .resolve(e.type_ref)
+                    .eq_ignore_ascii_case("HARV")
                 && e.category == crate::map::entities::EntityCategory::Unit
         })
         .map(|e| (e.position.rx, e.position.ry))
@@ -252,10 +258,9 @@ fn modded_refinery_placement_uses_free_unit_from_rules() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
     let americans = sim.interner.intern("Americans");
     let modproc = sim.interner.intern("MODPROC");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([modproc]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([modproc]));
 
     assert!(place_ready_building(
         &mut sim,
@@ -272,8 +277,13 @@ fn modded_refinery_placement_uses_free_unit_from_rules() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans")
-                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("MODHARV")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim
+                    .interner
+                    .resolve(e.type_ref)
+                    .eq_ignore_ascii_case("MODHARV")
                 && e.category == crate::map::entities::EntityCategory::Unit
         })
         .count();
@@ -308,10 +318,9 @@ fn refinery_without_free_unit_spawns_nothing() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
     let americans = sim.interner.intern("Americans");
     let modproc = sim.interner.intern("MODPROC");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([modproc]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([modproc]));
 
     assert!(place_ready_building(
         &mut sim,
@@ -328,8 +337,13 @@ fn refinery_without_free_unit_spawns_nothing() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans")
-                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("MODHARV")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim
+                    .interner
+                    .resolve(e.type_ref)
+                    .eq_ignore_ascii_case("MODHARV")
                 && e.category == crate::map::entities::EntityCategory::Unit
         })
         .count();
@@ -348,10 +362,9 @@ fn place_ready_building_rejects_blocked_or_overlapping_cells() {
 
     let americans = sim.interner.intern("Americans");
     let gacnst = sim.interner.intern("GACNST");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gacnst, gacnst]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gacnst, gacnst]));
 
     assert!(!place_ready_building(
         &mut sim,
@@ -390,10 +403,9 @@ fn place_ready_building_requires_base_normal_provider_within_adjacent_range() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gapowr]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gapowr]));
 
     assert!(place_ready_building(
         &mut sim,
@@ -410,10 +422,10 @@ fn place_ready_building_requires_base_normal_provider_within_adjacent_range() {
     spawn_structure(&mut far_sim, 1, "Americans", "GACNST", 10, 10);
     let far_americans = far_sim.interner.intern("Americans");
     let far_gapowr = far_sim.interner.intern("GAPOWR");
-    far_sim.production.ready_by_owner.insert(
-        far_americans,
-        VecDeque::from([far_gapowr]),
-    );
+    far_sim
+        .production
+        .ready_by_owner
+        .insert(far_americans, VecDeque::from([far_gapowr]));
     // GACNST has Adjacent=6 (default), foundation 2x2 at (10,10).
     // Expanded zone: max_x = 10+2-1+7 = 18, so (20,10) is out of range.
     assert!(!place_ready_building(
@@ -438,10 +450,9 @@ fn base_normal_false_structures_do_not_extend_build_area() {
     spawn_structure(&mut sim, 1, "Americans", "GAGAP", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gapowr]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gapowr]));
 
     assert!(!place_ready_building(
         &mut sim,
@@ -464,10 +475,9 @@ fn placement_preview_reports_out_of_build_area() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gapowr]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gapowr]));
 
     let preview = placement_preview_for_owner(
         &sim,
@@ -494,10 +504,9 @@ fn placement_preview_reports_blocked_terrain() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gapowr]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gapowr]));
 
     let preview = placement_preview_for_owner(
         &sim,
@@ -524,10 +533,9 @@ fn place_ready_building_rejects_bridge_deck_cells() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gapowr]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gapowr]));
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |cell| {
         if cell.rx == 12 && cell.ry == 10 {
             cell.build_blocked = true;
@@ -573,10 +581,9 @@ fn place_ready_building_rejects_canonical_ramp_cells() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gapowr]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gapowr]));
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |cell| {
         if cell.rx == 12 && cell.ry == 10 {
             cell.has_ramp = true;
@@ -629,10 +636,9 @@ fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gapowr = sim.interner.intern("GAPOWR");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gapowr]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gapowr]));
     let resolved = resolved_clear_grid_with_override(64, 64, |cell| {
         if cell.rx == 12 && cell.ry == 10 {
             cell.ground_walk_blocked = true;
@@ -678,10 +684,9 @@ fn water_bound_building_rejects_beach_like_water_cells() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gayard = sim.interner.intern("GAYARD");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gayard]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gayard]));
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |cell| {
         if cell.rx == 20 && cell.ry == 20 {
             cell.is_water = true;
@@ -728,10 +733,9 @@ fn water_bound_building_accepts_true_ship_water_cells() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gayard = sim.interner.intern("GAYARD");
-    sim.production.ready_by_owner.insert(
-        americans,
-        VecDeque::from([gayard]),
-    );
+    sim.production
+        .ready_by_owner
+        .insert(americans, VecDeque::from([gayard]));
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |cell| {
         if cell.rx == 20 && cell.ry == 20 {
             cell.is_water = true;
@@ -898,8 +902,8 @@ fn cancel_last_for_owner_cancels_latest_item_across_categories() {
                     type_id: e1,
                     queue_category: ProductionCategory::Infantry,
                     state: BuildQueueState::Building,
-                    total_base_ms: 100,
-                    remaining_base_ms: 100,
+                    total_base_frames: 100,
+                    remaining_base_frames: 100,
                     progress_carry: 0,
                     enqueue_order: 1,
                 }]),
@@ -911,8 +915,8 @@ fn cancel_last_for_owner_cancels_latest_item_across_categories() {
                     type_id: mtnk,
                     queue_category: ProductionCategory::Vehicle,
                     state: BuildQueueState::Building,
-                    total_base_ms: 100,
-                    remaining_base_ms: 100,
+                    total_base_frames: 100,
+                    remaining_base_frames: 100,
                     progress_carry: 0,
                     enqueue_order: 2,
                 }]),
@@ -955,7 +959,10 @@ fn sell_building_refunds_half_current_value_and_ejects_allied_infantry() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans") && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Americans")
+                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E1")
         })
         .map(|e| ("E1".to_string(), e.position.rx, e.position.ry))
         .collect();
@@ -999,7 +1006,10 @@ fn sell_building_uses_owner_appropriate_survivor_type_and_caps_count() {
         .entities
         .values()
         .filter(|e| {
-            sim.interner.resolve(e.owner).eq_ignore_ascii_case("Russians") && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E2")
+            sim.interner
+                .resolve(e.owner)
+                .eq_ignore_ascii_case("Russians")
+                && sim.interner.resolve(e.type_ref).eq_ignore_ascii_case("E2")
         })
         .count();
     // RA2 formula: refund = 500 * 50% * 100% = 250, survivors = 250 / 250 = 1.
