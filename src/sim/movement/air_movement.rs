@@ -1,17 +1,23 @@
 //! Air movement system — moves Fly and Jumpjet entities each tick.
 //!
 //! Air units differ from ground movers in several key ways:
-//! - They fly in straight lines (no A* pathfinding through terrain).
+//! - Fly units use **facing-based** movement: they fly in the direction they
+//!   face, gradually turning toward the goal via ROT. This produces curved
+//!   approach paths matching the original FlyLocomotionClass.
 //! - They have altitude state machines (ascending, cruising, descending).
 //! - They don't block ground cells (air layer is separate from ground).
 //! - Jumpjets hover at a fixed altitude with optional wobble.
 //!
 //! ## How it works
 //! 1. When an air unit receives a Move command, `issue_air_move_command()`
-//!    creates a simple two-cell path (start → goal) and attaches MovementTarget.
+//!    stores the final_goal and attaches a MovementTarget.
 //! 2. Each tick, `tick_air_movement()` processes air-layer entities:
 //!    - Manages altitude transitions (ascend/descend).
-//!    - Advances horizontal position toward the goal (straight line, no occupancy).
+//!    - Turns facing toward the goal by ROT per tick.
+//!    - Computes approach speed zones based on distance to goal.
+//!    - Moves in the entity's facing direction (not directly toward the goal).
+//!    - Ramps `fly_current_speed` toward `speed_fraction` (target) by 0.1/tick.
+//!    - Detects arrival when close AND speed is near zero.
 //!    - Updates screen coordinates from iso position + altitude offset.
 //!
 //! ## Dependency rules
@@ -29,15 +35,85 @@ use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, sim_to_f32}
 use crate::util::lepton::CELL_CENTER_LEPTON as CELL_CENTER;
 
 /// Visual height offset per lepton of altitude.
-/// Calibrated so that cruise altitude (600 leptons) produces ~36px vertical
-/// offset (about 2.4 cells worth of visual height at HEIGHT_STEP=15).
-/// KEPT as f32 — render-only visual scale.
+/// Calibrated so that cruise altitude (1500 leptons) produces ~90px vertical
+/// offset. KEPT as f32 — render-only visual scale.
 const ALTITUDE_VISUAL_SCALE: f32 = 0.06;
 
-/// Issue a move command for an air unit: straight-line path, no A*.
+/// Per-tick speed ramp step for Fly aircraft (0.1 per tick).
+/// Original: _DAT_007e3860 = 0.1 (verified from binary).
+/// Full acceleration 0->1 takes 10 ticks.
+const FLY_SPEED_RAMP_STEP: SimFixed = SimFixed::lit("0.1");
+
+/// Fine approach deceleration threshold in leptons (~1/3 cell).
+/// Below this distance, speed is halved each tick for smooth landing.
+const FINE_APPROACH_THRESHOLD: i32 = 86;
+
+/// Speed halving factor for fine approach deceleration.
+const RAPID_DECEL_FACTOR: SimFixed = SimFixed::lit("0.5");
+
+/// Minimum creep speed to prevent zero-speed deadlock during final approach.
+const MIN_CREEP_SPEED: SimFixed = SimFixed::lit("0.05");
+
+/// Ramp fly_current_speed toward speed_fraction (target) by +/-FLY_SPEED_RAMP_STEP.
+fn ramp_fly_speed(loco: &mut LocomotorState) {
+    let target = loco.speed_fraction;
+    let current = loco.fly_current_speed;
+    if current < target {
+        loco.fly_current_speed = (current + FLY_SPEED_RAMP_STEP).min(target);
+    } else if current > target {
+        loco.fly_current_speed = (current - FLY_SPEED_RAMP_STEP).max(target);
+    }
+}
+
+/// Distance-based approach speed zones matching original Horizontal_Step.
+/// Returns the target speed fraction for the given distance in leptons.
+///
+/// | Distance          | TargetSpeed |
+/// |-------------------|-------------|
+/// | >= 768 (3 cells)  | 1.0         |
+/// | >= 512 (2 cells)  | 0.75        |
+/// | >= 128 (0.5 cell) | 0.5         |
+/// | < 128             | 0.0         |
+fn approach_target_speed(dist_leptons: i32) -> SimFixed {
+    if dist_leptons >= 768 {
+        SIM_ONE
+    } else if dist_leptons >= 512 {
+        SimFixed::lit("0.75")
+    } else if dist_leptons >= 128 {
+        SIM_HALF
+    } else {
+        SIM_ZERO
+    }
+}
+
+/// Turn facing toward desired by at most `rot` steps per tick.
+/// Returns the new facing. Handles wrapping around 0/255.
+fn turn_facing_toward(current: u8, desired: u8, rot: i32) -> u8 {
+    if rot <= 0 || current == desired {
+        return desired; // instant turn or already aligned
+    }
+    let diff = desired.wrapping_sub(current) as i8;
+    let abs_diff = (diff as i16).unsigned_abs() as i32;
+    if abs_diff <= rot {
+        return desired; // close enough, snap
+    }
+    // Turn by rot in the shorter direction.
+    if diff > 0 {
+        current.wrapping_add(rot as u8)
+    } else {
+        current.wrapping_sub(rot as u8)
+    }
+}
+
+/// Issue a move command for an air unit.
 ///
 /// Returns true if the command was accepted. Air units always accept moves
 /// (no terrain blocking check needed — they fly over everything).
+///
+/// For Fly units, no Bresenham path is generated — movement direction comes
+/// from the entity's facing, which is gradually turned toward the goal each
+/// tick via ROT. This produces curved approach paths matching the original
+/// FlyLocomotionClass.
 pub fn issue_air_move_command(
     entities: &mut EntityStore,
     entity_id: u64,
@@ -47,27 +123,16 @@ pub fn issue_air_move_command(
     let Some(entity) = entities.get(entity_id) else {
         return false;
     };
-    let start_rx: u16 = entity.position.rx;
-    let start_ry: u16 = entity.position.ry;
-
-    // Already at destination.
-    if (start_rx, start_ry) == target {
+    if (entity.position.rx, entity.position.ry) == target {
         return true;
     }
 
-    // Update facing toward destination.
-    let dx: i32 = target.0 as i32 - start_rx as i32;
-    let dy: i32 = target.1 as i32 - start_ry as i32;
-    let new_facing: u8 = facing_from_delta(dx, dy);
-
-    // Generate cell-by-cell waypoints along a straight line (Bresenham).
-    // Air units fly in straight lines, so every cell along the path is a waypoint.
-    let path: Vec<(u16, u16)> = bresenham_line(start_rx, start_ry, target.0, target.1);
-    let path_len = path.len();
+    // Minimal MovementTarget — only final_goal matters for Fly units.
+    // No Bresenham path needed; movement direction comes from facing.
     let movement = MovementTarget {
-        path,
-        path_layers: vec![MovementLayer::Air; path_len],
-        next_index: 1,
+        path: vec![target],
+        path_layers: vec![MovementLayer::Air],
+        next_index: 0,
         speed,
         final_goal: Some(target),
         ..Default::default()
@@ -76,7 +141,6 @@ pub fn issue_air_move_command(
     let Some(entity) = entities.get_mut(entity_id) else {
         return false;
     };
-    entity.facing = new_facing;
     entity.movement_target = Some(movement);
 
     // Trigger takeoff if on the ground.
@@ -85,7 +149,6 @@ pub fn issue_air_move_command(
             loco.air_phase = AirMovePhase::Ascending;
         }
     }
-
     true
 }
 
@@ -165,101 +228,132 @@ pub fn tick_air_movement(
             );
         }
 
-        // --- Horizontal movement (only when airborne or ascending) ---
+        // --- Horizontal movement (facing-based, only when airborne) ---
         let has_movement: bool = entity.movement_target.is_some();
 
         if has_movement {
-            // Only move horizontally when at or above half cruise altitude.
-            let can_move_horizontally: bool = entity
+            let can_move: bool = entity
                 .locomotor
                 .as_ref()
                 .is_some_and(|l| l.altitude >= l.target_altitude * SIM_HALF);
 
-            if can_move_horizontally {
-                if let Some(ref mut target) = entity.movement_target {
-                    use fixed::types::I48F16;
-                    let final_goal = target.final_goal.unwrap_or_else(|| {
-                        *target
-                            .path
-                            .last()
-                            .unwrap_or(&(entity.position.rx, entity.position.ry))
-                    });
+            if can_move {
+                let final_goal = entity
+                    .movement_target
+                    .as_ref()
+                    .and_then(|t| t.final_goal)
+                    .unwrap_or((entity.position.rx, entity.position.ry));
 
-                    // Lepton math uses I48F16 to avoid I16F16 overflow on large maps.
-                    // Cell coordinates * 256 can exceed SimFixed's 32767 max integer.
-                    let lep256 = I48F16::from_num(256);
-                    let lep128 = I48F16::from_num(128);
-                    let goal_lx: I48F16 = I48F16::from_num(final_goal.0) * lep256 + lep128;
-                    let goal_ly: I48F16 = I48F16::from_num(final_goal.1) * lep256 + lep128;
-                    let cur_lx: I48F16 = I48F16::from_num(entity.position.rx) * lep256
-                        + I48F16::from(entity.position.sub_x);
-                    let cur_ly: I48F16 = I48F16::from_num(entity.position.ry) * lep256
-                        + I48F16::from(entity.position.sub_y);
-
-                    let dlx: I48F16 = goal_lx - cur_lx;
-                    let dly: I48F16 = goal_ly - cur_ly;
-                    let dist_sq: I48F16 = dlx * dlx + dly * dly;
-                    // Newton's method sqrt in I48F16.
-                    let dist: I48F16 = if dist_sq <= I48F16::ZERO {
-                        I48F16::ZERO
-                    } else {
-                        let two = I48F16::from_num(2);
-                        let mut g = dist_sq / two;
-                        for _ in 0..20 {
-                            if g <= I48F16::ZERO {
-                                break;
-                            }
-                            g = (g + dist_sq / g) / two;
+                // Compute distance to goal in leptons.
+                use fixed::types::I48F16;
+                let lep256 = I48F16::from_num(256);
+                let lep128 = I48F16::from_num(128);
+                let goal_lx = I48F16::from_num(final_goal.0) * lep256 + lep128;
+                let goal_ly = I48F16::from_num(final_goal.1) * lep256 + lep128;
+                let cur_lx = I48F16::from_num(entity.position.rx) * lep256
+                    + I48F16::from(entity.position.sub_x);
+                let cur_ly = I48F16::from_num(entity.position.ry) * lep256
+                    + I48F16::from(entity.position.sub_y);
+                let dlx = goal_lx - cur_lx;
+                let dly = goal_ly - cur_ly;
+                let dist_sq = dlx * dlx + dly * dly;
+                let dist = if dist_sq <= I48F16::ZERO {
+                    I48F16::ZERO
+                } else {
+                    let two = I48F16::from_num(2);
+                    let mut g = dist_sq / two;
+                    for _ in 0..20 {
+                        if g <= I48F16::ZERO {
+                            break;
                         }
-                        g
-                    };
+                        g = (g + dist_sq / g) / two;
+                    }
+                    g
+                };
+                let dist_i32: i32 = dist.to_num::<i32>();
 
-                    // Apply mission-controlled speed fraction.
-                    let speed_frac: SimFixed = entity
-                        .locomotor
-                        .as_ref()
-                        .map_or(SIM_ONE, |l| l.speed_fraction);
-                    // speed is in leptons/sec; multiply by dt to get leptons this tick.
-                    let move_lep: I48F16 = I48F16::from(target.speed * speed_frac * dt);
-                    let snap_threshold = I48F16::from_num(4);
+                // 1. Compute desired facing toward goal.
+                let face_dx = final_goal.0 as i32 - entity.position.rx as i32;
+                let face_dy = final_goal.1 as i32 - entity.position.ry as i32;
+                let desired_facing = if face_dx != 0 || face_dy != 0 {
+                    facing_from_delta(face_dx, face_dy)
+                } else {
+                    entity.facing
+                };
 
-                    if dist <= move_lep || dist < snap_threshold {
-                        // Close enough — snap to destination.
-                        entity.position.rx = final_goal.0;
-                        entity.position.ry = final_goal.1;
-                        entity.position.sub_x = CELL_CENTER;
-                        entity.position.sub_y = CELL_CENTER;
-                        finished.push(entity_id);
-                        stats.arrivals = stats.arrivals.saturating_add(1);
-                    } else if dist > I48F16::ZERO {
-                        // Move toward goal by move_lep along the heading.
-                        let step_x: I48F16 = dlx * move_lep / dist;
-                        let step_y: I48F16 = dly * move_lep / dist;
-                        let new_lx: I48F16 = cur_lx + step_x;
-                        let new_ly: I48F16 = cur_ly + step_y;
+                // 2. Gradually turn toward desired facing (ROT per tick).
+                let rot = entity.locomotor.as_ref().map_or(0, |l| l.rot);
+                entity.facing = turn_facing_toward(entity.facing, desired_facing, rot);
 
-                        // Convert back to cell + sub-cell.
-                        let new_rx: i32 = (new_lx / lep256).to_num::<i32>();
-                        let new_ry: i32 = (new_ly / lep256).to_num::<i32>();
-                        entity.position.rx = (new_rx.max(0) as u16).min(511);
-                        entity.position.ry = (new_ry.max(0) as u16).min(511);
-                        let sub_x: I48F16 = new_lx - I48F16::from_num(entity.position.rx) * lep256;
-                        let sub_y: I48F16 = new_ly - I48F16::from_num(entity.position.ry) * lep256;
-                        entity.position.sub_x =
-                            SimFixed::from_num(sub_x.to_num::<i32>().max(0).min(255));
-                        entity.position.sub_y =
-                            SimFixed::from_num(sub_y.to_num::<i32>().max(0).min(255));
+                // 3. Set approach target speed based on distance.
+                let approach_speed = approach_target_speed(dist_i32);
+                if let Some(ref mut loco) = entity.locomotor {
+                    // Only lower speed_fraction for approach; missions can set it
+                    // higher (e.g., full speed during attack run).
+                    loco.speed_fraction = loco.speed_fraction.min(approach_speed);
+                }
 
-                        // Update facing toward goal.
-                        let face_dx: i32 = final_goal.0 as i32 - entity.position.rx as i32;
-                        let face_dy: i32 = final_goal.1 as i32 - entity.position.ry as i32;
-                        if face_dx != 0 || face_dy != 0 {
-                            entity.facing = facing_from_delta(face_dx, face_dy);
+                // 4. Fine approach deceleration.
+                if dist_i32 < FINE_APPROACH_THRESHOLD {
+                    if let Some(ref mut loco) = entity.locomotor {
+                        loco.fly_current_speed = loco.fly_current_speed * RAPID_DECEL_FACTOR;
+                        if loco.fly_current_speed < MIN_CREEP_SPEED && dist_i32 > 0 {
+                            loco.fly_current_speed = MIN_CREEP_SPEED;
                         }
                     }
                 }
 
-                // (air_progress no longer used — lepton interpolation replaces it)
+                // 5. Move in FACING direction (not toward goal).
+                let fly_speed = entity
+                    .locomotor
+                    .as_ref()
+                    .map_or(SIM_ZERO, |l| l.fly_current_speed);
+                if let Some(ref target) = entity.movement_target {
+                    let move_lep = target.speed * fly_speed * dt;
+                    if move_lep > SIM_ZERO {
+                        let (step_x, step_y) =
+                            crate::util::facing_table::facing_to_movement(
+                                entity.facing,
+                                move_lep,
+                            );
+                        let new_lx = cur_lx + I48F16::from(step_x);
+                        let new_ly = cur_ly + I48F16::from(step_y);
+                        let new_rx = (new_lx / lep256).to_num::<i32>();
+                        let new_ry = (new_ly / lep256).to_num::<i32>();
+                        entity.position.rx = (new_rx.max(0) as u16).min(511);
+                        entity.position.ry = (new_ry.max(0) as u16).min(511);
+                        let sub_x =
+                            new_lx - I48F16::from_num(entity.position.rx) * lep256;
+                        let sub_y =
+                            new_ly - I48F16::from_num(entity.position.ry) * lep256;
+                        entity.position.sub_x =
+                            SimFixed::from_num(sub_x.to_num::<i32>().max(0).min(255));
+                        entity.position.sub_y =
+                            SimFixed::from_num(sub_y.to_num::<i32>().max(0).min(255));
+                    }
+                }
+
+                // 6. Arrival detection: close enough AND speed near zero.
+                let arrived = dist_i32 < 128
+                    && entity
+                        .locomotor
+                        .as_ref()
+                        .is_some_and(|l| l.fly_current_speed < MIN_CREEP_SPEED);
+                if arrived {
+                    entity.position.rx = final_goal.0;
+                    entity.position.ry = final_goal.1;
+                    entity.position.sub_x = CELL_CENTER;
+                    entity.position.sub_y = CELL_CENTER;
+                    finished.push(entity_id);
+                    stats.arrivals = stats.arrivals.saturating_add(1);
+                }
+            }
+        }
+
+        // Speed ramping for Fly aircraft (after altitude and movement).
+        if !is_jumpjet {
+            if let Some(ref mut loco) = entity.locomotor {
+                ramp_fly_speed(loco);
             }
         }
 
@@ -442,38 +536,6 @@ fn tick_altitude(loco: &mut LocomotorState, dt: SimFixed) {
     }
 }
 
-/// Generate cell-by-cell waypoints along a straight line using Bresenham's algorithm.
-/// Includes both start and end points. Returns at least 2 elements for any non-zero move.
-fn bresenham_line(x0: u16, y0: u16, x1: u16, y1: u16) -> Vec<(u16, u16)> {
-    let mut points: Vec<(u16, u16)> = Vec::new();
-    let mut x = x0 as i32;
-    let mut y = y0 as i32;
-    let ex = x1 as i32;
-    let ey = y1 as i32;
-    let dx = (ex - x).abs();
-    let dy = -(ey - y).abs();
-    let sx: i32 = if x < ex { 1 } else { -1 };
-    let sy: i32 = if y < ey { 1 } else { -1 };
-    let mut err = dx + dy;
-
-    loop {
-        points.push((x as u16, y as u16));
-        if x == ex && y == ey {
-            break;
-        }
-        let e2 = 2 * err;
-        if e2 >= dy {
-            err += dy;
-            x += sx;
-        }
-        if e2 <= dx {
-            err += dx;
-            y += sy;
-        }
-    }
-    points
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -535,15 +597,13 @@ mod tests {
         let ok = issue_air_move_command(&mut entities, 1, (20, 15), SimFixed::from_num(10));
         assert!(ok);
 
-        // Should have a MovementTarget with cell-by-cell waypoints.
+        // Should have a MovementTarget with final_goal set.
         let e = entities.get(1).expect("has entity");
         let target = e.movement_target.as_ref().expect("has target");
-        assert!(
-            target.path.len() > 2,
-            "path should have intermediate waypoints"
-        );
-        assert_eq!(target.path[0], (10, 10));
-        assert_eq!(*target.path.last().unwrap(), (20, 15));
+        assert_eq!(target.final_goal, Some((20, 15)));
+        // Path contains only the destination (no Bresenham).
+        assert_eq!(target.path.len(), 1);
+        assert_eq!(target.path[0], (20, 15));
 
         // Should trigger ascending.
         let loco = e.locomotor.as_ref().expect("has loco");
@@ -572,8 +632,9 @@ mod tests {
             air_phase: AirMovePhase::Landed,
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,
+            fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,
-            target_altitude: SimFixed::from_num(600),
+            target_altitude: SimFixed::from_num(1500),
             climb_rate: SimFixed::from_num(300),
             jumpjet_speed: SIM_ZERO,
             jumpjet_wobbles: 0.0,
@@ -602,6 +663,7 @@ mod tests {
             air_phase: AirMovePhase::Landed,
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,
+            fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,
             target_altitude: SimFixed::from_num(500),
             climb_rate: sim_from_f32(75.0),
@@ -622,5 +684,66 @@ mod tests {
             infantry_wobble_phase: 0.0,
             subcell_dest: None,
         }
+    }
+
+    #[test]
+    fn test_fly_speed_ramp() {
+        let mut loco = make_fly_loco();
+        loco.speed_fraction = SIM_ONE; // target = 1.0
+        loco.fly_current_speed = SIM_ZERO; // start at 0
+        // After 5 ramps: should be ~0.5 (fixed-point 0.1 is approximate).
+        for _ in 0..5 {
+            ramp_fly_speed(&mut loco);
+        }
+        let half_diff = (loco.fly_current_speed - SIM_HALF).abs();
+        assert!(
+            half_diff < SimFixed::lit("0.001"),
+            "Expected ~0.5, got {:?}",
+            loco.fly_current_speed
+        );
+        // After 5 more: should reach exactly 1.0 (clamped by min(target)).
+        for _ in 0..5 {
+            ramp_fly_speed(&mut loco);
+        }
+        assert_eq!(loco.fly_current_speed, SIM_ONE);
+    }
+
+    #[test]
+    fn test_fly_speed_ramp_decel() {
+        let mut loco = make_fly_loco();
+        loco.speed_fraction = SIM_ZERO; // target = 0.0
+        loco.fly_current_speed = SIM_ONE; // start at 1.0
+        for _ in 0..10 {
+            ramp_fly_speed(&mut loco);
+        }
+        assert_eq!(loco.fly_current_speed, SIM_ZERO);
+    }
+
+    #[test]
+    fn test_turn_facing_toward() {
+        // Turn from 0 toward 10 with rot=3: should go 0 -> 3
+        assert_eq!(turn_facing_toward(0, 10, 3), 3);
+        // Turn from 0 toward 2 with rot=3: snap to 2
+        assert_eq!(turn_facing_toward(0, 2, 3), 2);
+        // Turn from 0 toward 250 (shorter path is clockwise-negative, wrapping):
+        // diff = 250u8.wrapping_sub(0) = 250, as i8 = -6.
+        // abs_diff = 6, > rot=3. diff < 0 so subtract: 0.wrapping_sub(3) = 253
+        assert_eq!(turn_facing_toward(0, 250, 3), 253);
+        // rot=0: instant snap
+        assert_eq!(turn_facing_toward(50, 200, 0), 200);
+        // Already aligned
+        assert_eq!(turn_facing_toward(128, 128, 5), 128);
+    }
+
+    #[test]
+    fn test_approach_speed_zones() {
+        assert_eq!(approach_target_speed(1000), SIM_ONE);
+        assert_eq!(approach_target_speed(768), SIM_ONE);
+        assert_eq!(approach_target_speed(600), SimFixed::lit("0.75"));
+        assert_eq!(approach_target_speed(512), SimFixed::lit("0.75"));
+        assert_eq!(approach_target_speed(300), SIM_HALF);
+        assert_eq!(approach_target_speed(128), SIM_HALF);
+        assert_eq!(approach_target_speed(100), SIM_ZERO);
+        assert_eq!(approach_target_speed(0), SIM_ZERO);
     }
 }

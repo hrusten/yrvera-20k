@@ -129,6 +129,9 @@ pub struct GeneralRules {
     /// Underground travel speed for Tunnel locomotor units (TunnelSpeed=).
     /// Default 6.0 cells/second matching RA2 default.
     pub tunnel_speed: SimFixed,
+    /// Default cruise altitude for Fly-locomotor aircraft (FlightLevel= in [General]).
+    /// Default 1500 leptons. Per-type override possible but not yet implemented.
+    pub flight_level: i32,
     /// Whether ore cells grow denser over time (TiberiumGrows= in [General]).
     /// Default true. Can be overridden per-map in [SpecialFlags].
     pub tiberium_grows: bool,
@@ -318,6 +321,7 @@ impl Default for GeneralRules {
             gap_radius: 10,
             reveal_by_height: true,
             tunnel_speed: sim_from_f32(6.0),
+            flight_level: 1500,
             tiberium_grows: true,
             tiberium_spreads: true,
             growth_rate_minutes: 5.0,
@@ -528,6 +532,7 @@ impl GeneralRules {
                 .get_f32("TunnelSpeed")
                 .map(sim_from_f32)
                 .unwrap_or(sim_from_f32(6.0)),
+            flight_level: general.get_i32("FlightLevel").unwrap_or(1500),
             tiberium_grows: general.get_bool("TiberiumGrows").unwrap_or(true),
             tiberium_spreads: general.get_bool("TiberiumSpreads").unwrap_or(true),
             growth_rate_minutes: general.get_f32("GrowthRate").unwrap_or(5.0),

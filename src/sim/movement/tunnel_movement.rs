@@ -298,6 +298,7 @@ mod tests {
             air_phase: crate::sim::movement::locomotor::AirMovePhase::Landed,
             speed_multiplier: SIM_ONE,
             speed_fraction: SIM_ONE,
+            fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,
             target_altitude: SIM_ZERO,
             climb_rate: SIM_ZERO,

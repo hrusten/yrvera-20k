@@ -418,7 +418,7 @@ mod tests {
     fn test_teleport_with_piggyback_restores_drive() {
         let mut entities = EntityStore::new();
         let obj = make_drive_obj();
-        let loco = LocomotorState::from_object_type(&obj);
+        let loco = LocomotorState::from_object_type(&obj, 1500);
         let mut e = GameEntity::test_default(1, "CMIN", "Americans", 5, 5);
         e.locomotor = Some(loco);
         entities.insert(e);
