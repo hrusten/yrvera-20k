@@ -8,8 +8,8 @@
 //! 3. Re-flood-fills the cleared cells to assign new zone IDs.
 //! 4. Rebuilds adjacency and super-zone labels for affected categories.
 //!
-//! Falls back to full rebuild if too many cells changed or zone IDs are
-//! getting exhausted.
+//! Falls back to full rebuild if too many cells changed, resolved-terrain zoning
+//! is active, or zone IDs are getting exhausted.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/zone_map, sim/zone_build, sim/zone_hierarchy.
@@ -17,13 +17,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::PathGrid;
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_build::{
     compute_zone_info, extract_adjacency, flood_fill, flood_fill_bridge, is_passable,
 };
 use super::zone_hierarchy::SuperZoneMap;
 use super::zone_map::{ZONE_INVALID, ZoneCategory, ZoneGrid, ZoneId};
-use super::PathGrid;
+use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::SpeedType;
 use crate::sim::movement::locomotor::MovementLayer;
 
@@ -45,9 +46,16 @@ pub(crate) fn try_incremental_update(
     changed_cells: &[(u16, u16)],
     path_grid: &PathGrid,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
+    resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> bool {
     if changed_cells.is_empty() {
         return true;
+    }
+    if resolved_terrain.is_some() {
+        // TODO(RE): terrain-aware zoning now rebuilds nodeIndex + zoneIdByNodeIndex tables on
+        // full rebuilds. We have not closed the exact localized invalidation/update contract for
+        // that model yet, so dynamic changes conservatively fall back to a full rebuild.
+        return false;
     }
     if changed_cells.len() > INCREMENTAL_THRESHOLD {
         return false;

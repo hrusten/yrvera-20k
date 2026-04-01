@@ -5,6 +5,9 @@
 //! transitively reachable through adjacency edges. This turns the O(V+E) BFS
 //! in `zone_graph_connected()` into an O(1) lookup.
 //!
+//! TODO(RE): This is only a cheap reachability cache. YR's hierarchical pathfinding
+//! uses additional subzone passes and scratch tables that are not represented here yet.
+//!
 //! ## Dependency rules
 //! - Part of sim/ — depends only on sim/zone_map types.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.

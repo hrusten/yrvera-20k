@@ -1,13 +1,17 @@
 //! Zone-aware pathfinding — uses zone connectivity for fast unreachability
 //! detection and hierarchical corridor-based search space reduction.
 //!
-//! Two-tier approach matching the original engine:
+//! Current approximation:
 //! 1. Look up zone IDs for start and goal.
 //! 2. If they are in disconnected zones, return `None` immediately (no A*).
 //! 3. Run Dijkstra on the zone adjacency graph to find a coarse corridor.
 //! 4. Run cell-level A* restricted to the corridor zones.
-//! 5. On failure, retry with zone exclusions (up to 3 retries).
+//! 5. On failure, retry with zone exclusions (up to 5 retries).
 //! 6. Final fallback: run A* without corridor restriction.
+//!
+//! TODO(RE): RA2/YR has distinct regular vs hierarchical entrypoints and a separate
+//! allowHS gate. The recovered entrypoint behavior is precise enough to prove those
+//! modes exist, but not yet enough to replace this corridor-Dijkstra approximation.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/zone_map, sim/pathfinding, sim/locomotor.
@@ -27,14 +31,35 @@ use crate::rules::locomotor_type::MovementZone;
 use crate::sim::movement::locomotor::MovementLayer;
 
 /// Maximum corridor Dijkstra retries with zone exclusions before falling back
-/// to unrestricted A*. Original engine uses 5; we use 3 for simplicity.
-const MAX_CORRIDOR_RETRIES: u8 = 3;
+/// to unrestricted A*. The recovered path entry contract uses a default retry cap of 5.
+const MAX_CORRIDOR_RETRIES: u8 = 5;
+
+fn can_use_reduced_zone_precheck(movement_zone: Option<MovementZone>) -> bool {
+    match movement_zone {
+        None => true,
+        Some(
+            MovementZone::Normal
+            | MovementZone::Amphibious
+            | MovementZone::Infantry
+            | MovementZone::Fly,
+        ) => true,
+        // TODO(RE): naval water/beach surface legality in the current terrain-aware zone
+        // builder is still coarser than the runtime water-surface predicate, so do not
+        // hard-gate those movers on reduced-zone reachability yet.
+        Some(_) => false,
+    }
+}
 
 /// Zone-aware path search for flat (ground-only) paths.
 ///
-/// Uses hierarchical zone Dijkstra to compute a corridor, then runs A*
+/// Uses zone reachability plus a corridor-Dijkstra approximation, then runs A*
 /// restricted to that corridor. Falls back to unrestricted A* if corridor
 /// search fails.
+///
+/// TODO(RE): terrain-aware nodeIndex connectivity can still be a little looser than
+/// final movement legality because the recovered node flood-fill is 8-neighbor while
+/// the actual step predicate also applies tighter per-move checks. Treat zone gating
+/// here as a best-effort reject, not closed parity.
 pub fn find_path_zoned(
     grid: &PathGrid,
     start: (u16, u16),
@@ -46,6 +71,18 @@ pub fn find_path_zoned(
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> Option<Vec<(u16, u16)>> {
+    if !can_use_reduced_zone_precheck(movement_zone) {
+        return find_path_with_costs(
+            grid,
+            start,
+            goal,
+            costs,
+            entity_blocks,
+            movement_zone,
+            resolved_terrain,
+        );
+    }
+
     let Some(zg) = zone_grid else {
         return find_path_with_costs(
             grid,
@@ -162,9 +199,12 @@ pub fn find_path_zoned(
 /// Zone-aware path search for layered (bridge-capable) paths.
 ///
 /// Checks zone connectivity before invoking the layered A* pathfinder.
-/// Corridor restriction is not applied to layered paths (bridge transitions
-/// make zone corridor semantics complex; the layered A* already benefits
-/// from the increased search budget).
+/// Corridor restriction is not applied to layered paths because the current
+/// bridge-zone model is still conservative.
+///
+/// TODO(RE): The stock game's bridge-layer zone query uses onBridge state plus
+/// ZoneConnection remap records near the cell, not the standalone bridge grid
+/// that this pathfinder currently uses for fast rejects.
 pub fn find_layered_path_zoned(
     grid: &PathGrid,
     ground_blocks: Option<&BTreeSet<(u16, u16)>>,
@@ -175,7 +215,20 @@ pub fn find_layered_path_zoned(
     zone_grid: Option<&ZoneGrid>,
     zone_cat: ZoneCategory,
     terrain_costs: Option<&TerrainCostGrid>,
+    movement_zone: Option<MovementZone>,
 ) -> Option<Vec<LayeredPathStep>> {
+    if !can_use_reduced_zone_precheck(movement_zone) {
+        return find_layered_path(
+            grid,
+            ground_blocks,
+            bridge_blocks,
+            start,
+            start_layer,
+            goal,
+            terrain_costs,
+        );
+    }
+
     // Zone pre-check for layered paths.
     if let Some(zg) = zone_grid {
         let ground_reachable =

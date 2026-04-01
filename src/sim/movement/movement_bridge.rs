@@ -8,13 +8,11 @@
 //! Path layers are NOT used for bridge state decisions; the unit's Z relative to the
 //! cell's ground height determines everything at runtime.
 //!
-//! TODO: Once the underlying bridge Z issues are fixed, this module should switch
-//! from height heuristics to using the pathfinder's `next_layer` (path_layers) as the
-//! primary bridge/ground decision. The pathfinder already produces correct per-cell
-//! Bridge/Ground layer assignments — the `_next_layer` parameter is passed in at every
-//! call site but currently ignored. Using it would fix ramp-entry edge cases where
-//! the height heuristic fails (unit at ground Z approaching a bridge deck cell with
-//! matching ground_level).
+//! TODO(RE): The stock game keeps explicit bridge-layer state on the unit
+//! (`FootClass+0x79`) and feeds that into bridge-aware zone lookups. This module still
+//! infers bridge state from reactive height heuristics and ignores the pathfinder's
+//! `_next_layer` hints. Keep this conservative until the runtime bridge-layer update
+//! rules are fully wired in.
 
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::components::{BridgeOccupancy, Position};
@@ -41,7 +39,7 @@ pub(super) const BRIDGE_Z_OFFSET: SimFixed = SimFixed::lit("360");
 ///
 /// Compares the unit's current Z to the destination cell's ground height to decide
 /// ground vs bridge level. The `_next_layer` parameter from path_layers is available
-/// but currently unused — see module-level TODO.
+/// but currently unused — see module-level TODO(RE).
 pub(super) fn resolve_cell_transition_bridge_state(
     position: &mut Position,
     path_grid: Option<&PathGrid>,
@@ -108,18 +106,23 @@ pub(super) fn apply_pending_bridge_render_state(
 /// deck level. Only fires when bridge_occupancy is not already set and the
 /// unit's Z indicates it's at bridge level relative to the next cell.
 ///
-/// The `_next_step_layer` from path_layers is available but currently unused —
-/// see module-level TODO.
+/// The planned next-step layer is only used as a conservative gate here: we
+/// never pre-claim bridge occupancy unless the path already says the next step
+/// is on the bridge layer. Full bridge-state parity is still pending the
+/// runtime layer-state RE noted in the module-level TODO(RE).
 pub(super) fn apply_bridge_lookahead_if_needed(
     position: &mut Position,
     bridge_occupancy: &mut Option<BridgeOccupancy>,
     on_bridge: &mut bool,
     mover_zone: MovementZone,
     next_step: Option<(u16, u16)>,
-    _next_step_layer: MovementLayer,
+    next_step_layer: MovementLayer,
     path_grid: Option<&PathGrid>,
 ) {
-    if mover_zone.is_water_mover() || bridge_occupancy.is_some() {
+    if mover_zone.is_water_mover()
+        || bridge_occupancy.is_some()
+        || next_step_layer != MovementLayer::Bridge
+    {
         return;
     }
 

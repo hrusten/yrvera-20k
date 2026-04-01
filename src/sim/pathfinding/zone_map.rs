@@ -16,10 +16,10 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use super::PathGrid;
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_build;
 use super::zone_hierarchy::SuperZoneMap;
-use super::PathGrid;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::sim::movement::locomotor::MovementLayer;
@@ -32,6 +32,10 @@ pub const ZONE_INVALID: ZoneId = 0;
 
 /// Canonical passability class — groups MovementZone variants that share the
 /// same passability rules into a smaller set for zone computation.
+///
+/// TODO(RE): The recovered engine layout is per-MovementZone, not per reduced
+/// ZoneCategory. This canonicalization is a memory/runtime shortcut until the
+/// nodeIndex -> zoneIdByMovementZone tables and YR subzone tracking are wired in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ZoneCategory {
     /// Ground-only units (Normal, Crusher, Destroyer, CrusherAll, Subterranean).
@@ -98,7 +102,7 @@ impl ZoneCategory {
             ZoneCategory::Land => MovementZone::Normal,
             ZoneCategory::Water => MovementZone::Water,
             ZoneCategory::WaterBeach => MovementZone::WaterBeach,
-            ZoneCategory::Amphibious => MovementZone::AmphibiousCrusher,
+            ZoneCategory::Amphibious => MovementZone::Amphibious,
             ZoneCategory::Infantry => MovementZone::Infantry,
             ZoneCategory::Fly => MovementZone::Fly,
         }
@@ -128,8 +132,15 @@ pub struct ZoneInfo {
 #[derive(Debug, Clone)]
 pub struct ZoneMap {
     /// Zone ID per cell, indexed by `y * width + x`. ZONE_INVALID = impassable.
+    ///
+    /// TODO(RE): RA2/YR does not store zone IDs directly per cell. Each cell carries
+    /// a nodeIndex, and each MovementZone has its own zoneIdByNodeIndex table.
     zone_ids: Vec<ZoneId>,
     /// Optional bridge-layer zone IDs (same index space, continuation of zone_count).
+    ///
+    /// TODO(RE): Bridge-layer zone queries in the original engine go through the
+    /// onBridge flag plus ZoneConnection remap records near the cell, not a standalone
+    /// bridge zone grid.
     bridge_zone_ids: Option<Vec<ZoneId>>,
     pub width: u16,
     pub height: u16,
@@ -353,6 +364,9 @@ impl ZoneGrid {
         to_layer: MovementLayer,
     ) -> bool {
         if cat == ZoneCategory::Fly {
+            // TODO(RE): Air/jumpjet navigation is not just "one global zone". The RE queue
+            // still needs to close which movers bypass grid A*, which still do local tests,
+            // and how crowd/yield/replan interacts with those movers.
             return true; // Fly units can reach anywhere
         }
         let Some(zone_map) = self.maps.get(&cat) else {

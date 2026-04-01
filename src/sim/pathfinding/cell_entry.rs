@@ -9,14 +9,18 @@
 //! - Phase 1 (`check_terrain`): terrain + occupancy presence, no EntityStore needed
 //! - Phase 2 (`classify_occupied_cell`): blocker friendship/crush, needs &EntityStore
 //!
+//! TODO(RE): The stock search-time legality/cost predicate is richer than this runtime
+//! movement-side classification. Bridge legality, more terrain/object cases, and the
+//! exact cost classes still need to be pulled in from the RE corpus.
+//!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/bump_crush, sim/entity_store, sim/locomotor,
 //!   sim/pathfinding, map/entities, map/houses, rules/locomotor_type.
 
 use std::collections::BTreeSet;
 
-use super::terrain_cost::TerrainCostGrid;
 use super::PathGrid;
+use super::terrain_cost::TerrainCostGrid;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::{self, HouseAllianceMap};
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
@@ -42,7 +46,8 @@ pub enum CellEntryResult {
     /// Code 2: Blocked by a moving friendly unit. Wait, then repath.
     TemporaryBlock { blocker_id: u64 },
     /// Code 3: Bridge ramp transition. Adjust Z, enter with elevation change.
-    /// Initial implementation: treated as Clear (existing bridge code handles Z).
+    /// Current implementation still treats this as Clear because bridge-layer state
+    /// handling is centralized in movement_bridge.rs.
     BridgeRamp,
     /// Code 4: Friendly stationary unit occupying. Try bump/scatter, or wait.
     OccupiedFriendly { blocker_id: u64 },
@@ -146,10 +151,13 @@ pub fn check_terrain(
 /// This is Phase 2 — runs outside the mutable entity borrow so it can read
 /// blocker properties from EntityStore.
 ///
-/// Check order (matching original engine priority):
+/// Check order (current approximation of original engine priority):
 /// 1. Crush: if all occupants are crushable → Crushable
 /// 2. Blocker friendship: enemy → OccupiedEnemy, friendly → moving/stationary
 /// 3. JumpJet override: codes < 7 treated as Clear
+///
+/// TODO(RE): The recovered candidate predicate also folds in bridge legality and
+/// additional terrain/object state before these occupancy outcomes are chosen.
 pub fn classify_occupied_cell(
     target: (u16, u16),
     mover_id: u64,

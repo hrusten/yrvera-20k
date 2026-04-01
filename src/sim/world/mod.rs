@@ -48,10 +48,10 @@ use crate::sim::movement::tunnel_movement;
 use crate::sim::movement::turret;
 use crate::sim::ore_growth;
 use crate::sim::passenger;
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::power_system::{self, PowerState};
 use crate::sim::production::{self, ProductionState};
 use crate::sim::radar::{RadarEventQueue, RadarEventType};
@@ -520,6 +520,7 @@ impl Simulation {
                     &changed,
                     path_grid,
                     &self.terrain_costs,
+                    self.resolved_terrain.as_ref(),
                 ) {
                     log::trace!("zone: incremental update ({} cells changed)", changed.len(),);
                     self.prev_path_grid = Some(path_grid.clone());

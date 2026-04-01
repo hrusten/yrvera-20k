@@ -214,39 +214,40 @@ impl SpeedType {
 /// Parsed from rules.ini `MovementZone=` key. Controls what kind of route
 /// the pathfinder plans — distinct from SpeedType which controls terrain legality.
 ///
-/// The numeric value IS the passability matrix row index -- used directly by the
-/// zone flood-fill and pathfinder.
+/// The numeric value IS the passability-matrix row index used by the original
+/// pathfinding code. Recent RE shows these rows are keyed by derived
+/// `MovementClass8`, not directly by our terrain `LandType` buckets.
 ///
 /// Example: `MovementZone=Subterranean` enables dig-in/dig-out cell search
 /// logic that plain Drive does not have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum MovementZone {
-    /// Standard ground pathfinding. Passability row 0: ground only.
+    /// Row 0: only movement class 0 is passable.
     Normal = 0,
-    /// Can crush infantry and fences. Row 1: ground + road.
+    /// Row 1: classes 0 and 1 are passable.
     Crusher = 1,
-    /// Can crush walls (stronger than Crusher). Row 2: ground + road + rough.
+    /// Row 2: classes 0, 1, and 2 are passable.
     Destroyer = 2,
-    /// Amphibious + can crush walls. Row 3: all land + water.
+    /// Row 3: classes 0, 1, 2, 3, 4, and 5 are passable.
     AmphibiousDestroyer = 3,
-    /// Amphibious + can crush infantry/fences. Row 4: ground + road + beach + water.
+    /// Row 4: classes 0, 1, 3, and 4 are passable.
     AmphibiousCrusher = 4,
-    /// Amphibious movement (land + water). Row 5: ground + beach + water.
+    /// Row 5: classes 0, 3, and 4 are passable.
     Amphibious = 5,
-    /// Tunnel dig-in/dig-out logic. Row 6: ground + road + rough + railroad.
+    /// Row 6: classes 0, 1, 2, and 6 are passable.
     Subterranean = 6,
-    /// Infantry-specific pathfinding (sub-cell, garrison entry). Row 7: ground + tiberium.
+    /// Row 7: classes 0 and 5 are passable.
     Infantry = 7,
-    /// Infantry that can crush walls. Row 8: ground + water.
+    /// Row 8: classes 0, 1, 2, and 5 are passable.
     InfantryDestroyer = 8,
-    /// Airborne pathfinding (ignores ground obstacles). Row 9: everything except rock.
+    /// Row 9: classes 0 through 6 are passable.
     Fly = 9,
-    /// Water-only pathfinding. Row 10: water only.
+    /// Row 10: only class 4 is passable.
     Water = 10,
-    /// Water + beach landing allowed. Row 11: water + beach.
+    /// Row 11: classes 3 and 4 are passable.
     WaterBeach = 11,
-    /// Can crush everything (strongest crusher variant). Row 12: ground + road + rough.
+    /// Row 12: classes 0, 1, and 2 are passable.
     CrusherAll = 12,
 }
 

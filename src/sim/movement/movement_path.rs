@@ -32,6 +32,9 @@ pub(super) fn merge_path_blocks(
 ) -> BTreeSet<(u16, u16)> {
     let mut blocks = entity_blocks.cloned().unwrap_or_default();
     if too_big_to_fit_under_bridge && movement_zone.is_some_and(|mz| !mz.is_water_mover()) {
+        // TODO(RE): The current under-bridge restriction is a hard path block. The RE notes
+        // still leave open whether RA2/YR treats TooBigToFitUnderBridge as a pure parking/
+        // eviction rule, a navigation restriction, or a mix depending on bridge state.
         if let Some(terrain) = resolved_terrain {
             for cell in terrain.iter().filter(|c| is_under_bridge_blocked_cell(c)) {
                 blocks.insert((cell.rx, cell.ry));
@@ -90,13 +93,7 @@ fn nearest_move_goal(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> Option<(u16, u16)> {
     if !movement_zone.is_some_and(|mz| mz.is_water_mover()) {
-        return grid.nearest_walkable_any_layer(
-            goal.0,
-            goal.1,
-            max_radius,
-            blocked_cells,
-            None,
-        );
+        return grid.nearest_walkable_any_layer(goal.0, goal.1, max_radius, blocked_cells, None);
     }
 
     let check = |x: u16, y: u16| {
@@ -188,6 +185,7 @@ pub(super) fn find_move_path(
             zone_grid,
             zone_cat,
             terrain_costs,
+            movement_zone,
         );
         if let Some(path) = layered_result {
             log::trace!(
@@ -203,12 +201,8 @@ pub(super) fn find_move_path(
                     return false;
                 }
                 match layer {
-                    MovementLayer::Ground => {
-                        !ground_blocks.is_some_and(|gb| gb.contains(&(x, y)))
-                    }
-                    MovementLayer::Bridge => {
-                        !bridge_blocks.is_some_and(|bb| bb.contains(&(x, y)))
-                    }
+                    MovementLayer::Ground => !ground_blocks.is_some_and(|gb| gb.contains(&(x, y))),
+                    MovementLayer::Bridge => !bridge_blocks.is_some_and(|bb| bb.contains(&(x, y))),
                     _ => true,
                 }
             };
@@ -216,8 +210,7 @@ pub(super) fn find_move_path(
                 path_smooth::smooth_layered_path(coords, layers, &layered_smooth_walkable);
             let (coords, layers) =
                 path_smooth::optimize_layered_path(coords, layers, &layered_smooth_walkable);
-            let (coords, layers) =
-                truncate_layered_path(coords, layers, MAX_PATH_SEGMENT_STEPS);
+            let (coords, layers) = truncate_layered_path(coords, layers, MAX_PATH_SEGMENT_STEPS);
             return Some((coords, layers));
         } else {
             log::info!(

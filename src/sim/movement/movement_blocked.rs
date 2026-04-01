@@ -89,7 +89,9 @@ pub(super) fn handle_blocked_tick(
         return deferred_events;
     }
 
-    if target.blocked_delay == 0 && !on_bridge {
+    // Bridge movers also need to replan once blockage delay expires. Keeping the
+    // old ground-only gate can leave units permanently stalled on bridge cells.
+    if target.blocked_delay == 0 {
         stats.repath_attempts = stats.repath_attempts.saturating_add(1);
         let layered_pathing_for_repath = locomotor
             .as_ref()

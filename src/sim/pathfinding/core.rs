@@ -4,6 +4,11 @@
 //! bridge_walkable, transition, height levels). Flat A* reads ground_walkable;
 //! layered A* reads both layers for bridge-aware routing.
 //!
+//! TODO(RE): The stock neighbor predicate is richer than the grid-level checks in this
+//! module. The RE corpus has closed the existence and numeric shape of the cost/legality
+//! classes, but not yet enough of the surrounding runtime state to replace these local
+//! passability/cost shortcuts end-to-end.
+//!
 //! ## Dependency rules
 //! - Part of sim/ — depends on map/ (MapCell, TilesetLookup for walkability).
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
@@ -103,6 +108,9 @@ pub fn is_cell_passable_for_mover(
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> bool {
+    // TODO(RE): This is still the local path-grid legality gate, not the stock
+    // search-time can-enter/cost predicate. Keep the distinction explicit so we
+    // can swap the real evaluator in once the remaining runtime inputs are known.
     if let Some(mz) = movement_zone {
         if mz.is_water_mover() {
             // Water movers bypass PathGrid — use passability matrix directly.
@@ -268,8 +276,7 @@ impl PathGrid {
     }
 
     pub fn bridge_deck_level(&self, x: u16, y: u16) -> Option<u8> {
-        self.cell(x, y)
-            .and_then(PathCell::bridge_deck_level_if_any)
+        self.cell(x, y).and_then(PathCell::bridge_deck_level_if_any)
     }
 
     pub fn can_enter_bridge_layer_from_ground(&self, x: u16, y: u16) -> bool {
@@ -484,7 +491,7 @@ impl PathGrid {
         }
     }
 
-    /// Compute cells whose ground walkability differs between two grids.
+    /// Compute cells whose path-relevant walkability differs between two grids.
     /// Returns `None` if grids have different dimensions (full rebuild needed).
     pub fn diff_cells(&self, other: &PathGrid) -> Option<Vec<(u16, u16)>> {
         if self.width != other.width || self.height != other.height {
@@ -493,7 +500,12 @@ impl PathGrid {
         let w = self.width as usize;
         let mut changed = Vec::new();
         for (idx, (a, b)) in self.cells.iter().zip(other.cells.iter()).enumerate() {
-            if a.ground_walkable != b.ground_walkable {
+            if a.ground_walkable != b.ground_walkable
+                || a.bridge_walkable != b.bridge_walkable
+                || a.transition != b.transition
+                || a.ground_level != b.ground_level
+                || a.bridge_deck_level != b.bridge_deck_level
+            {
                 changed.push(((idx % w) as u16, (idx / w) as u16));
             }
         }
