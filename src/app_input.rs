@@ -290,12 +290,20 @@ pub(crate) fn handle_hotkey_pressed(state: &mut AppState, code: winit::keyboard:
                 state.paused = false;
                 state.last_update_time = std::time::Instant::now();
                 state.sim_accumulator_ms = 0;
+                // Re-hide OS cursor so the software cursor takes over.
+                if state.software_cursor.is_some() {
+                    state.window.set_cursor_visible(false);
+                }
                 log::info!("Game resumed");
             } else if state.armed_building_placement.is_some() {
                 state.armed_building_placement = None;
                 state.building_placement_preview = None;
             } else {
                 state.paused = true;
+                // Show OS cursor for egui interaction.
+                if state.software_cursor.is_some() {
+                    state.window.set_cursor_visible(true);
+                }
                 log::info!("Game paused");
             }
         }
@@ -346,6 +354,13 @@ pub(crate) fn handle_hotkey_pressed(state: &mut AppState, code: winit::keyboard:
             state.show_save_load_panel = !state.show_save_load_panel;
             if state.show_save_load_panel {
                 state.save_list_cache.invalidate();
+                // Show OS cursor for egui interaction.
+                if state.software_cursor.is_some() {
+                    state.window.set_cursor_visible(true);
+                }
+            } else if state.software_cursor.is_some() && !state.paused {
+                // Re-hide OS cursor so the software cursor takes over.
+                state.window.set_cursor_visible(false);
             }
         }
         KeyCode::KeyH => {

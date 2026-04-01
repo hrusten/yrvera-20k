@@ -418,7 +418,9 @@ impl ArtRegistry {
         let resolved: ResolvedObjectArt<'_> = self.resolve_object_art(type_id, rules_image);
         let type_upper: String = type_id.to_uppercase();
 
-        for key in [resolved.image_id.as_str(), type_upper.as_str()] {
+        // Check type-specific section first — e.g. [BFRT] declares its own Cameo
+        // even though Image=SREF points to the Prism Tank's art section.
+        for key in [type_upper.as_str(), resolved.image_id.as_str()] {
             if let Some(entry) = self.get(key) {
                 if let Some(cameo) = normalize_id(entry.cameo.as_deref().unwrap_or_default()) {
                     return cameo;
@@ -439,7 +441,7 @@ impl ArtRegistry {
         let resolved: ResolvedObjectArt<'_> = self.resolve_object_art(type_id, rules_image);
         let type_upper: String = type_id.to_uppercase();
 
-        for key in [resolved.image_id.as_str(), type_upper.as_str()] {
+        for key in [type_upper.as_str(), resolved.image_id.as_str()] {
             if let Some(entry) = self.get(key) {
                 if let Some(ref pal) = entry.palette {
                     return Some(pal.clone());

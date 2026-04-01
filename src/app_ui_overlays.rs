@@ -770,6 +770,9 @@ fn active_cursor_sequence(state: &AppState) -> Option<&SoftwareCursorSequence> {
 }
 
 pub(crate) fn build_software_cursor_instances(state: &AppState) -> Vec<SpriteInstance> {
+    if !state.use_software_cursor() {
+        return Vec::new();
+    }
     let Some(sequence) = active_cursor_sequence(state) else {
         return Vec::new();
     };
