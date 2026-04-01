@@ -12,7 +12,7 @@
 //! ## Dependency rules
 //! - Part of render/ — reads FogState (no mutation), uses GpuContext.
 
-use crate::map::terrain::iso_to_screen;
+use crate::map::terrain::{HEIGHT_STEP, iso_to_screen, screen_to_iso};
 use crate::render::gpu::GpuContext;
 use crate::sim::vision::FogState;
 
@@ -26,6 +26,8 @@ const BLACK: u8 = 0x00;
 
 /// SHP transparent pixel marker — skip (don't overwrite buffer).
 const TRANSPARENT: u8 = 0xFE;
+const SHROUD_CELL_PAD: i32 = 8;
+const SHROUD_HEIGHT_PAD_LEVELS: f32 = 16.0;
 
 /// Shroud edge frame lookup table.
 ///
@@ -134,7 +136,63 @@ fn align_up(n: u32, align: u32) -> u32 {
     (n + align - 1) / align * align
 }
 
+fn clamp_cell_range(min_v: i32, max_v: i32, limit: u16) -> Option<(u16, u16)> {
+    if limit == 0 {
+        return None;
+    }
+    let upper = i32::from(limit) - 1;
+    let start = min_v.clamp(0, upper);
+    let end = max_v.clamp(0, upper);
+    if start > end {
+        return None;
+    }
+    Some((start as u16, end as u16))
+}
 impl ShroudBuffer {
+    fn visible_cell_bounds(
+        &self,
+        cam_x: f32,
+        cam_y: f32,
+        vp_w: i32,
+        vp_h: i32,
+    ) -> Option<((u16, u16), (u16, u16))> {
+        let pad_x = self.canvas_w as f32;
+        let pad_y = self.canvas_h as f32 + HEIGHT_STEP * SHROUD_HEIGHT_PAD_LEVELS;
+        let left = cam_x - pad_x;
+        let right = cam_x + vp_w as f32 + pad_x;
+        let top = cam_y - pad_y;
+        let bottom = cam_y + vp_h as f32 + pad_y;
+        let corners = [
+            screen_to_iso(left, top),
+            screen_to_iso(right, top),
+            screen_to_iso(left, bottom),
+            screen_to_iso(right, bottom),
+        ];
+
+        let mut min_rx = f32::INFINITY;
+        let mut max_rx = f32::NEG_INFINITY;
+        let mut min_ry = f32::INFINITY;
+        let mut max_ry = f32::NEG_INFINITY;
+        for (rx, ry) in corners {
+            min_rx = min_rx.min(rx);
+            max_rx = max_rx.max(rx);
+            min_ry = min_ry.min(ry);
+            max_ry = max_ry.max(ry);
+        }
+
+        let rx_range = clamp_cell_range(
+            min_rx.floor() as i32 - SHROUD_CELL_PAD,
+            max_rx.ceil() as i32 + SHROUD_CELL_PAD,
+            self.map_width,
+        )?;
+        let ry_range = clamp_cell_range(
+            min_ry.floor() as i32 - SHROUD_CELL_PAD,
+            max_ry.ceil() as i32 + SHROUD_CELL_PAD,
+            self.map_height,
+        )?;
+        Some((rx_range, ry_range))
+    }
+
     /// Create a new shroud buffer for the given screen and map dimensions.
     ///
     /// `frame_pixels` is the raw SHROUD.SHP brightness data per frame,
@@ -249,8 +307,14 @@ impl ShroudBuffer {
         let cam_xi = cam_x_r as i32;
         let cam_yi = cam_y_r as i32;
 
-        for ry in 0..self.map_height {
-            for rx in 0..self.map_width {
+        let Some(((rx_start, rx_end), (ry_start, ry_end))) =
+            self.visible_cell_bounds(cam_x_r, cam_y_r, vp_w, vp_h)
+        else {
+            return;
+        };
+
+        for ry in ry_start..=ry_end {
+            for rx in rx_start..=rx_end {
                 // Position shroud diamond at the cell's actual terrain height so
                 // the brightness buffer aligns with where the terrain renders.
                 // Fully shrouded cells aren't rendered as terrain at all (filtered

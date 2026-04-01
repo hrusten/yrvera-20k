@@ -470,6 +470,16 @@ pub struct TerrainInstances {
     pub cliff_redraw: Vec<SpriteInstance>,
 }
 
+fn visible_cell_slice(grid: &TerrainGrid, view_top: f32, view_bottom: f32) -> &[TerrainCell] {
+    let start = grid
+        .cells
+        .partition_point(|cell| cell.screen_y + TILE_HEIGHT < view_top);
+    let end = grid
+        .cells
+        .partition_point(|cell| cell.screen_y <= view_bottom);
+    &grid.cells[start..end]
+}
+
 /// Generate SpriteInstance data for all tiles visible in the current viewport.
 ///
 /// Single-layer rendering: each cell draws exactly one tile. LAT transition
@@ -498,7 +508,7 @@ pub fn build_visible_instances(
         cliff_redraw: Vec::new(),
     };
 
-    for cell in &grid.cells {
+    for cell in visible_cell_slice(grid, view_top, view_bottom) {
         // AABB visibility test against viewport.
         let right: f32 = cell.screen_x + TILE_WIDTH;
         let bottom: f32 = cell.screen_y + TILE_HEIGHT;

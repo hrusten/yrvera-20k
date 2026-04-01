@@ -17,14 +17,36 @@ use crate::render::unit_atlas::UnitAtlas;
 ///
 /// Each group represents one GPU buffer + texture pair (e.g., VXL units, one SHP page,
 /// wall overlays). The `cursor` advances through the buffer as sub-ranges are drawn.
-/// `depths` are extracted from CPU-side instance data to avoid lifetime entanglement
-/// between GPU resources and function parameters.
-struct DrawGroup<'a> {
-    texture: &'a BatchTexture,
-    buffer: &'a wgpu::Buffer,
-    depths: Vec<f32>,
+struct DrawGroup<'tex, 'inst> {
+    texture: &'tex BatchTexture,
+    buffer: &'tex wgpu::Buffer,
+    instances: &'inst [SpriteInstance],
     cursor: u32,
     total: u32,
+}
+
+impl<'tex, 'inst> DrawGroup<'tex, 'inst> {
+    fn new(
+        texture: &'tex BatchTexture,
+        buffer: &'tex wgpu::Buffer,
+        instances: &'inst [SpriteInstance],
+        total: u32,
+    ) -> Self {
+        Self {
+            texture,
+            buffer,
+            instances,
+            cursor: 0,
+            total,
+        }
+    }
+
+    fn depth_at(&self, index: u32) -> f32 {
+        self.instances
+            .get(index as usize)
+            .map(|instance| instance.depth)
+            .unwrap_or(f32::NEG_INFINITY)
+    }
 }
 
 /// Multi-way merge for bridge entities: interleaves VXL units and SHP sprites on bridges.
@@ -40,16 +62,10 @@ pub(super) fn draw_merged_bridge_occluded_pass<'a>(
     unit_atlas: Option<&'a UnitAtlas>,
     sprite_atlas: Option<&'a SpriteAtlas>,
 ) {
-    let mut groups: Vec<DrawGroup<'a>> = Vec::new();
+    let mut groups: Vec<DrawGroup<'a, '_>> = Vec::new();
     if let (Some(ua), Some((buf, count))) = (unit_atlas, pool.get("unit_bridge")) {
         if count > 0 {
-            groups.push(DrawGroup {
-                texture: &ua.texture,
-                buffer: buf,
-                depths: unit_instances.iter().map(|s| s.depth).collect(),
-                cursor: 0,
-                total: count,
-            });
+            groups.push(DrawGroup::new(&ua.texture, buf, unit_instances, count));
         }
     }
 
@@ -64,16 +80,8 @@ pub(super) fn draw_merged_bridge_occluded_pass<'a>(
             if let Some(key) = SHP_BRIDGE_KEYS.get(i) {
                 if let Some((buf, count)) = pool.get(key) {
                     if count > 0 {
-                        groups.push(DrawGroup {
-                            texture: &page.texture,
-                            buffer: buf,
-                            depths: shp_paged
-                                .get(i)
-                                .map(|v| v.iter().map(|s| s.depth).collect())
-                                .unwrap_or_default(),
-                            cursor: 0,
-                            total: count,
-                        });
+                        let instances = shp_paged.get(i).map_or(&[][..], Vec::as_slice);
+                        groups.push(DrawGroup::new(&page.texture, buf, instances, count));
                     }
                 }
             }
@@ -91,7 +99,7 @@ pub(super) fn draw_merged_bridge_occluded_pass<'a>(
             if group.cursor >= group.total {
                 continue;
             }
-            let depth = group.depths[group.cursor as usize];
+            let depth = group.depth_at(group.cursor);
             if depth > best_depth {
                 best_depth = depth;
                 best_idx = Some(i);
@@ -101,7 +109,7 @@ pub(super) fn draw_merged_bridge_occluded_pass<'a>(
         let start = groups[best_idx].cursor;
         let mut end = start + 1;
         while end < groups[best_idx].total {
-            let depth = groups[best_idx].depths[end as usize];
+            let depth = groups[best_idx].depth_at(end);
             if depth < best_depth {
                 break;
             }
@@ -142,19 +150,12 @@ pub(super) fn draw_merged_object_pass<'a>(
     // Sort is by depth DESCENDING (largest depth = furthest back = draw first).
     // Depth is based on iso_row (elevation-independent): GetYSort = X + Y
     // (which ignores Z elevation).
-    let mut groups: Vec<DrawGroup<'a>> = Vec::new();
+    let mut groups: Vec<DrawGroup<'a, '_>> = Vec::new();
 
     // VXL units draw group -- passthrough (no depth test).
     if let (Some(ua), Some((buf, count))) = (unit_atlas, pool.get("unit")) {
         if count > 0 {
-            let ds: Vec<f32> = unit_instances.iter().map(|s| s.depth).collect();
-            groups.push(DrawGroup {
-                texture: &ua.texture,
-                buffer: buf,
-                depths: ds,
-                cursor: 0,
-                total: count,
-            });
+            groups.push(DrawGroup::new(&ua.texture, buf, unit_instances, count));
         }
     }
 
@@ -165,17 +166,8 @@ pub(super) fn draw_merged_object_pass<'a>(
             if let Some(key) = SHP_KEYS.get(i) {
                 if let Some((buf, count)) = pool.get(key) {
                     if count > 0 {
-                        let ds: Vec<f32> = shp_paged
-                            .get(i)
-                            .map(|v| v.iter().map(|s| s.depth).collect())
-                            .unwrap_or_default();
-                        groups.push(DrawGroup {
-                            texture: &page.texture,
-                            buffer: buf,
-                            depths: ds,
-                            cursor: 0,
-                            total: count,
-                        });
+                        let instances = shp_paged.get(i).map_or(&[][..], Vec::as_slice);
+                        groups.push(DrawGroup::new(&page.texture, buf, instances, count));
                     }
                 }
             }
@@ -188,14 +180,7 @@ pub(super) fn draw_merged_object_pass<'a>(
     // in front of units at closer iso rows.
     if let (Some(oa), Some((buf, count))) = (overlay_atlas, pool.get("overlay_wall")) {
         if count > 0 {
-            let ds: Vec<f32> = wall_instances.iter().map(|s| s.depth).collect();
-            groups.push(DrawGroup {
-                texture: &oa.texture,
-                buffer: buf,
-                depths: ds,
-                cursor: 0,
-                total: count,
-            });
+            groups.push(DrawGroup::new(&oa.texture, buf, wall_instances, count));
         }
     }
 
@@ -216,7 +201,7 @@ pub(super) fn draw_merged_object_pass<'a>(
             if g.cursor >= g.total {
                 continue;
             }
-            let d = g.depths.get(g.cursor as usize).copied().unwrap_or(-1.0);
+            let d = g.depth_at(g.cursor);
             // Larger depth = further back = should draw first.
             // At equal depth, prefer SHP (gi > 0) over VXL (gi == 0).
             if d > best_d || (d == best_d && gi > 0) {
@@ -232,14 +217,14 @@ pub(super) fn draw_merged_object_pass<'a>(
         let run_start = g.cursor;
         let mut run_end = run_start + 1;
         while run_end < g.total {
-            let next_d = g.depths.get(run_end as usize).copied().unwrap_or(-1.0);
+            let next_d = g.depth_at(run_end);
             // Check if any other group has a larger depth (further back, should draw first).
             let mut other_has_larger = false;
             for (oi, og) in groups.iter().enumerate() {
                 if oi == gi || og.cursor >= og.total {
                     continue;
                 }
-                let other_d = og.depths.get(og.cursor as usize).copied().unwrap_or(-1.0);
+                let other_d = og.depth_at(og.cursor);
                 if other_d > next_d || (other_d == next_d && oi > gi) {
                     other_has_larger = true;
                     break;

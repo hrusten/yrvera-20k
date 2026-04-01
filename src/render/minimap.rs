@@ -6,8 +6,8 @@
 //!
 //! ## Implementation
 //! - Terrain image is generated once at map load from TerrainGrid data.
-//! - Unit dots are overlaid each frame by copying the base image and stamping dots.
-//! - The combined image is re-uploaded to the GPU each frame (200x200 = 160KB, negligible).
+//! - Unit dots are overlaid on demand by copying the base image and stamping dots.
+//! - The combined image is only re-uploaded when sim/fog state changes.
 //! - A separate 2x2 white pixel texture is used for the viewport rectangle lines.
 //!
 //! ## Screen-space rendering trick
@@ -26,6 +26,7 @@ use crate::map::terrain::TerrainGrid;
 use crate::render::batch::{BatchRenderer, BatchTexture, SpriteInstance};
 use crate::render::gpu::GpuContext;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::intern::InternedId;
 use crate::sim::vision::FogState;
 
 use super::minimap_helpers::{
@@ -45,7 +46,7 @@ pub struct MinimapRenderer {
     map_texture: BatchTexture,
     /// Raw GPU texture handle for `write_texture()` reuse (avoids per-frame alloc).
     map_texture_raw: wgpu::Texture,
-    /// Reusable RGBA scratch buffer for building the minimap each frame.
+    /// Reusable RGBA scratch buffer for rebuilding the minimap texture.
     rgba_scratch: Vec<u8>,
     /// Tiny 2x2 white pixel texture for drawing the viewport rectangle lines.
     white_texture: BatchTexture,
@@ -62,6 +63,12 @@ pub struct MinimapRenderer {
     map_offset_y: f32,
     map_pixel_w: f32,
     map_pixel_h: f32,
+    /// Last simulation tick used to refresh the texture.
+    last_sim_tick: u64,
+    /// Last fog generation used to refresh the texture.
+    last_fog_generation: u64,
+    /// Last local owner used for fog-aware refresh.
+    last_visibility_owner: Option<InternedId>,
 }
 
 impl MinimapRenderer {
@@ -189,6 +196,9 @@ impl MinimapRenderer {
             map_offset_y,
             map_pixel_w,
             map_pixel_h,
+            last_sim_tick: u64::MAX,
+            last_fog_generation: u64::MAX,
+            last_visibility_owner: None,
         }
     }
 
@@ -196,18 +206,32 @@ impl MinimapRenderer {
     ///
     /// Copies the base terrain image, stamps overlay pixels (ore, gems, walls,
     /// bridges, trees), then stamps a colored dot for each entity with
-    /// Position + Owner, and re-uploads to the GPU.
+    /// Position + Owner, and re-uploads to the GPU. If sim tick, owner, and
+    /// fog generation are unchanged, the existing texture is reused.
     pub fn update_unit_dots(
         &mut self,
         gpu: &GpuContext,
         _batch: &BatchRenderer,
         entities: &crate::sim::entity_store::EntityStore,
         house_colors: &HouseColorMap,
+        sim_tick: u64,
         visibility: Option<(crate::sim::intern::InternedId, &FogState)>,
         rules: Option<&RuleSet>,
         radar_events: Option<&crate::sim::radar::RadarEventQueue>,
         interner: Option<&crate::sim::intern::StringInterner>,
     ) {
+        let fog_generation = visibility.map_or(0, |(_, fog)| fog.generation);
+        let visibility_owner = visibility.map(|(owner, _)| owner);
+        if sim_tick == self.last_sim_tick
+            && fog_generation == self.last_fog_generation
+            && visibility_owner == self.last_visibility_owner
+        {
+            return;
+        }
+        self.last_sim_tick = sim_tick;
+        self.last_fog_generation = fog_generation;
+        self.last_visibility_owner = visibility_owner;
+
         let size: u32 = MINIMAP_SIZE;
         let rgba: &mut Vec<u8> = &mut self.rgba_scratch;
 
