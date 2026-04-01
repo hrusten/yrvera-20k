@@ -59,12 +59,13 @@ pub fn issue_air_move_command(
     let dy: i32 = target.1 as i32 - start_ry as i32;
     let new_facing: u8 = facing_from_delta(dx, dy);
 
-    // Simple two-point path: start → goal.
-    let path: Vec<(u16, u16)> = vec![(start_rx, start_ry), target];
-    // Air movement computes its own direction; move_dir is not used.
+    // Generate cell-by-cell waypoints along a straight line (Bresenham).
+    // Air units fly in straight lines, so every cell along the path is a waypoint.
+    let path: Vec<(u16, u16)> = bresenham_line(start_rx, start_ry, target.0, target.1);
+    let path_len = path.len();
     let movement = MovementTarget {
         path,
-        path_layers: vec![MovementLayer::Air; 2],
+        path_layers: vec![MovementLayer::Air; path_len],
         next_index: 1,
         speed,
         final_goal: Some(target),
@@ -430,6 +431,38 @@ fn tick_altitude(loco: &mut LocomotorState, dt: SimFixed) {
     }
 }
 
+/// Generate cell-by-cell waypoints along a straight line using Bresenham's algorithm.
+/// Includes both start and end points. Returns at least 2 elements for any non-zero move.
+fn bresenham_line(x0: u16, y0: u16, x1: u16, y1: u16) -> Vec<(u16, u16)> {
+    let mut points: Vec<(u16, u16)> = Vec::new();
+    let mut x = x0 as i32;
+    let mut y = y0 as i32;
+    let ex = x1 as i32;
+    let ey = y1 as i32;
+    let dx = (ex - x).abs();
+    let dy = -(ey - y).abs();
+    let sx: i32 = if x < ex { 1 } else { -1 };
+    let sy: i32 = if y < ey { 1 } else { -1 };
+    let mut err = dx + dy;
+
+    loop {
+        points.push((x as u16, y as u16));
+        if x == ex && y == ey {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y += sy;
+        }
+    }
+    points
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,12 +524,12 @@ mod tests {
         let ok = issue_air_move_command(&mut entities, 1, (20, 15), SimFixed::from_num(10));
         assert!(ok);
 
-        // Should have a MovementTarget with straight-line path.
+        // Should have a MovementTarget with cell-by-cell waypoints.
         let e = entities.get(1).expect("has entity");
         let target = e.movement_target.as_ref().expect("has target");
-        assert_eq!(target.path.len(), 2);
+        assert!(target.path.len() > 2, "path should have intermediate waypoints");
         assert_eq!(target.path[0], (10, 10));
-        assert_eq!(target.path[1], (20, 15));
+        assert_eq!(*target.path.last().unwrap(), (20, 15));
 
         // Should trigger ascending.
         let loco = e.locomotor.as_ref().expect("has loco");
