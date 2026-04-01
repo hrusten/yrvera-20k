@@ -102,6 +102,11 @@ pub struct GameEntity {
     pub damage_fire_overlays: Option<DamageFireOverlays>,
     /// Bridge deck occupancy marker.
     pub bridge_occupancy: Option<BridgeOccupancy>,
+    /// Persistent bridge layer flag — authoritative source for "is this entity on a bridge?"
+    /// Mirrors original engine's FootClass+0x8C. Survives repath operations that reset
+    /// locomotor.layer. Set during spawn, updated at cell-crossing bridge transitions.
+    #[serde(default)]
+    pub on_bridge: bool,
     /// Infantry sprite animation state (sequence + frame + timing).
     pub animation: Option<Animation>,
     /// Voxel HVA animation state (frame cycling for multi-frame models).
@@ -247,6 +252,7 @@ impl GameEntity {
             building_anim_overlays: None,
             damage_fire_overlays: None,
             bridge_occupancy: None,
+            on_bridge: false,
             animation: None,
             voxel_animation: None,
             harvest_overlay: None,
@@ -293,21 +299,22 @@ impl GameEntity {
 
     /// Shared owner for "which movement layer should this entity be treated as on?"
     ///
-    /// Ground is the default when no locomotor is attached.
+    /// `on_bridge` is the authoritative source for bridge layer state — it survives
+    /// repath operations that may reset `locomotor.layer`. Ground is the default
+    /// when no locomotor is attached.
     pub fn movement_layer_or_ground(&self) -> crate::sim::movement::locomotor::MovementLayer {
+        if self.on_bridge {
+            return crate::sim::movement::locomotor::MovementLayer::Bridge;
+        }
         self.locomotor.as_ref().map_or(
             crate::sim::movement::locomotor::MovementLayer::Ground,
             |l| l.layer,
         )
     }
 
-    /// Shared owner for "should this entity be treated as on the bridge layer?"
-    ///
-    /// This accepts either the locomotor layer or the transient bridge render state.
+    /// Whether this entity is currently on a bridge deck.
     pub fn is_on_bridge_layer(&self) -> bool {
-        self.bridge_occupancy.is_some()
-            || self.movement_layer_or_ground()
-                == crate::sim::movement::locomotor::MovementLayer::Bridge
+        self.on_bridge
     }
 
     /// Create a minimal entity for testing. Fills sensible defaults for most fields.
@@ -370,6 +377,7 @@ mod tests {
         assert!(e.turret_facing.is_none());
         assert!(e.miner.is_none());
         assert!(e.order_intent.is_none());
+        assert!(!e.on_bridge);
     }
 
     #[test]

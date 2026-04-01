@@ -187,6 +187,7 @@ impl Simulation {
             // Bridge occupancy.
             if let Some(deck_level) = bridge_spawn {
                 ge.bridge_occupancy = Some(BridgeOccupancy { deck_level });
+                ge.on_bridge = true;
             }
             // Miner + harvest overlay.
             let miner_kind = rules

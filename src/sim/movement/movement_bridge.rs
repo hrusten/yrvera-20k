@@ -80,6 +80,7 @@ pub(super) fn resolve_cell_transition_bridge_state(
 pub(super) fn apply_pending_bridge_render_state(
     locomotor: &mut Option<LocomotorState>,
     bridge_occupancy: &mut Option<BridgeOccupancy>,
+    on_bridge: &mut bool,
     active_layer: MovementLayer,
     pending_bridge_update: Option<Option<u8>>,
     _diag_entity_id: u64,
@@ -87,6 +88,7 @@ pub(super) fn apply_pending_bridge_render_state(
     if let Some(loco) = locomotor {
         loco.layer = active_layer;
     }
+    *on_bridge = active_layer == MovementLayer::Bridge;
     if let Some(bridge_level) = pending_bridge_update {
         match bridge_level {
             Some(level) => {
@@ -110,6 +112,7 @@ pub(super) fn apply_pending_bridge_render_state(
 pub(super) fn apply_bridge_lookahead_if_needed(
     position: &mut Position,
     bridge_occupancy: &mut Option<BridgeOccupancy>,
+    on_bridge: &mut bool,
     mover_zone: MovementZone,
     next_step: Option<(u16, u16)>,
     _next_step_layer: MovementLayer,
@@ -131,6 +134,7 @@ pub(super) fn apply_bridge_lookahead_if_needed(
                     (position.z as i16 - cell.ground_level as i16).unsigned_abs() as u8;
                 if height_diff >= HEIGHT_THRESHOLD {
                     *bridge_occupancy = Some(BridgeOccupancy { deck_level: deck });
+                    *on_bridge = true;
                     position.z = deck;
                 }
             }

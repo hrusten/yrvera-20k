@@ -538,8 +538,13 @@ impl LayeredPathGrid {
                 bridge_walkable: bridge_state.map_or(cell.bridge_walkable, |state| {
                     state.is_bridge_walkable(cell.rx, cell.ry)
                 }),
+                // Bridgeheads (has_bridge_deck=false, bridge_transition=true) are
+                // permanent ground-level ramps not tracked by BridgeRuntimeState.
+                // Only gate transition on runtime state for deck cells.
                 transition: bridge_state.map_or(cell.bridge_transition, |state| {
-                    cell.bridge_transition && state.is_bridge_walkable(cell.rx, cell.ry)
+                    cell.bridge_transition
+                        && (!cell.has_bridge_deck
+                            || state.is_bridge_walkable(cell.rx, cell.ry))
                 }),
                 ground_level: cell.level,
                 bridge_deck_level: bridge_state

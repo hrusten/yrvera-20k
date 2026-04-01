@@ -298,6 +298,7 @@ fn test_spawn_from_map_high_unit_uses_bridge_layer_and_deck_level() {
     assert_eq!(e.position.z, 3);
     let bridge = e.bridge_occupancy.as_ref().expect("bridge occupancy");
     assert_eq!(bridge.deck_level, 3);
+    assert!(e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Bridge);
 }
@@ -374,6 +375,7 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
     let e = sim.entities.get(1).expect("spawned entity");
     assert_eq!(e.position.z, 1);
     assert!(e.bridge_occupancy.is_none());
+    assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("loco");
     assert_eq!(loco.layer, MovementLayer::Ground);
 }
@@ -444,6 +446,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
     let e = sim.entities.get(1).expect("surviving bridge unit");
     assert_eq!(e.position.z, 1);
     assert!(e.bridge_occupancy.is_none());
+    assert!(!e.on_bridge);
     let loco = e.locomotor.as_ref().expect("locomotor");
     assert_eq!(loco.layer, MovementLayer::Ground);
     assert!(e.movement_target.is_none());

@@ -14,6 +14,10 @@ path = "src/main.rs"
 name = "mix-browser"
 path = "src/bin/mix-browser.rs"
 
+[[bin]]
+name = "extract-ini"
+path = "src/bin/extract-ini.rs"
+
 [dependencies]
 # --- GPU rendering ---
 # wgpu 27 is the latest version compatible with egui-wgpu 0.33 (requires ^27.0.1).

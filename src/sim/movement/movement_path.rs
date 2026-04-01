@@ -47,6 +47,7 @@ pub(super) fn merge_path_blocks(
 pub(super) fn supports_layered_bridge_pathing(
     loco: &LocomotorState,
     layered_grid: &LayeredPathGrid,
+    on_bridge: bool,
 ) -> bool {
     if layered_grid.width() == 0 || layered_grid.height() == 0 {
         return false;
@@ -54,7 +55,7 @@ pub(super) fn supports_layered_bridge_pathing(
     matches!(
         loco.kind,
         LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Mech
-    ) || loco.layer == MovementLayer::Bridge
+    ) || on_bridge
 }
 
 fn is_bridge_layer_walkable(layered_grid: Option<&LayeredPathGrid>, cell: (u16, u16)) -> bool {
@@ -276,9 +277,38 @@ pub(super) fn find_move_path(
     };
     let path = path_smooth::smooth_path(path, &smooth_walkable);
     let path = path_smooth::optimize_path(path, &smooth_walkable);
-    let path_layers = vec![MovementLayer::Ground; path.len()];
+    let path_layers = build_flat_fallback_layers(&path, start_layer, layered_grid);
     let (path, path_layers) = truncate_layered_path(path, path_layers, MAX_PATH_SEGMENT_STEPS);
     Some((path, path_layers))
+}
+
+/// Build per-cell movement layers for a flat A* fallback path.
+///
+/// If the entity starts on a bridge, preserve `MovementLayer::Bridge` for
+/// contiguous bridge-walkable cells from the path start. Once the path
+/// leaves the bridge deck, all remaining cells are `Ground`.
+fn build_flat_fallback_layers(
+    path: &[(u16, u16)],
+    start_layer: MovementLayer,
+    layered_grid: Option<&LayeredPathGrid>,
+) -> Vec<MovementLayer> {
+    if start_layer != MovementLayer::Bridge {
+        return vec![MovementLayer::Ground; path.len()];
+    }
+    let Some(lg) = layered_grid else {
+        return vec![MovementLayer::Ground; path.len()];
+    };
+    let mut layers = Vec::with_capacity(path.len());
+    let mut on_bridge = true;
+    for &(x, y) in path {
+        if on_bridge && lg.is_walkable(x, y, MovementLayer::Bridge) {
+            layers.push(MovementLayer::Bridge);
+        } else {
+            on_bridge = false;
+            layers.push(MovementLayer::Ground);
+        }
+    }
+    layers
 }
 
 #[allow(clippy::too_many_arguments)]

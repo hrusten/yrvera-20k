@@ -30,6 +30,7 @@ pub(super) fn handle_blocked_tick(
     entity_id: u64,
     current_pos: (u16, u16),
     active_layer: MovementLayer,
+    on_bridge: bool,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     aborted_for_stuck: &mut bool,
@@ -88,13 +89,12 @@ pub(super) fn handle_blocked_tick(
         return deferred_events;
     }
 
-    let on_bridge = active_layer == MovementLayer::Bridge;
     if target.blocked_delay == 0 && !on_bridge {
         stats.repath_attempts = stats.repath_attempts.saturating_add(1);
         let layered_pathing_for_repath = locomotor
             .as_ref()
             .zip(ctx.layered_grid)
-            .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg));
+            .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg, on_bridge));
         let repath_mz: Option<MovementZone> = locomotor.as_ref().map(|l| l.movement_zone);
         let repath_ok = try_repath_after_block(
             target,

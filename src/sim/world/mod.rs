@@ -681,6 +681,7 @@ impl Simulation {
         for (sid, ground_level) in to_snap {
             if let Some(entity) = self.entities.get_mut(sid) {
                 entity.bridge_occupancy = None;
+                entity.on_bridge = false;
                 entity.position.z = ground_level;
                 entity.position.refresh_screen_coords();
                 if let Some(ref mut loco) = entity.locomotor {

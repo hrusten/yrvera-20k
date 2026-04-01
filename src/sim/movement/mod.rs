@@ -127,6 +127,7 @@ pub(super) struct MoverSnapshot {
     pub omni_crusher: bool,
     pub owner: InternedId,
     pub too_big_to_fit_under_bridge: bool,
+    pub on_bridge: bool,
     pub locomotor: Option<locomotor::LocomotorState>,
     pub rot: i32,
 }

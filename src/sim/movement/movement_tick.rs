@@ -63,6 +63,7 @@ fn snapshot_mover(entities: &EntityStore, entity_id: u64) -> Option<MoverSnapsho
         omni_crusher: e.omni_crusher,
         owner: e.owner,
         too_big_to_fit_under_bridge: e.too_big_to_fit_under_bridge,
+        on_bridge: e.on_bridge,
         locomotor: e.locomotor.clone(),
         rot: e.locomotor.as_ref().map(|l| l.rot).unwrap_or(0),
     })
@@ -121,7 +122,7 @@ fn handle_path_exhaustion(
             .locomotor
             .as_ref()
             .zip(layered_grid)
-            .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg));
+            .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg, snap.on_bridge));
         // DIAGNOSTIC: log segment repath when on bridge layer
         if active_layer == MovementLayer::Bridge {
             log::warn!(
@@ -574,6 +575,7 @@ pub fn tick_movement_with_grids(
                             if let Some(ref mut loco) = entity.locomotor {
                                 loco.layer = resolved_layer;
                             }
+                            entity.on_bridge = resolved_layer == MovementLayer::Bridge;
                         }
                         // Reserve destination cell.
                         let occ_map = super::bump_crush::occupancy_map_for_layer(
@@ -616,6 +618,7 @@ pub fn tick_movement_with_grids(
                     super::movement_bridge::apply_pending_bridge_render_state(
                         &mut entity.locomotor,
                         &mut entity.bridge_occupancy,
+                        &mut entity.on_bridge,
                         active_layer,
                         pending_bridge_update,
                         entity_id,
@@ -722,6 +725,7 @@ pub fn tick_movement_with_grids(
                 apply_pending_bridge_render_state(
                     &mut entity.locomotor,
                     &mut entity.bridge_occupancy,
+                    &mut entity.on_bridge,
                     active_layer,
                     pending_bridge_update,
                     entity_id,
@@ -741,6 +745,7 @@ pub fn tick_movement_with_grids(
             apply_bridge_lookahead_if_needed(
                 &mut entity.position,
                 &mut entity.bridge_occupancy,
+                &mut entity.on_bridge,
                 snap.movement_zone,
                 bridge_lookahead,
                 lookahead_layer,

@@ -169,7 +169,7 @@ pub fn issue_move_command_with_layered(
         .locomotor
         .as_ref()
         .zip(layered_grid)
-        .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg));
+        .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg, entity.on_bridge));
     let merged_entity_blocks = merge_path_blocks(
         entity_blocks,
         resolved_terrain,

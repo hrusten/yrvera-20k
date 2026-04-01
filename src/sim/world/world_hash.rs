@@ -231,6 +231,7 @@ impl Simulation {
             } else {
                 0u8.hash(hasher);
             }
+            entity.on_bridge.hash(hasher);
 
             if let Some(ref attack) = entity.attack_target {
                 1u8.hash(hasher);
