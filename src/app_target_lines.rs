@@ -138,8 +138,6 @@ pub(crate) fn record_command_lines(
 pub(crate) fn build_target_line_instances(
     line_state: &TargetLineState,
     sim: Option<&Simulation>,
-    cam_x: f32,
-    cam_y: f32,
     height_map: &BTreeMap<(u16, u16), u8>,
 ) -> Vec<SpriteInstance> {
     let sim = match sim {
@@ -194,8 +192,6 @@ pub(crate) fn build_target_line_instances(
             src_y,
             dst_x,
             dst_y,
-            cam_x,
-            cam_y,
             color,
         );
     }
@@ -211,8 +207,6 @@ fn emit_colored_line(
     ay: f32,
     bx: f32,
     by: f32,
-    cam_x: f32,
-    cam_y: f32,
     tint: [f32; 3],
 ) {
     let dx = bx - ax;
@@ -225,8 +219,8 @@ fn emit_colored_line(
     let step_y = dy / steps as f32;
 
     for i in 0..steps {
-        let px = (ax + step_x * i as f32).round() - cam_x;
-        let py = (ay + step_y * i as f32).round() - cam_y;
+        let px = (ax + step_x * i as f32).round();
+        let py = (ay + step_y * i as f32).round();
         instances.push(SpriteInstance {
             position: [px, py],
             size: [1.0, 1.0],
