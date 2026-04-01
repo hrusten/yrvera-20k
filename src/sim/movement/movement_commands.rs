@@ -13,9 +13,9 @@ use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::components::MovementTarget;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_map::ZoneCategory;
-use crate::sim::pathfinding::PathGrid;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::movement_path::{

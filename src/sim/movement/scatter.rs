@@ -30,8 +30,8 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement;
 use crate::sim::movement::bump_crush::{self, OccupancyMap};
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::PathGrid;
+use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
 
@@ -178,13 +178,7 @@ pub fn tick_idle_scatter(
             .and_then(|l| terrain_costs.get(&l.speed_type));
 
         movement::issue_move_command_with_layered(
-            entities,
-            grid,
-            entity_id,
-            dest,
-            speed,
-            false,
-            cost_grid,
+            entities, grid, entity_id, dest, speed, false, cost_grid,
             None, // no entity blocks for 1-cell scatter
             None, // resolved_terrain
         );

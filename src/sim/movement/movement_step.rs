@@ -22,8 +22,8 @@ use crate::sim::movement::movement_occupancy::{
 };
 use crate::sim::movement::movement_reservation::reserve_destination_after_transition;
 use crate::sim::movement::turret::{rot_to_facing_delta, shortest_rotation};
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::PathGrid;
+use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, facing_from_delta_int as facing_from_delta,

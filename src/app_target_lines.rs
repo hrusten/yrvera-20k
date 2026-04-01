@@ -186,14 +186,7 @@ pub(crate) fn build_target_line_instances(
             LineKind::Move => MOVE_COLOR,
         };
 
-        emit_colored_line(
-            &mut instances,
-            src_x,
-            src_y,
-            dst_x,
-            dst_y,
-            color,
-        );
+        emit_colored_line(&mut instances, src_x, src_y, dst_x, dst_y, color);
     }
 
     instances

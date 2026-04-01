@@ -23,10 +23,10 @@ use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::sim::components::MovementTarget;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed::{self, TerrainSpeedConfig};
 use crate::sim::pathfinding::zone_map::{ZoneCategory, ZoneGrid};
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, dt_from_tick_ms, fixed_distance,

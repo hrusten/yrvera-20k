@@ -34,10 +34,10 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::InternedId;
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed, facing_from_delta_int};
 

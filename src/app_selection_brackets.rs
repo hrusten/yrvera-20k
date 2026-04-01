@@ -247,8 +247,6 @@ pub(crate) fn build_selection_bracket_instances(
         ) {
             continue;
         }
-
-
         // --- 12 edges of the isometric bounding box ---
         // Indices: FL=0, FR=1, BL=2, BR=3
 

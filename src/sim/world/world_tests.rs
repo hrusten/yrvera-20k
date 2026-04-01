@@ -397,10 +397,8 @@ fn test_bridge_damage_rebuilds_path_grid() {
         &resolved, true, 20,
     ));
     // Build PathGrid before damage — bridge should be walkable.
-    let grid_before = PathGrid::from_resolved_terrain_with_bridges(
-        &resolved,
-        sim.bridge_state.as_ref(),
-    );
+    let grid_before =
+        PathGrid::from_resolved_terrain_with_bridges(&resolved, sim.bridge_state.as_ref());
     assert!(grid_before.is_walkable_on_layer(2, 0, MovementLayer::Bridge));
 
     let changes = sim.apply_bridge_damage_events(&[BridgeDamageEvent {
@@ -509,8 +507,6 @@ fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
         &resolved, true, 15,
     ));
-
-
     let boat_id = sim
         .spawn_object("BOAT", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
         .expect("spawn boat");
@@ -556,8 +552,6 @@ fn test_too_big_ship_can_move_under_bridge_route() {
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
         &resolved, true, 15,
     ));
-
-
     let ship_id = sim
         .spawn_object("DRED", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
         .expect("spawn dreadnought");

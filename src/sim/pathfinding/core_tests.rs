@@ -430,8 +430,7 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
         ],
     );
     let mut bridge_state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 10);
-    let intact_grid =
-        PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
+    let intact_grid = PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
     assert!(
         find_layered_path(
             &intact_grid,

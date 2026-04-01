@@ -133,8 +133,7 @@ fn find_next_infantry_cell(
     while *start_idx < ring_cells.len() {
         let cell: (u16, u16) = ring_cells[*start_idx];
         *start_idx += 1;
-        if grid.is_any_layer_walkable(cell.0, cell.1) && !claimed_vehicle.contains(&cell)
-        {
+        if grid.is_any_layer_walkable(cell.0, cell.1) && !claimed_vehicle.contains(&cell) {
             let count: usize = infantry_counts.get(&cell).copied().unwrap_or(0);
             if count < MAX_INFANTRY_PER_CELL {
                 return Some(cell);

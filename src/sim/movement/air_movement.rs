@@ -179,23 +179,22 @@ pub fn tick_air_movement(
                 if let Some(ref mut target) = entity.movement_target {
                     use fixed::types::I48F16;
                     let final_goal = target.final_goal.unwrap_or_else(|| {
-                        *target.path.last().unwrap_or(&(entity.position.rx, entity.position.ry))
+                        *target
+                            .path
+                            .last()
+                            .unwrap_or(&(entity.position.rx, entity.position.ry))
                     });
 
                     // Lepton math uses I48F16 to avoid I16F16 overflow on large maps.
                     // Cell coordinates * 256 can exceed SimFixed's 32767 max integer.
                     let lep256 = I48F16::from_num(256);
                     let lep128 = I48F16::from_num(128);
-                    let goal_lx: I48F16 =
-                        I48F16::from_num(final_goal.0) * lep256 + lep128;
-                    let goal_ly: I48F16 =
-                        I48F16::from_num(final_goal.1) * lep256 + lep128;
-                    let cur_lx: I48F16 =
-                        I48F16::from_num(entity.position.rx) * lep256
-                            + I48F16::from(entity.position.sub_x);
-                    let cur_ly: I48F16 =
-                        I48F16::from_num(entity.position.ry) * lep256
-                            + I48F16::from(entity.position.sub_y);
+                    let goal_lx: I48F16 = I48F16::from_num(final_goal.0) * lep256 + lep128;
+                    let goal_ly: I48F16 = I48F16::from_num(final_goal.1) * lep256 + lep128;
+                    let cur_lx: I48F16 = I48F16::from_num(entity.position.rx) * lep256
+                        + I48F16::from(entity.position.sub_x);
+                    let cur_ly: I48F16 = I48F16::from_num(entity.position.ry) * lep256
+                        + I48F16::from(entity.position.sub_y);
 
                     let dlx: I48F16 = goal_lx - cur_lx;
                     let dly: I48F16 = goal_ly - cur_ly;
@@ -207,7 +206,9 @@ pub fn tick_air_movement(
                         let two = I48F16::from_num(2);
                         let mut g = dist_sq / two;
                         for _ in 0..20 {
-                            if g <= I48F16::ZERO { break; }
+                            if g <= I48F16::ZERO {
+                                break;
+                            }
                             g = (g + dist_sq / g) / two;
                         }
                         g
@@ -219,8 +220,7 @@ pub fn tick_air_movement(
                         .as_ref()
                         .map_or(SIM_ONE, |l| l.speed_fraction);
                     // speed is in leptons/sec; multiply by dt to get leptons this tick.
-                    let move_lep: I48F16 =
-                        I48F16::from(target.speed * speed_frac * dt);
+                    let move_lep: I48F16 = I48F16::from(target.speed * speed_frac * dt);
                     let snap_threshold = I48F16::from_num(4);
 
                     if dist <= move_lep || dist < snap_threshold {
@@ -243,10 +243,8 @@ pub fn tick_air_movement(
                         let new_ry: i32 = (new_ly / lep256).to_num::<i32>();
                         entity.position.rx = (new_rx.max(0) as u16).min(511);
                         entity.position.ry = (new_ry.max(0) as u16).min(511);
-                        let sub_x: I48F16 =
-                            new_lx - I48F16::from_num(entity.position.rx) * lep256;
-                        let sub_y: I48F16 =
-                            new_ly - I48F16::from_num(entity.position.ry) * lep256;
+                        let sub_x: I48F16 = new_lx - I48F16::from_num(entity.position.rx) * lep256;
+                        let sub_y: I48F16 = new_ly - I48F16::from_num(entity.position.ry) * lep256;
                         entity.position.sub_x =
                             SimFixed::from_num(sub_x.to_num::<i32>().max(0).min(255));
                         entity.position.sub_y =
@@ -540,7 +538,10 @@ mod tests {
         // Should have a MovementTarget with cell-by-cell waypoints.
         let e = entities.get(1).expect("has entity");
         let target = e.movement_target.as_ref().expect("has target");
-        assert!(target.path.len() > 2, "path should have intermediate waypoints");
+        assert!(
+            target.path.len() > 2,
+            "path should have intermediate waypoints"
+        );
         assert_eq!(target.path[0], (10, 10));
         assert_eq!(*target.path.last().unwrap(), (20, 15));
 
