@@ -305,6 +305,14 @@ impl AppState {
             .as_ref()
             .map_or(self.gpu.config.height, |u| u.src_height())
     }
+
+    /// Whether the software cursor (mouse.shp) should be active this frame.
+    /// Returns false when an egui interactive panel is open so the OS cursor shows.
+    pub(crate) fn use_software_cursor(&self) -> bool {
+        self.software_cursor.is_some()
+            && !self.paused
+            && !self.show_save_load_panel
+    }
 }
 
 /// Top-level application. Implements winit's ApplicationHandler.
@@ -411,7 +419,7 @@ impl ApplicationHandler for App {
                 state.cursor_x = position.x as f32 * sx;
                 state.cursor_y = position.y as f32 * sy;
                 // Keep OS cursor hidden whenever the software cursor is active.
-                if state.software_cursor.is_some() {
+                if state.use_software_cursor() {
                     state.window.set_cursor_visible(false);
                 }
                 if !egui_consumed
@@ -428,7 +436,7 @@ impl ApplicationHandler for App {
                 // Keep OS cursor hidden on click events (not just CursorMoved).
                 // Without this, rapid clicks without mouse movement let the OS
                 // cursor flash visible between WM_SETCURSOR and the next render.
-                if state.software_cursor.is_some() {
+                if state.use_software_cursor() {
                     state.window.set_cursor_visible(false);
                 }
                 if !egui_consumed && state.screen == GameScreen::SpawnPick {
@@ -671,7 +679,7 @@ impl App {
                     &mut encoder,
                     &view,
                     &state.window,
-                    state.software_cursor.is_some(),
+                    state.use_software_cursor(),
                 );
                 state.gpu.queue.submit(std::iter::once(encoder.finish()));
                 output.present();
@@ -714,7 +722,7 @@ impl App {
                     &mut encoder,
                     &view,
                     &state.window,
-                    state.software_cursor.is_some(),
+                    state.use_software_cursor(),
                 );
 
                 // Handle menu action after rendering so the frame is visible.
@@ -745,7 +753,7 @@ impl App {
                     &mut encoder,
                     &view,
                     &state.window,
-                    state.software_cursor.is_some(),
+                    state.use_software_cursor(),
                 );
             }
             GameScreen::InGame => {
@@ -812,7 +820,7 @@ impl App {
                     &mut encoder,
                     &view,
                     &state.window,
-                    state.software_cursor.is_some(),
+                    state.use_software_cursor(),
                 );
             }
             GameScreen::MissionResult { title, detail } => {
@@ -832,7 +840,7 @@ impl App {
                     &mut encoder,
                     &view,
                     &state.window,
-                    state.software_cursor.is_some(),
+                    state.use_software_cursor(),
                 );
             }
             GameScreen::SpawnPick => {
@@ -844,7 +852,7 @@ impl App {
                     &mut encoder,
                     &view,
                     &state.window,
-                    state.software_cursor.is_some(),
+                    state.use_software_cursor(),
                 );
             }
         }
@@ -879,6 +887,10 @@ impl App {
                 // Reset timing to prevent sim accumulator spike from pause duration.
                 state.last_update_time = Instant::now();
                 state.sim_accumulator_ms = 0;
+                // Re-hide OS cursor so the software cursor takes over.
+                if state.software_cursor.is_some() {
+                    state.window.set_cursor_visible(false);
+                }
                 log::info!("Game resumed");
             }
             PauseMenuAction::ReturnToMenu => {
