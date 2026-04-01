@@ -292,11 +292,11 @@ pub(super) fn update_minimap(state: &mut AppState, local_owner: &Option<String>)
 /// Build in-game UI overlay instances: selection brackets, health bars,
 /// drag rectangle, building placement preview, and software cursor.
 pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstances {
-    let bracket: Vec<SpriteInstance> =
-        crate::app_selection_brackets::build_selection_bracket_instances(state, sw, sh);
-    let mut building_status: Vec<SpriteInstance> = build_building_status_instances(state, sw, sh);
-    // DEBUG: append bracket instances into building_status pool to test rendering.
-    building_status.extend_from_slice(&bracket);
+    // TODO: bracket geometry needs more work — uncomment to re-enable.
+    // let bracket: Vec<SpriteInstance> =
+    //     crate::app_selection_brackets::build_selection_bracket_instances(state, sw, sh);
+    let bracket: Vec<SpriteInstance> = Vec::new();
+    let building_status: Vec<SpriteInstance> = build_building_status_instances(state, sw, sh);
     let occupant_pip = build_occupant_pip_instances(state, sw, sh);
     let unit_status_bg = build_unit_status_bg_instances(state, sw, sh);
     let unit_status_fill = build_unit_status_fill_instances(state, sw, sh);
@@ -315,8 +315,6 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
     let target_line = crate::app_target_lines::build_target_line_instances(
         &state.target_lines,
         state.simulation.as_ref(),
-        state.camera_x,
-        state.camera_y,
         &state.height_map,
     );
 

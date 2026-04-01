@@ -25,7 +25,8 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::facing_from_delta;
 use crate::sim::movement::jumpjet_movement;
 use crate::sim::movement::locomotor::{AirMovePhase, LocomotorState, MovementLayer};
-use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, fixed_distance, sim_to_f32};
+use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, sim_to_f32};
+use crate::util::lepton::CELL_CENTER_LEPTON as CELL_CENTER;
 
 /// Visual height offset per lepton of altitude.
 /// Calibrated so that cruise altitude (600 leptons) produces ~36px vertical
@@ -175,80 +176,92 @@ pub fn tick_air_movement(
                 .is_some_and(|l| l.altitude >= l.target_altitude * SIM_HALF);
 
             if can_move_horizontally {
-                // Extract air_progress from locomotor (avoids split borrow with movement_target).
-                let mut air_prog: SimFixed = entity
-                    .locomotor
-                    .as_ref()
-                    .map_or(SIM_ZERO, |l| l.air_progress);
-
                 if let Some(ref mut target) = entity.movement_target {
-                    if target.next_index < target.path.len() {
-                        let goal: (u16, u16) = target.path[target.next_index];
-                        let dx: SimFixed =
-                            SimFixed::from_num(goal.0 as i32 - entity.position.rx as i32);
-                        let dy: SimFixed =
-                            SimFixed::from_num(goal.1 as i32 - entity.position.ry as i32);
-                        let dist: SimFixed = fixed_distance(dx, dy);
+                    use fixed::types::I48F16;
+                    let final_goal = target.final_goal.unwrap_or_else(|| {
+                        *target.path.last().unwrap_or(&(entity.position.rx, entity.position.ry))
+                    });
 
-                        // Air uses cell-based progress: speed is in leptons/sec,
-                        // divide by 256 to get cells/sec for the progress model.
-                        // Apply mission-controlled speed fraction (dive bombing, speed tiers).
-                        let speed_frac: SimFixed = entity
-                            .locomotor
-                            .as_ref()
-                            .map_or(SIM_ONE, |l| l.speed_fraction);
-                        let cell_speed: SimFixed =
-                            target.speed * speed_frac / SimFixed::from_num(256);
-                        air_prog += cell_speed * dt;
+                    // Lepton math uses I48F16 to avoid I16F16 overflow on large maps.
+                    // Cell coordinates * 256 can exceed SimFixed's 32767 max integer.
+                    let lep256 = I48F16::from_num(256);
+                    let lep128 = I48F16::from_num(128);
+                    let goal_lx: I48F16 =
+                        I48F16::from_num(final_goal.0) * lep256 + lep128;
+                    let goal_ly: I48F16 =
+                        I48F16::from_num(final_goal.1) * lep256 + lep128;
+                    let cur_lx: I48F16 =
+                        I48F16::from_num(entity.position.rx) * lep256
+                            + I48F16::from(entity.position.sub_x);
+                    let cur_ly: I48F16 =
+                        I48F16::from_num(entity.position.ry) * lep256
+                            + I48F16::from(entity.position.sub_y);
 
-                        while air_prog >= SIM_ONE && target.next_index < target.path.len() {
-                            let (nx, ny) = target.path[target.next_index];
-                            air_prog -= SIM_ONE;
-                            entity.position.rx = nx;
-                            entity.position.ry = ny;
-                            target.next_index += 1;
+                    let dlx: I48F16 = goal_lx - cur_lx;
+                    let dly: I48F16 = goal_ly - cur_ly;
+                    let dist_sq: I48F16 = dlx * dlx + dly * dly;
+                    // Newton's method sqrt in I48F16.
+                    let dist: I48F16 = if dist_sq <= I48F16::ZERO {
+                        I48F16::ZERO
+                    } else {
+                        let two = I48F16::from_num(2);
+                        let mut g = dist_sq / two;
+                        for _ in 0..20 {
+                            if g <= I48F16::ZERO { break; }
+                            g = (g + dist_sq / g) / two;
                         }
+                        g
+                    };
 
-                        // If distance to goal > 1 cell and we only have start→goal path,
-                        // use fractional position interpolation for smooth flight.
-                        if dist > SimFixed::lit("1.5") && target.next_index < target.path.len() {
-                            let step_dx: SimFixed = dx / dist;
-                            let step_dy: SimFixed = dy / dist;
-                            // SimFixed arithmetic avoids platform-dependent f32 rounding.
-                            let next_rx: u16 = (SimFixed::from_num(entity.position.rx) + step_dx)
-                                .to_num::<i32>()
-                                .max(0) as u16;
-                            let next_ry: u16 = (SimFixed::from_num(entity.position.ry) + step_dy)
-                                .to_num::<i32>()
-                                .max(0) as u16;
-                            if (next_rx, next_ry) != (entity.position.rx, entity.position.ry)
-                                && air_prog >= SIM_ONE
-                            {
-                                entity.position.rx = next_rx;
-                                entity.position.ry = next_ry;
-                                air_prog -= SIM_ONE;
-                            }
-                        }
+                    // Apply mission-controlled speed fraction.
+                    let speed_frac: SimFixed = entity
+                        .locomotor
+                        .as_ref()
+                        .map_or(SIM_ONE, |l| l.speed_fraction);
+                    // speed is in leptons/sec; multiply by dt to get leptons this tick.
+                    let move_lep: I48F16 =
+                        I48F16::from(target.speed * speed_frac * dt);
+                    let snap_threshold = I48F16::from_num(4);
+
+                    if dist <= move_lep || dist < snap_threshold {
+                        // Close enough — snap to destination.
+                        entity.position.rx = final_goal.0;
+                        entity.position.ry = final_goal.1;
+                        entity.position.sub_x = CELL_CENTER;
+                        entity.position.sub_y = CELL_CENTER;
+                        finished.push(entity_id);
+                        stats.arrivals = stats.arrivals.saturating_add(1);
+                    } else if dist > I48F16::ZERO {
+                        // Move toward goal by move_lep along the heading.
+                        let step_x: I48F16 = dlx * move_lep / dist;
+                        let step_y: I48F16 = dly * move_lep / dist;
+                        let new_lx: I48F16 = cur_lx + step_x;
+                        let new_ly: I48F16 = cur_ly + step_y;
+
+                        // Convert back to cell + sub-cell.
+                        let new_rx: i32 = (new_lx / lep256).to_num::<i32>();
+                        let new_ry: i32 = (new_ly / lep256).to_num::<i32>();
+                        entity.position.rx = (new_rx.max(0) as u16).min(511);
+                        entity.position.ry = (new_ry.max(0) as u16).min(511);
+                        let sub_x: I48F16 =
+                            new_lx - I48F16::from_num(entity.position.rx) * lep256;
+                        let sub_y: I48F16 =
+                            new_ly - I48F16::from_num(entity.position.ry) * lep256;
+                        entity.position.sub_x =
+                            SimFixed::from_num(sub_x.to_num::<i32>().max(0).min(255));
+                        entity.position.sub_y =
+                            SimFixed::from_num(sub_y.to_num::<i32>().max(0).min(255));
 
                         // Update facing toward goal.
-                        if target.next_index < target.path.len() {
-                            let next = target.path[target.next_index];
-                            let face_dx: i32 = next.0 as i32 - entity.position.rx as i32;
-                            let face_dy: i32 = next.1 as i32 - entity.position.ry as i32;
+                        let face_dx: i32 = final_goal.0 as i32 - entity.position.rx as i32;
+                        let face_dy: i32 = final_goal.1 as i32 - entity.position.ry as i32;
+                        if face_dx != 0 || face_dy != 0 {
                             entity.facing = facing_from_delta(face_dx, face_dy);
-                        }
-
-                        if target.next_index >= target.path.len() {
-                            finished.push(entity_id);
-                            stats.arrivals = stats.arrivals.saturating_add(1);
                         }
                     }
                 }
 
-                // Write back air_progress to locomotor.
-                if let Some(ref mut loco) = entity.locomotor {
-                    loco.air_progress = air_prog;
-                }
+                // (air_progress no longer used — lepton interpolation replaces it)
             }
         }
 

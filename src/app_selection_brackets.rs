@@ -139,13 +139,7 @@ fn quarter_point(a: ScreenPt, b: ScreenPt) -> ScreenPt {
 ///
 /// Steps along the line from `a` to `b` using Bresenham-style integer stepping.
 /// Each step emits a 2×1 (for iso diagonals) or 1×1 (for verticals) pixel quad.
-fn emit_line(
-    instances: &mut Vec<SpriteInstance>,
-    a: ScreenPt,
-    b: ScreenPt,
-    cam_x: f32,
-    cam_y: f32,
-) {
+fn emit_line(instances: &mut Vec<SpriteInstance>, a: ScreenPt, b: ScreenPt) {
     let dx = b.x - a.x;
     let dy = b.y - a.y;
     let steps = dx.abs().max(dy.abs()).ceil() as i32;
@@ -156,8 +150,8 @@ fn emit_line(
     let step_y = dy / steps as f32;
 
     for i in 0..steps {
-        let px = (a.x + step_x * i as f32).round() - cam_x;
-        let py = (a.y + step_y * i as f32).round() - cam_y;
+        let px = (a.x + step_x * i as f32).round();
+        let py = (a.y + step_y * i as f32).round();
         instances.push(SpriteInstance {
             position: [px, py],
             size: [1.0, 1.0],
@@ -171,15 +165,9 @@ fn emit_line(
 }
 
 /// Emit a bracket stub: a 25% line from corner `a` toward `b`.
-fn emit_stub(
-    instances: &mut Vec<SpriteInstance>,
-    a: ScreenPt,
-    b: ScreenPt,
-    cam_x: f32,
-    cam_y: f32,
-) {
+fn emit_stub(instances: &mut Vec<SpriteInstance>, a: ScreenPt, b: ScreenPt) {
     let qp = quarter_point(a, b);
-    emit_line(instances, a, qp, cam_x, cam_y);
+    emit_line(instances, a, qp);
 }
 
 /// Build bracket instances for all selected buildings.
@@ -197,17 +185,6 @@ pub(crate) fn build_selection_bracket_instances(
     let cam_x = state.camera_x;
     let cam_y = state.camera_y;
     let mut instances = Vec::new();
-
-    // DEBUG: always emit a white square so we know the pipeline works.
-    instances.push(SpriteInstance {
-        position: [10.0, 10.0],
-        size: [30.0, 30.0],
-        uv_origin: [0.0, 0.0],
-        uv_size: [1.0, 1.0],
-        tint: [1.0, 1.0, 1.0],
-        alpha: 1.0,
-        depth: BRACKET_DEPTH,
-    });
 
     for e in sim.entities.values() {
         if e.category != EntityCategory::Structure || !e.selected {
@@ -271,42 +248,38 @@ pub(crate) fn build_selection_bracket_instances(
             continue;
         }
 
-        eprintln!(
-            "BRACKET: {} fw={} fh={} H={} z_screen={} sx={:.0} sy={:.0}",
-            type_str, fw, fh, art_height, z_screen, sx, sy,
-        );
 
         // --- 12 edges of the isometric bounding box ---
         // Indices: FL=0, FR=1, BL=2, BR=3
 
         // DrawBehind edges (5): stubs at both ends, behind sprite (hidden by building art).
         // These are drawn anyway — the building sprite naturally occludes them.
-        emit_stub(&mut instances, g[2], r[2], cam_x, cam_y); // Edge 1: BL ground→BL roof (BL vertical)
-        emit_stub(&mut instances, r[2], g[2], cam_x, cam_y);
-        emit_stub(&mut instances, g[3], g[2], cam_x, cam_y); // Edge 2: BR ground→BL ground (back ground)
-        emit_stub(&mut instances, g[2], g[3], cam_x, cam_y);
-        emit_stub(&mut instances, g[2], g[0], cam_x, cam_y); // Edge 3: BL ground→FL ground (left ground)
-        emit_stub(&mut instances, g[0], g[2], cam_x, cam_y);
-        emit_stub(&mut instances, r[0], r[2], cam_x, cam_y); // Edge 4: FL roof→BL roof (left roof)
-        emit_stub(&mut instances, r[2], r[0], cam_x, cam_y);
-        emit_stub(&mut instances, r[3], r[2], cam_x, cam_y); // Edge 5: BR roof→BL roof (back roof)
-        emit_stub(&mut instances, r[2], r[3], cam_x, cam_y);
+        emit_stub(&mut instances, g[2], r[2]); // Edge 1: BL ground→BL roof (BL vertical)
+        emit_stub(&mut instances, r[2], g[2]);
+        emit_stub(&mut instances, g[3], g[2]); // Edge 2: BR ground→BL ground (back ground)
+        emit_stub(&mut instances, g[2], g[3]);
+        emit_stub(&mut instances, g[2], g[0]); // Edge 3: BL ground→FL ground (left ground)
+        emit_stub(&mut instances, g[0], g[2]);
+        emit_stub(&mut instances, r[0], r[2]); // Edge 4: FL roof→BL roof (left roof)
+        emit_stub(&mut instances, r[2], r[0]);
+        emit_stub(&mut instances, r[3], r[2]); // Edge 5: BR roof→BL roof (back roof)
+        emit_stub(&mut instances, r[2], r[3]);
 
         // DrawExtras bracket corner edges (4): stubs at both ends, in front of sprite.
-        emit_stub(&mut instances, g[0], g[1], cam_x, cam_y); // Edge 6: FL ground→FR ground (front ground)
-        emit_stub(&mut instances, g[1], g[0], cam_x, cam_y);
-        emit_stub(&mut instances, g[3], g[1], cam_x, cam_y); // Edge 7: BR ground→FR ground (right ground)
-        emit_stub(&mut instances, g[1], g[3], cam_x, cam_y);
-        emit_stub(&mut instances, r[0], g[0], cam_x, cam_y); // Edge 8: FL roof→FL ground (FL vertical)
-        emit_stub(&mut instances, g[0], r[0], cam_x, cam_y);
-        emit_stub(&mut instances, r[3], g[3], cam_x, cam_y); // Edge 9: BR roof→BR ground (BR vertical)
-        emit_stub(&mut instances, g[3], r[3], cam_x, cam_y);
+        emit_stub(&mut instances, g[0], g[1]); // Edge 6: FL ground→FR ground (front ground)
+        emit_stub(&mut instances, g[1], g[0]);
+        emit_stub(&mut instances, g[3], g[1]); // Edge 7: BR ground→FR ground (right ground)
+        emit_stub(&mut instances, g[1], g[3]);
+        emit_stub(&mut instances, r[0], g[0]); // Edge 8: FL roof→FL ground (FL vertical)
+        emit_stub(&mut instances, g[0], r[0]);
+        emit_stub(&mut instances, r[3], g[3]); // Edge 9: BR roof→BR ground (BR vertical)
+        emit_stub(&mut instances, g[3], r[3]);
 
         // DrawExtras single-stub edges (3): only stub at the visible end.
         // All converge at hidden FR_roof corner.
-        emit_stub(&mut instances, r[0], r[1], cam_x, cam_y); // Edge 10: FL roof→FR roof (front roof, stub at FL)
-        emit_stub(&mut instances, r[3], r[1], cam_x, cam_y); // Edge 11: BR roof→FR roof (right roof, stub at BR)
-        emit_stub(&mut instances, g[1], r[1], cam_x, cam_y); // Edge 12: FR ground→FR roof (FR vertical, stub at FR ground)
+        emit_stub(&mut instances, r[0], r[1]); // Edge 10: FL roof→FR roof (front roof, stub at FL)
+        emit_stub(&mut instances, r[3], r[1]); // Edge 11: BR roof→FR roof (right roof, stub at BR)
+        emit_stub(&mut instances, g[1], r[1]); // Edge 12: FR ground→FR roof (FR vertical, stub at FR ground)
     }
 
     instances
