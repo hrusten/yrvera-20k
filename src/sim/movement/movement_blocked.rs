@@ -93,8 +93,8 @@ pub(super) fn handle_blocked_tick(
         stats.repath_attempts = stats.repath_attempts.saturating_add(1);
         let layered_pathing_for_repath = locomotor
             .as_ref()
-            .zip(ctx.layered_grid)
-            .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg, on_bridge));
+            .zip(ctx.path_grid)
+            .is_some_and(|(loco, pg)| supports_layered_bridge_pathing(loco, pg, on_bridge));
         let repath_mz: Option<MovementZone> = locomotor.as_ref().map(|l| l.movement_zone);
         let repath_ok = try_repath_after_block(
             target,

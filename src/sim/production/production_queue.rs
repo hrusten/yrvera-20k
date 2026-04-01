@@ -565,7 +565,6 @@ pub fn tick_production(
                     let _ = crate::sim::movement::issue_move_command_with_layered(
                         &mut sim.entities,
                         grid,
-                        sim.layered_path_grid.as_ref(),
                         stable_id,
                         (tx, ty),
                         speed,

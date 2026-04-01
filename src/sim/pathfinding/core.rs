@@ -1,7 +1,8 @@
 //! A* pathfinding on the isometric grid.
 //!
-//! PathGrid is a flat boolean array (true = walkable) indexed by (rx, ry).
-//! A* uses octile heuristic (consistent with 8-dir movement, never overestimates).
+//! PathGrid stores per-cell walkability and bridge metadata (ground_walkable,
+//! bridge_walkable, transition, height levels). Flat A* reads ground_walkable;
+//! layered A* reads both layers for bridge-aware routing.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on map/ (MapCell, TilesetLookup for walkability).
@@ -118,22 +119,9 @@ pub fn is_cell_passable_for_mover(
     grid.is_walkable(x, y)
 }
 
-/// 2D walkability grid for pathfinding.
-///
-/// Each cell is either walkable (true) or blocked (false).
-/// Buildings, water, and other impassable terrain set cells to blocked.
-#[derive(Debug, Clone)]
-pub struct PathGrid {
-    /// Flat array of walkability flags, indexed by `y * width + x`.
-    cells: Vec<bool>,
-    /// Grid width in cells.
-    width: u16,
-    /// Grid height in cells.
-    height: u16,
-}
-
+/// Per-cell walkability and bridge metadata for pathfinding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LayeredPathCell {
+pub struct PathCell {
     pub ground_walkable: bool,
     pub bridge_walkable: bool,
     pub transition: bool,
@@ -141,7 +129,7 @@ pub struct LayeredPathCell {
     pub bridge_deck_level: u8,
 }
 
-impl LayeredPathCell {
+impl PathCell {
     pub fn is_bridge_transition_cell(&self) -> bool {
         self.transition
     }
@@ -169,9 +157,32 @@ impl LayeredPathCell {
     }
 }
 
+/// Default ground-only cell: walkable, no bridges, level 0.
+const DEFAULT_WALKABLE_CELL: PathCell = PathCell {
+    ground_walkable: true,
+    bridge_walkable: false,
+    transition: false,
+    ground_level: 0,
+    bridge_deck_level: 0,
+};
+
+/// Default blocked cell: not walkable, no bridges, level 0.
+const DEFAULT_BLOCKED_CELL: PathCell = PathCell {
+    ground_walkable: false,
+    bridge_walkable: false,
+    transition: false,
+    ground_level: 0,
+    bridge_deck_level: 0,
+};
+
+/// Unified walkability grid for pathfinding.
+///
+/// Each cell stores ground walkability, bridge walkability, transition flags,
+/// and height levels. Flat A* reads `ground_walkable` via `is_walkable()`;
+/// layered A* reads both layers for bridge-aware routing.
 #[derive(Debug, Clone)]
-pub struct LayeredPathGrid {
-    cells: Vec<LayeredPathCell>,
+pub struct PathGrid {
+    cells: Vec<PathCell>,
     width: u16,
     height: u16,
 }
@@ -184,40 +195,89 @@ pub struct LayeredPathStep {
 }
 
 impl PathGrid {
-    /// Create a new grid where all cells are walkable by default.
+    /// Create a new grid where all cells are ground-walkable with no bridges.
     pub fn new(width: u16, height: u16) -> Self {
-        let size: usize = width as usize * height as usize;
+        let size = width as usize * height as usize;
         Self {
-            cells: vec![true; size],
+            cells: vec![DEFAULT_WALKABLE_CELL; size],
             width,
             height,
         }
     }
 
-    /// Mark a cell as blocked (impassable) or unblocked (walkable).
+    /// Grid width accessor.
+    pub fn width(&self) -> u16 {
+        self.width
+    }
+
+    /// Grid height accessor.
+    pub fn height(&self) -> u16 {
+        self.height
+    }
+
+    /// Mark a cell as blocked (ground layer) or unblocked.
     pub fn set_blocked(&mut self, x: u16, y: u16, blocked: bool) {
         if x < self.width && y < self.height {
-            let idx: usize = y as usize * self.width as usize + x as usize;
-            self.cells[idx] = !blocked;
+            let idx = y as usize * self.width as usize + x as usize;
+            self.cells[idx].ground_walkable = !blocked;
         }
     }
 
-    /// Check if a cell is walkable. Out-of-bounds cells are always impassable.
+    /// Check if a cell is ground-walkable. Out-of-bounds = impassable.
     pub fn is_walkable(&self, x: u16, y: u16) -> bool {
         if x >= self.width || y >= self.height {
             return false;
         }
-        let idx: usize = y as usize * self.width as usize + x as usize;
-        self.cells[idx]
+        let idx = y as usize * self.width as usize + x as usize;
+        self.cells[idx].ground_walkable
     }
 
-    /// Find the nearest walkable cell to `(x, y)`, searching in expanding rings.
-    ///
-    /// Returns `None` if no walkable cell exists within `max_radius` cells.
-    /// If `(x, y)` is already walkable, returns it immediately.
-    /// Also checks `entity_blocks` — a cell must be both PathGrid-walkable AND
-    /// not entity-blocked to be returned (unless it equals `allow`, typically
-    /// the goal cell which is exempt from entity blocks in A*).
+    /// Check if a cell is walkable on a specific movement layer.
+    pub fn is_walkable_on_layer(&self, x: u16, y: u16, layer: MovementLayer) -> bool {
+        let Some(cell) = self.cell(x, y) else {
+            return false;
+        };
+        match layer {
+            MovementLayer::Ground => cell.ground_walkable,
+            MovementLayer::Bridge => cell.bridge_walkable,
+            MovementLayer::Air | MovementLayer::Underground => false,
+        }
+    }
+
+    /// Check if a cell is walkable on either ground or bridge layer.
+    pub fn is_any_layer_walkable(&self, x: u16, y: u16) -> bool {
+        if self.is_walkable(x, y) {
+            return true;
+        }
+        self.is_walkable_on_layer(x, y, MovementLayer::Bridge)
+    }
+
+    /// Access full cell data. Returns `None` for out-of-bounds.
+    pub fn cell(&self, x: u16, y: u16) -> Option<&PathCell> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        self.cells
+            .get(y as usize * self.width as usize + x as usize)
+    }
+
+    /// Whether this cell is a bridge transition point (units can switch layers here).
+    pub fn is_transition(&self, x: u16, y: u16) -> bool {
+        self.cell(x, y)
+            .is_some_and(|c| c.is_bridge_transition_cell())
+    }
+
+    pub fn bridge_deck_level(&self, x: u16, y: u16) -> Option<u8> {
+        self.cell(x, y)
+            .and_then(PathCell::bridge_deck_level_if_any)
+    }
+
+    pub fn can_enter_bridge_layer_from_ground(&self, x: u16, y: u16) -> bool {
+        self.cell(x, y)
+            .is_some_and(PathCell::can_enter_bridge_layer_from_ground)
+    }
+
+    /// Find the nearest ground-walkable cell to `(x, y)`, searching in expanding rings.
     pub fn nearest_walkable(
         &self,
         x: u16,
@@ -232,10 +292,9 @@ impl PathGrid {
             return Some((x, y));
         }
         for radius in 1..=max_radius {
-            let r: i32 = radius as i32;
-            // Scan the perimeter of the square ring at distance `radius`.
+            let r = radius as i32;
             for d in -r..=r {
-                let candidates: [(i32, i32); 4] = [
+                let candidates = [
                     (x as i32 + d, y as i32 - r),
                     (x as i32 + d, y as i32 + r),
                     (x as i32 - r, y as i32 + d),
@@ -245,8 +304,8 @@ impl PathGrid {
                     if cx < 0 || cy < 0 || cx >= self.width as i32 || cy >= self.height as i32 {
                         continue;
                     }
-                    let cx: u16 = cx as u16;
-                    let cy: u16 = cy as u16;
+                    let cx = cx as u16;
+                    let cy = cy as u16;
                     if self.is_walkable(cx, cy)
                         && (allow == Some((cx, cy))
                             || entity_blocks.map_or(true, |b| !b.contains(&(cx, cy))))
@@ -258,76 +317,44 @@ impl PathGrid {
         }
         None
     }
-}
 
-/// Check if a cell is walkable on either the ground or bridge layer.
-///
-/// Used by move target validation and group destination distribution so that
-/// bridge deck cells (ground-blocked water but bridge-layer walkable) are
-/// accepted as valid destinations.
-pub fn is_any_layer_walkable(
-    grid: &PathGrid,
-    layered: Option<&LayeredPathGrid>,
-    x: u16,
-    y: u16,
-) -> bool {
-    if grid.is_walkable(x, y) {
-        return true;
-    }
-    layered.is_some_and(|lg| lg.is_walkable(x, y, MovementLayer::Bridge))
-}
-
-/// Find the nearest walkable cell on either layer, searching in expanding rings.
-///
-/// Same ring-scan logic as `PathGrid::nearest_walkable` but also considers
-/// bridge-layer walkability via the `LayeredPathGrid`.
-pub fn nearest_walkable_layered(
-    grid: &PathGrid,
-    layered: Option<&LayeredPathGrid>,
-    x: u16,
-    y: u16,
-    max_radius: u16,
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    allow: Option<(u16, u16)>,
-) -> Option<(u16, u16)> {
-    let check = |cx: u16, cy: u16| -> bool {
-        is_any_layer_walkable(grid, layered, cx, cy)
-            && (allow == Some((cx, cy)) || entity_blocks.map_or(true, |b| !b.contains(&(cx, cy))))
-    };
-    if check(x, y) {
-        return Some((x, y));
-    }
-    for radius in 1..=max_radius {
-        let r: i32 = radius as i32;
-        for d in -r..=r {
-            let candidates: [(i32, i32); 4] = [
-                (x as i32 + d, y as i32 - r),
-                (x as i32 + d, y as i32 + r),
-                (x as i32 - r, y as i32 + d),
-                (x as i32 + r, y as i32 + d),
-            ];
-            for (cx, cy) in candidates {
-                if cx < 0 || cy < 0 || cx >= grid.width() as i32 || cy >= grid.height() as i32 {
-                    continue;
-                }
-                if check(cx as u16, cy as u16) {
-                    return Some((cx as u16, cy as u16));
+    /// Find nearest walkable cell on either layer, searching in expanding rings.
+    pub fn nearest_walkable_any_layer(
+        &self,
+        x: u16,
+        y: u16,
+        max_radius: u16,
+        entity_blocks: Option<&BTreeSet<(u16, u16)>>,
+        allow: Option<(u16, u16)>,
+    ) -> Option<(u16, u16)> {
+        let check = |cx: u16, cy: u16| -> bool {
+            self.is_any_layer_walkable(cx, cy)
+                && (allow == Some((cx, cy))
+                    || entity_blocks.map_or(true, |b| !b.contains(&(cx, cy))))
+        };
+        if check(x, y) {
+            return Some((x, y));
+        }
+        for radius in 1..=max_radius {
+            let r = radius as i32;
+            for d in -r..=r {
+                let candidates = [
+                    (x as i32 + d, y as i32 - r),
+                    (x as i32 + d, y as i32 + r),
+                    (x as i32 - r, y as i32 + d),
+                    (x as i32 + r, y as i32 + d),
+                ];
+                for (cx, cy) in candidates {
+                    if cx < 0 || cy < 0 || cx >= self.width as i32 || cy >= self.height as i32 {
+                        continue;
+                    }
+                    if check(cx as u16, cy as u16) {
+                        return Some((cx as u16, cy as u16));
+                    }
                 }
             }
         }
-    }
-    None
-}
-
-impl PathGrid {
-    /// Grid width accessor.
-    pub fn width(&self) -> u16 {
-        self.width
-    }
-
-    /// Grid height accessor.
-    pub fn height(&self) -> u16 {
-        self.height
+        None
     }
 
     /// Build a walkability grid from map cell data and tileset classification.
@@ -335,19 +362,16 @@ impl PathGrid {
     /// Strategy: start with all cells **blocked**, then mark cells that have
     /// valid terrain data (non-water, non-cliff) as walkable. This ensures
     /// cells outside the map bounds are impassable by default.
-    ///
-    /// The TilesetLookup (if available) classifies tiles by their SetName
-    /// from the theater INI — tilesets named "Water" or "Cliff" are impassable.
+    /// No bridge data is populated — use `from_resolved_terrain_with_bridges` for that.
     pub fn from_map_data(
         cells: &[MapCell],
         lookup: Option<&TilesetLookup>,
         map_width: u16,
         map_height: u16,
     ) -> Self {
-        // Start with all cells blocked (unlike `new()` which starts all walkable).
-        let size: usize = map_width as usize * map_height as usize;
-        let mut grid: PathGrid = PathGrid {
-            cells: vec![false; size],
+        let size = map_width as usize * map_height as usize;
+        let mut grid = PathGrid {
+            cells: vec![DEFAULT_BLOCKED_CELL; size],
             width: map_width,
             height: map_height,
         };
@@ -357,41 +381,29 @@ impl PathGrid {
         let mut cliff_count: u32 = 0;
 
         for cell in cells {
-            // Skip true no-tile sentinel cells.
-            // 0x0000FFFF is treated as clear ground (tile 0), not as an absent cell.
             if cell.tile_index < 0 {
                 continue;
             }
-
-            // Bounds check: cells outside the grid dimensions are ignored.
             if cell.rx >= map_width || cell.ry >= map_height {
                 continue;
             }
-
             let tile_id: u16 = if cell.tile_index == 0xFFFF {
                 0
             } else {
                 cell.tile_index as u16
             };
-
-            // Classify terrain type for this tile.
-            let is_water: bool = lookup.map_or(false, |l| l.is_water(tile_id));
-            let is_cliff: bool = lookup.map_or(false, |l| l.is_cliff(tile_id));
-
+            let is_water = lookup.map_or(false, |l| l.is_water(tile_id));
+            let is_cliff = lookup.map_or(false, |l| l.is_cliff(tile_id));
             if is_water {
                 water_count += 1;
-                // Water: do NOT block — per-SpeedType TerrainCostGrid handles
-                // passability (Float/Hover/Amphibious cost>0, ground cost=0).
             }
             if is_cliff {
                 cliff_count += 1;
-                continue; // Cliffs are universally impassable.
+                continue;
             }
-
-            // Mark this cell as walkable.
-            let idx: usize = cell.ry as usize * map_width as usize + cell.rx as usize;
+            let idx = cell.ry as usize * map_width as usize + cell.rx as usize;
             if idx < grid.cells.len() {
-                grid.cells[idx] = true;
+                grid.cells[idx].ground_walkable = true;
                 walkable_count += 1;
             }
         }
@@ -409,138 +421,51 @@ impl PathGrid {
         grid
     }
 
-    /// Build a walkability grid from resolved terrain metadata.
-    ///
-    /// Water cells are marked walkable here — SpeedType-dependent blocking is
-    /// handled by `TerrainCostGrid` (cost=0 blocks ground units in A*).
-    /// Only structural blocks (overlays, terrain objects) and universal blocks
-    /// (cliffs) are rejected at this level.
-    pub fn from_resolved_terrain(terrain: &ResolvedTerrainGrid) -> Self {
-        let size: usize = terrain.width() as usize * terrain.height() as usize;
-        let mut grid = PathGrid {
-            cells: vec![false; size],
-            width: terrain.width(),
-            height: terrain.height(),
-        };
-        let mut walkable_count: u32 = 0;
-        let mut water_count: u32 = 0;
-        let mut cliff_count: u32 = 0;
-        let mut overlay_block_count: u32 = 0;
-        let mut object_block_count: u32 = 0;
-        let mut bridge_deck_count: u32 = 0;
-
-        for cell in terrain.iter() {
-            let idx: usize = cell.ry as usize * terrain.width() as usize + cell.rx as usize;
-            if idx >= grid.cells.len() {
-                continue;
-            }
-            if cell.is_water {
-                water_count += 1;
-            }
-            if cell.overlay_blocks {
-                overlay_block_count += 1;
-                continue;
-            }
-            if cell.terrain_object_blocks {
-                object_block_count += 1;
-                continue;
-            }
-            // Bridge decks override underlying terrain — always walkable.
-            // Units walk on the bridge surface, not the cliff/water below.
-            if cell.has_bridge_deck {
-                bridge_deck_count += 1;
-                grid.cells[idx] = true;
-                walkable_count += 1;
-                continue;
-            }
-            // Cliffs are universally impassable — block in PathGrid.
-            if cell.is_cliff_like {
-                cliff_count += 1;
-                continue;
-            }
-            // Water cells: do NOT block here. The per-SpeedType TerrainCostGrid
-            // handles passability (Float/Hover/Amphibious see cost>0 = passable,
-            // Foot/Track/Wheel see cost=0 = blocked in A*).
-            grid.cells[idx] = true;
-            walkable_count += 1;
-        }
-
-        log::info!(
-            "PathGrid(resolved): {}x{} — {} walkable, {} water, {} cliff, {} overlay-blocked, {} object-blocked, {} bridge-deck",
-            terrain.width(),
-            terrain.height(),
-            walkable_count,
-            water_count,
-            cliff_count,
-            overlay_block_count,
-            object_block_count,
-            bridge_deck_count,
-        );
-
-        grid
-    }
-
-    /// Compute cells that differ between two PathGrids.
-    /// Returns coordinates of cells whose walkability changed.
-    /// Returns `None` if grids have different dimensions (full rebuild needed).
-    pub fn diff_cells(&self, other: &PathGrid) -> Option<Vec<(u16, u16)>> {
-        if self.width != other.width || self.height != other.height {
-            return None;
-        }
-        let w = self.width as usize;
-        let mut changed = Vec::new();
-        for (idx, (&a, &b)) in self.cells.iter().zip(other.cells.iter()).enumerate() {
-            if a != b {
-                changed.push(((idx % w) as u16, (idx / w) as u16));
-            }
-        }
-        Some(changed)
-    }
-
-    /// Mark cells occupied by building footprints as blocked.
-    ///
-    /// Buildings occupy a rectangular footprint (e.g., "2x2", "3x3") centered
-    /// at their cell position. This blocks pathfinding through structures.
-    pub fn block_building_footprint(&mut self, cell_rx: u16, cell_ry: u16, foundation: &str) {
-        // Parse foundation string like "2x2", "3x3", "1x1".
-        let (fw, fh): (u16, u16) = parse_foundation(foundation);
-
-        for dy in 0..fh {
-            for dx in 0..fw {
-                let bx: u16 = cell_rx.wrapping_add(dx);
-                let by: u16 = cell_ry.wrapping_add(dy);
-                self.set_blocked(bx, by, true);
-            }
-        }
-    }
-}
-
-impl LayeredPathGrid {
+    /// Build from resolved terrain without bridge data.
     pub fn from_resolved_terrain(terrain: &ResolvedTerrainGrid) -> Self {
         Self::from_resolved_terrain_with_bridges(terrain, None)
     }
 
+    /// Build from resolved terrain with bridge metadata.
+    ///
+    /// Ground walkability: water cells and bridge deck cells are kept walkable
+    /// even when `ground_walk_blocked` is true — SpeedType-dependent blocking
+    /// is handled by TerrainCostGrid (cost=0 blocks ground units in A*).
+    /// This preserves the behavior of the old flat PathGrid where Float/Hover/
+    /// Amphibious units could path through water via cost > 0.
     pub fn from_resolved_terrain_with_bridges(
         terrain: &ResolvedTerrainGrid,
         bridge_state: Option<&BridgeRuntimeState>,
     ) -> Self {
         let cells = terrain
             .iter()
-            .map(|cell| LayeredPathCell {
-                // Bridge deck cells are NOT ground-walkable by override.
-                // The layered A* routes units onto bridges via the Bridge
-                // layer: Ground → bridgehead (transition) → Bridge deck →
-                // bridgehead (transition) → Ground. Bridges over land have
-                // naturally walkable ground below, so units can walk under.
-                // The non-layered PathGrid still marks deck cells as walkable
-                // for the fallback pathfinder (see PathGrid construction).
-                ground_walkable: !cell.ground_walk_blocked,
+            .map(|cell| PathCell {
+                // Walkability rules (matching old PathGrid::from_resolved_terrain):
+                // - Overlay blocks / terrain object blocks → blocked
+                // - Intact bridge deck → walkable (overrides underlying terrain)
+                // - Destroyed bridge deck → revert to underlying terrain
+                // - Cliff → blocked
+                // - Water → walkable (SpeedType cost=0 blocks ground in A*)
+                // - Everything else → use ground_walk_blocked
+                ground_walkable: if cell.overlay_blocks || cell.terrain_object_blocks {
+                    false
+                } else if cell.has_bridge_deck {
+                    let bridge_intact = bridge_state
+                        .map_or(true, |state| state.is_bridge_walkable(cell.rx, cell.ry));
+                    if bridge_intact {
+                        true
+                    } else {
+                        // Destroyed bridge: revert to underlying terrain walkability.
+                        !cell.is_cliff_like && !cell.ground_walk_blocked
+                    }
+                } else if cell.is_cliff_like {
+                    false
+                } else {
+                    !cell.ground_walk_blocked || cell.is_water
+                },
                 bridge_walkable: bridge_state.map_or(cell.bridge_walkable, |state| {
                     state.is_bridge_walkable(cell.rx, cell.ry)
                 }),
-                // Bridgeheads (has_bridge_deck=false, bridge_transition=true) are
-                // permanent ground-level ramps not tracked by BridgeRuntimeState.
-                // Only gate transition on runtime state for deck cells.
                 transition: bridge_state.map_or(cell.bridge_transition, |state| {
                     cell.bridge_transition
                         && (!cell.has_bridge_deck || state.is_bridge_walkable(cell.rx, cell.ry))
@@ -559,70 +484,38 @@ impl LayeredPathGrid {
         }
     }
 
-    pub fn width(&self) -> u16 {
-        self.width
-    }
-
-    pub fn height(&self) -> u16 {
-        self.height
-    }
-
-    pub fn cell(&self, x: u16, y: u16) -> Option<&LayeredPathCell> {
-        if x >= self.width || y >= self.height {
+    /// Compute cells whose ground walkability differs between two grids.
+    /// Returns `None` if grids have different dimensions (full rebuild needed).
+    pub fn diff_cells(&self, other: &PathGrid) -> Option<Vec<(u16, u16)>> {
+        if self.width != other.width || self.height != other.height {
             return None;
         }
-        self.cells
-            .get(y as usize * self.width as usize + x as usize)
-    }
-
-    pub fn is_walkable(&self, x: u16, y: u16, layer: MovementLayer) -> bool {
-        let Some(cell) = self.cell(x, y) else {
-            return false;
-        };
-        match layer {
-            MovementLayer::Ground => cell.ground_walkable,
-            MovementLayer::Bridge => cell.bridge_walkable,
-            MovementLayer::Air | MovementLayer::Underground => false,
+        let w = self.width as usize;
+        let mut changed = Vec::new();
+        for (idx, (a, b)) in self.cells.iter().zip(other.cells.iter()).enumerate() {
+            if a.ground_walkable != b.ground_walkable {
+                changed.push(((idx % w) as u16, (idx / w) as u16));
+            }
         }
+        Some(changed)
     }
 
-    /// Whether this cell is a bridge transition point (units can switch layers here).
-    pub fn is_transition(&self, x: u16, y: u16) -> bool {
-        self.cell(x, y)
-            .is_some_and(|c| c.is_bridge_transition_cell())
-    }
-
-    pub fn bridge_deck_level(&self, x: u16, y: u16) -> Option<u8> {
-        self.cell(x, y)
-            .and_then(LayeredPathCell::bridge_deck_level_if_any)
-    }
-
-    pub fn can_enter_bridge_layer_from_ground(&self, x: u16, y: u16) -> bool {
-        self.cell(x, y)
-            .is_some_and(LayeredPathCell::can_enter_bridge_layer_from_ground)
-    }
-
-    /// Mark ground-layer cells occupied by a building footprint as blocked.
-    ///
-    /// Mirrors `PathGrid::block_building_footprint` so both grids stay in sync.
+    /// Mark cells occupied by a building footprint as blocked (ground layer).
     /// Buildings only block the ground layer — bridge decks above are unaffected.
     pub fn block_building_footprint(&mut self, cell_rx: u16, cell_ry: u16, foundation: &str) {
         let (fw, fh): (u16, u16) = parse_foundation(foundation);
         for dy in 0..fh {
             for dx in 0..fw {
-                let bx: u16 = cell_rx.wrapping_add(dx);
-                let by: u16 = cell_ry.wrapping_add(dy);
-                if bx < self.width && by < self.height {
-                    let idx: usize = by as usize * self.width as usize + bx as usize;
-                    self.cells[idx].ground_walkable = false;
-                }
+                let bx = cell_rx.wrapping_add(dx);
+                let by = cell_ry.wrapping_add(dy);
+                self.set_blocked(bx, by, true);
             }
         }
     }
 
-    /// Construct from raw cell data (test helper and incremental zone updates).
+    /// Construct from raw cell data (test helper).
     #[cfg(test)]
-    pub fn from_cells(cells: Vec<LayeredPathCell>, width: u16, height: u16) -> Self {
+    pub fn from_cells(cells: Vec<PathCell>, width: u16, height: u16) -> Self {
         Self {
             cells,
             width,
@@ -1399,12 +1292,12 @@ fn layered_state_index(width: usize, x: u16, y: u16, layer: MovementLayer) -> us
 }
 
 fn goal_layers_for(
-    grid: &LayeredPathGrid,
+    grid: &PathGrid,
     start_layer: MovementLayer,
     goal: (u16, u16),
 ) -> Vec<MovementLayer> {
-    let ground = grid.is_walkable(goal.0, goal.1, MovementLayer::Ground);
-    let bridge = grid.is_walkable(goal.0, goal.1, MovementLayer::Bridge);
+    let ground = grid.is_walkable_on_layer(goal.0, goal.1, MovementLayer::Ground);
+    let bridge = grid.is_walkable_on_layer(goal.0, goal.1, MovementLayer::Bridge);
     match (ground, bridge, start_layer) {
         (true, true, MovementLayer::Bridge) => vec![MovementLayer::Bridge, MovementLayer::Ground],
         (true, true, _) => vec![MovementLayer::Ground, MovementLayer::Bridge],
@@ -1453,8 +1346,7 @@ fn reconstruct_layered_path(
 }
 
 pub fn find_layered_path(
-    grid: &LayeredPathGrid,
-    path_grid: Option<&PathGrid>,
+    grid: &PathGrid,
     ground_blocks: Option<&BTreeSet<(u16, u16)>>,
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     start: (u16, u16),
@@ -1465,14 +1357,14 @@ pub fn find_layered_path(
     if !matches!(start_layer, MovementLayer::Ground | MovementLayer::Bridge) {
         return None;
     }
-    let start_layer = if grid.is_walkable(start.0, start.1, start_layer) {
+    let start_layer = if grid.is_walkable_on_layer(start.0, start.1, start_layer) {
         start_layer
     } else if start_layer == MovementLayer::Bridge
-        && grid.is_walkable(start.0, start.1, MovementLayer::Ground)
+        && grid.is_walkable_on_layer(start.0, start.1, MovementLayer::Ground)
     {
         MovementLayer::Ground
     } else if start_layer == MovementLayer::Ground
-        && grid.is_walkable(start.0, start.1, MovementLayer::Bridge)
+        && grid.is_walkable_on_layer(start.0, start.1, MovementLayer::Bridge)
     {
         MovementLayer::Bridge
     } else {
@@ -1533,7 +1425,7 @@ pub fn find_layered_path(
             } else {
                 MovementLayer::Ground
             };
-            if grid.is_walkable(cx, cy, other) {
+            if grid.is_walkable_on_layer(cx, cy, other) {
                 let other_idx = layered_state_index(w, cx, cy, other);
                 let tentative_g = g_cost[state_idx] + CARDINAL_COST;
                 if tentative_g < g_cost[other_idx] {
@@ -1553,17 +1445,8 @@ pub fn find_layered_path(
             }
             let nx = nx_i as u16;
             let ny = ny_i as u16;
-            if !grid.is_walkable(nx, ny, layer) {
+            if !grid.is_walkable_on_layer(nx, ny, layer) {
                 continue;
-            }
-            // Ground-layer steps must also pass PathGrid (building footprints).
-            // Bridge-layer steps skip this — buildings can't be on bridges.
-            if layer == MovementLayer::Ground {
-                if let Some(pg) = path_grid {
-                    if !pg.is_walkable(nx, ny) {
-                        continue;
-                    }
-                }
             }
             // Entity blocking — layer-separated so bridge units don't block
             // ground pathfinding and vice versa.
@@ -1579,17 +1462,13 @@ pub fn find_layered_path(
             }
             // Reuse bounds-checked nx/ny: (cx+dx, cy) = (nx, cy), (cx, cy+dy) = (cx, ny).
             if is_diagonal {
-                if !grid.is_walkable(nx, cy, layer) || !grid.is_walkable(cx, ny, layer) {
+                if !grid.is_walkable_on_layer(nx, cy, layer)
+                    || !grid.is_walkable_on_layer(cx, ny, layer)
+                {
                     continue;
                 }
-                // Also check PathGrid for diagonal corner cells on ground layer.
+                // Diagonal corners must also be passable for this SpeedType (ground layer).
                 if layer == MovementLayer::Ground {
-                    if let Some(pg) = path_grid {
-                        if !pg.is_walkable(nx, cy) || !pg.is_walkable(cx, ny) {
-                            continue;
-                        }
-                    }
-                    // Diagonal corners must also be passable for this SpeedType.
                     if let Some(tc) = terrain_costs {
                         if tc.cost_at(nx, cy) == 0 || tc.cost_at(cx, ny) == 0 {
                             continue;

@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, VecDeque};
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_build;
 use super::zone_hierarchy::SuperZoneMap;
-use super::{LayeredPathGrid, PathGrid};
+use super::PathGrid;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::sim::movement::locomotor::MovementLayer;
@@ -270,18 +270,16 @@ impl ZoneGrid {
     /// Build zone maps for all non-trivial categories from terrain data.
     pub fn build(
         path_grid: &PathGrid,
-        layered_grid: Option<&LayeredPathGrid>,
         terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
         width: u16,
         height: u16,
     ) -> Self {
-        Self::build_with_terrain(path_grid, layered_grid, terrain_costs, None, width, height)
+        Self::build_with_terrain(path_grid, terrain_costs, None, width, height)
     }
 
     /// Build zone maps using resolved terrain passability when available.
     pub fn build_with_terrain(
         path_grid: &PathGrid,
-        layered_grid: Option<&LayeredPathGrid>,
         terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
         width: u16,
@@ -297,7 +295,6 @@ impl ZoneGrid {
 
             let (zone_map, adj) = zone_build::build_zone_map_with_terrain(
                 path_grid,
-                layered_grid,
                 cost_grid,
                 resolved_terrain,
                 cat,

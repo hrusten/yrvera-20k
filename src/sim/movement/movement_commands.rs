@@ -15,7 +15,7 @@ use crate::sim::components::MovementTarget;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_map::ZoneCategory;
-use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
+use crate::sim::pathfinding::PathGrid;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::movement_path::{
@@ -71,7 +71,6 @@ pub fn issue_move_command(
     issue_move_command_with_layered(
         entities,
         grid,
-        None,
         entity_id,
         target,
         speed,
@@ -142,7 +141,6 @@ pub fn issue_direct_move(
 pub fn issue_move_command_with_layered(
     entities: &mut EntityStore,
     grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     entity_id: u64,
     target: (u16, u16),
     speed: SimFixed,
@@ -168,8 +166,7 @@ pub fn issue_move_command_with_layered(
     let layered_pathing = entity
         .locomotor
         .as_ref()
-        .zip(layered_grid)
-        .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg, entity.on_bridge));
+        .is_some_and(|loco| supports_layered_bridge_pathing(loco, grid, entity.on_bridge));
     let merged_entity_blocks = merge_path_blocks(
         entity_blocks,
         resolved_terrain,
@@ -180,7 +177,6 @@ pub fn issue_move_command_with_layered(
         (!merged_entity_blocks.is_empty()).then_some(&merged_entity_blocks);
     let Some(effective_target) = resolve_requested_move_goal(
         grid,
-        layered_grid,
         target,
         merged_entity_blocks_ref,
         movement_zone,
@@ -225,7 +221,6 @@ pub fn issue_move_command_with_layered(
                 let Some((appended, appended_layers)) = find_move_path(
                     PathfindingContext {
                         path_grid: Some(grid),
-                        layered_grid,
                         zone_grid: None,
                         resolved_terrain,
                     },
@@ -267,7 +262,6 @@ pub fn issue_move_command_with_layered(
     let Some((path, path_layers)) = find_move_path(
         PathfindingContext {
             path_grid: Some(grid),
-            layered_grid,
             zone_grid: None,
             resolved_terrain,
         },

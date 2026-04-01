@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::sim::movement::bump_crush::MAX_INFANTRY_PER_CELL;
-use crate::sim::pathfinding::{LayeredPathGrid, PathGrid, is_any_layer_walkable};
+use crate::sim::pathfinding::PathGrid;
 
 /// Maximum radius (in cells) for spreading unit destinations around the click point.
 /// A radius of 12 covers a diamond of ~312 cells — enough for any realistic selection.
@@ -33,7 +33,6 @@ const MAX_GROUP_SPREAD_RADIUS: u16 = 12;
 /// Returns `Vec<(entity_id, rx, ry)>` with one entry per input unit.
 pub fn distribute_group_destinations(
     grid: &PathGrid,
-    layered: Option<&LayeredPathGrid>,
     center: (u16, u16),
     vehicle_ids: &[u64],
     infantry_ids: &[u64],
@@ -57,7 +56,6 @@ pub fn distribute_group_destinations(
             &ring_cells,
             &mut ring_iter_idx,
             grid,
-            layered,
             &claimed_vehicle,
             &infantry_counts,
         )
@@ -86,7 +84,6 @@ pub fn distribute_group_destinations(
                 &ring_cells,
                 &mut inf_ring_idx,
                 grid,
-                layered,
                 &claimed_vehicle,
                 &infantry_counts,
             )
@@ -108,14 +105,13 @@ fn find_next_vehicle_cell(
     ring_cells: &[(u16, u16)],
     start_idx: &mut usize,
     grid: &PathGrid,
-    layered: Option<&LayeredPathGrid>,
     claimed_vehicle: &BTreeSet<(u16, u16)>,
     infantry_counts: &BTreeMap<(u16, u16), usize>,
 ) -> Option<(u16, u16)> {
     while *start_idx < ring_cells.len() {
         let cell: (u16, u16) = ring_cells[*start_idx];
         *start_idx += 1;
-        if is_any_layer_walkable(grid, layered, cell.0, cell.1)
+        if grid.is_any_layer_walkable(cell.0, cell.1)
             && !claimed_vehicle.contains(&cell)
             && !infantry_counts.contains_key(&cell)
         {
@@ -131,14 +127,13 @@ fn find_next_infantry_cell(
     ring_cells: &[(u16, u16)],
     start_idx: &mut usize,
     grid: &PathGrid,
-    layered: Option<&LayeredPathGrid>,
     claimed_vehicle: &BTreeSet<(u16, u16)>,
     infantry_counts: &BTreeMap<(u16, u16), usize>,
 ) -> Option<(u16, u16)> {
     while *start_idx < ring_cells.len() {
         let cell: (u16, u16) = ring_cells[*start_idx];
         *start_idx += 1;
-        if is_any_layer_walkable(grid, layered, cell.0, cell.1) && !claimed_vehicle.contains(&cell)
+        if grid.is_any_layer_walkable(cell.0, cell.1) && !claimed_vehicle.contains(&cell)
         {
             let count: usize = infantry_counts.get(&cell).copied().unwrap_or(0);
             if count < MAX_INFANTRY_PER_CELL {
@@ -219,14 +214,14 @@ mod tests {
     #[test]
     fn test_single_vehicle_gets_center() {
         let grid: PathGrid = PathGrid::new(20, 20);
-        let result = distribute_group_destinations(&grid, None, (10, 10), &[1], &[]);
+        let result = distribute_group_destinations(&grid, (10, 10), &[1], &[]);
         assert_eq!(result, vec![(1, 10, 10)]);
     }
 
     #[test]
     fn test_two_vehicles_get_unique_cells() {
         let grid: PathGrid = PathGrid::new(20, 20);
-        let result = distribute_group_destinations(&grid, None, (10, 10), &[1, 2], &[]);
+        let result = distribute_group_destinations(&grid, (10, 10), &[1, 2], &[]);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], (1, 10, 10), "First vehicle gets center");
         assert_ne!(
@@ -239,7 +234,7 @@ mod tests {
     #[test]
     fn test_three_infantry_share_center() {
         let grid: PathGrid = PathGrid::new(20, 20);
-        let result = distribute_group_destinations(&grid, None, (10, 10), &[], &[1, 2, 3]);
+        let result = distribute_group_destinations(&grid, (10, 10), &[], &[1, 2, 3]);
         assert_eq!(result.len(), 3);
         // All three should get the center cell (sub-cell packing).
         for &(_, rx, ry) in &result {
@@ -250,7 +245,7 @@ mod tests {
     #[test]
     fn test_four_infantry_overflow_to_next_cell() {
         let grid: PathGrid = PathGrid::new(20, 20);
-        let result = distribute_group_destinations(&grid, None, (10, 10), &[], &[1, 2, 3, 4]);
+        let result = distribute_group_destinations(&grid, (10, 10), &[], &[1, 2, 3, 4]);
         assert_eq!(result.len(), 4);
         // First 3 at center.
         for i in 0..3 {
@@ -272,7 +267,7 @@ mod tests {
     #[test]
     fn test_mixed_vehicles_and_infantry() {
         let grid: PathGrid = PathGrid::new(20, 20);
-        let result = distribute_group_destinations(&grid, None, (10, 10), &[1, 2], &[3, 4, 5]);
+        let result = distribute_group_destinations(&grid, (10, 10), &[1, 2], &[3, 4, 5]);
         assert_eq!(result.len(), 5);
         // Vehicles get unique cells.
         let v1: (u16, u16) = (result[0].1, result[0].2);
@@ -289,7 +284,7 @@ mod tests {
     fn test_unwalkable_center_spreads_to_walkable() {
         let mut grid: PathGrid = PathGrid::new(20, 20);
         grid.set_blocked(10, 10, true);
-        let result = distribute_group_destinations(&grid, None, (10, 10), &[1, 2], &[]);
+        let result = distribute_group_destinations(&grid, (10, 10), &[1, 2], &[]);
         // Neither vehicle should be at the unwalkable center.
         for &(_, rx, ry) in &result {
             assert_ne!((rx, ry), (10, 10), "Should not assign to unwalkable cell");
@@ -301,7 +296,7 @@ mod tests {
         let grid: PathGrid = PathGrid::new(30, 30);
         let vehicles: Vec<u64> = (1..=10).collect();
         let infantry: Vec<u64> = (11..=25).collect();
-        let result = distribute_group_destinations(&grid, None, (15, 15), &vehicles, &infantry);
+        let result = distribute_group_destinations(&grid, (15, 15), &vehicles, &infantry);
         assert_eq!(result.len(), 25, "All 25 units should get assignments");
         // All vehicle cells should be unique.
         let vehicle_cells: BTreeSet<(u16, u16)> =
@@ -314,8 +309,8 @@ mod tests {
         let grid: PathGrid = PathGrid::new(20, 20);
         let v: Vec<u64> = vec![1, 2, 3];
         let i: Vec<u64> = vec![4, 5, 6, 7];
-        let r1 = distribute_group_destinations(&grid, None, (10, 10), &v, &i);
-        let r2 = distribute_group_destinations(&grid, None, (10, 10), &v, &i);
+        let r1 = distribute_group_destinations(&grid, (10, 10), &v, &i);
+        let r2 = distribute_group_destinations(&grid, (10, 10), &v, &i);
         assert_eq!(r1, r2, "Same inputs must produce same outputs");
     }
 

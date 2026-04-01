@@ -92,43 +92,52 @@ pub const ZONE_LAYER_COUNT: usize = 13;
 /// Number of terrain types (columns) in the matrix.
 pub const TERRAIN_TYPE_COUNT: usize = 8;
 
-/// The 13x8 passability matrix from the original engine.
+/// The 13x8 passability matrix, adapted from the original engine (0x82A594).
 ///
-/// Rows = zone layers (passability profiles), Columns = terrain land types.
-/// Values: 1 = passable, 2 = blocked, 3 = impassable.
+/// Rows = MovementZone index (0-12). Columns = our LandType enum (0-7).
+/// Values: 1 = passable, 2 = blocked, 3 = impassable (sentinel).
 ///
-/// Terrain types (columns):
-///   0 = Clear, 1 = Road/Paved, 2 = Rough, 3 = Beach/Shore,
-///   4 = Water, 5 = Tiberium/Weeds, 6 = Railroad, 7 = Rock/Impassable
+/// The original engine uses 8 "ZoneType" columns assigned by RecalcZoneType
+/// (0x483C80). Our LandType columns don't map 1:1 to those ZoneTypes, so the
+/// matrix values are remapped to produce identical passability decisions:
 ///
-/// Zone layers (rows): see `zone_layer_for_speed_type()` for mapping.
+///   Our col → Original ZoneType used for values
+///   0 Clear    → 0 Ground     (binary col 0)
+///   1 Road     → 1 Road       (binary col 1 — for road-overlay cells)
+///   2 Rough    → 0 Ground     (binary col 0 — Rough terrain = Ground in original)
+///   3 Beach    → 3 Beach      (binary col 3)
+///   4 Water    → 4 Water      (binary col 4)
+///   5 Tiberium → 6 Impassable (binary col 6 — tib overlay = Impassable)
+///   6 Railroad → 0 Ground     (binary col 0 — Railroad terrain = Ground in original)
+///   7 Rock     → 6 Impassable (binary col 6 — Rock terrain = Impassable)
 pub static PASSABILITY_MATRIX: [[u8; TERRAIN_TYPE_COUNT]; ZONE_LAYER_COUNT] = [
-    // Zone  0: clear only (most restricted wheeled)
-    [1, 2, 2, 2, 2, 2, 2, 3],
-    // Zone  1: clear + road (wheel on roads)
-    [1, 1, 2, 2, 2, 2, 2, 3],
-    // Zone  2: clear + road + rough (tracked/infantry)
-    [1, 1, 1, 2, 2, 2, 2, 3],
-    // Zone  3: clear + road + rough + beach + water + tiberium (amphibious)
-    [1, 1, 1, 1, 1, 1, 2, 3],
-    // Zone  4: clear + road + beach + water (water-capable, not rough)
-    [1, 1, 2, 1, 1, 2, 2, 3],
-    // Zone  5: clear + railroad only
-    [1, 2, 2, 2, 2, 2, 1, 3],
-    // Zone  6: clear + road + rough + railroad (ground + rail)
-    [1, 1, 1, 2, 2, 2, 1, 3],
-    // Zone  7: clear + tiberium only
-    [1, 2, 2, 2, 2, 1, 2, 3],
-    // Zone  8: clear + road + rough + tiberium (ground + tiberium)
-    [1, 1, 1, 2, 2, 1, 2, 3],
-    // Zone  9: everything except rock (hover/fly)
-    [1, 1, 1, 1, 1, 1, 1, 3],
-    // Zone 10: water only (ships)
-    [2, 2, 2, 2, 1, 2, 2, 3],
-    // Zone 11: water + beach (naval landing)
-    [2, 2, 2, 1, 1, 2, 2, 3],
-    // Zone 12: clear + road + rough (infantry/tracked duplicate)
-    [1, 1, 1, 2, 2, 2, 2, 3],
+    //                               Clr Rd  Rgh Bch Wtr Tib RR  Rck
+    // Row  0 Normal:
+    [1, 2, 1, 2, 2, 2, 1, 2],
+    // Row  1 Crusher:
+    [1, 1, 1, 2, 2, 2, 1, 2],
+    // Row  2 Destroyer:
+    [1, 1, 1, 2, 2, 2, 1, 2],
+    // Row  3 AmphibiousDestroyer:
+    [1, 1, 1, 1, 1, 2, 1, 2],
+    // Row  4 AmphibiousCrusher:
+    [1, 1, 1, 1, 1, 2, 1, 2],
+    // Row  5 Amphibious:
+    [1, 2, 1, 1, 1, 2, 1, 2],
+    // Row  6 Subterranean (can dig through rock and tiberium):
+    [1, 1, 1, 2, 2, 1, 1, 1],
+    // Row  7 Infantry:
+    [1, 2, 1, 2, 2, 2, 1, 2],
+    // Row  8 InfantryDestroyer:
+    [1, 1, 1, 2, 2, 2, 1, 2],
+    // Row  9 Fly (everything passable):
+    [1, 1, 1, 1, 1, 1, 1, 1],
+    // Row 10 Water:
+    [2, 2, 2, 2, 1, 2, 2, 2],
+    // Row 11 WaterBeach:
+    [2, 2, 2, 1, 1, 2, 2, 2],
+    // Row 12 CrusherAll:
+    [1, 1, 1, 2, 2, 2, 1, 2],
 ];
 
 /// Map a SpeedType to its zone layer index (row in the passability matrix).
@@ -206,12 +215,18 @@ mod tests {
     }
 
     #[test]
-    fn rock_impassable_for_all() {
-        // Terrain type 7 (Rock) should be impassable for all zone layers.
+    fn rock_blocked_except_subterranean_and_fly() {
+        // Rock terrain maps to Impassable ZoneType in the original engine.
+        // Subterranean (row 6) and Fly (row 9) can enter; all others blocked.
         for layer in 0..ZONE_LAYER_COUNT {
+            let expected = if layer == 6 || layer == 9 {
+                PASS_OK
+            } else {
+                PASS_BLOCKED
+            };
             assert_eq!(
-                PASSABILITY_MATRIX[layer][7], PASS_IMPASSABLE,
-                "Zone layer {} should be impassable on Rock terrain",
+                PASSABILITY_MATRIX[layer][7], expected,
+                "Zone layer {} on Rock terrain",
                 layer
             );
         }
@@ -227,25 +242,26 @@ mod tests {
     }
 
     #[test]
-    fn amphibious_passes_land_and_water() {
-        // Zone 3 (amphibious) passes clear, road, rough, beach, water, tiberium.
+    fn amphibious_destroyer_passes_land_and_water() {
+        // Zone 3 (AmphibiousDestroyer) passes clear, road, rough, beach, water.
+        // Tiberium is Impassable in original engine — blocked for AmphibiousDestroyer.
         let row = PASSABILITY_MATRIX[3];
         assert_eq!(row[0], PASS_OK); // clear
         assert_eq!(row[1], PASS_OK); // road
         assert_eq!(row[2], PASS_OK); // rough
         assert_eq!(row[3], PASS_OK); // beach
         assert_eq!(row[4], PASS_OK); // water
-        assert_eq!(row[5], PASS_OK); // tiberium
-        assert_eq!(row[6], PASS_BLOCKED); // railroad blocked
+        assert_eq!(row[5], PASS_BLOCKED); // tiberium = impassable zone type
+        assert_eq!(row[6], PASS_OK); // railroad = ground terrain
     }
 
     #[test]
     fn wheel_restricted() {
-        // Zone 1 (wheel) only passes clear + road.
+        // Zone 1 (Crusher/wheel) passes clear, road, rough, railroad — all Ground-type.
         let row = PASSABILITY_MATRIX[1];
         assert_eq!(row[0], PASS_OK); // clear
         assert_eq!(row[1], PASS_OK); // road
-        assert_eq!(row[2], PASS_BLOCKED); // rough blocked
+        assert_eq!(row[2], PASS_OK); // rough = ground
     }
 
     #[test]
@@ -261,7 +277,8 @@ mod tests {
         assert_eq!(zone_layer_for_speed_type(SpeedType::Float), 9);
         assert!(is_passable_for_speed_type(0, SpeedType::Float)); // clear
         assert!(is_passable_for_speed_type(4, SpeedType::Float)); // water
-        assert!(!is_passable_for_speed_type(7, SpeedType::Float)); // rock
+        // Rock maps to Impassable ZoneType — Fly/hover CAN enter (row 9 col 6 = 1).
+        assert!(is_passable_for_speed_type(7, SpeedType::Float)); // rock passable for hover
     }
 
     #[test]
@@ -405,11 +422,16 @@ mod tests {
             SpeedType::Track
         ));
 
-        // Rock (TMP byte 7 → LandType::Rock = 7) should be impassable for all.
+        // Rock (TMP byte 7 → LandType::Rock = 7) maps to Impassable ZoneType.
+        // Hover/Fly (row 9) CAN enter, but ground units cannot.
         let rock = tmp_terrain_to_land_type(7);
+        assert!(is_passable_for_speed_type(
+            rock.as_index(),
+            SpeedType::Float // Float → row 9 (hover) → passable on Impassable terrain
+        ));
         assert!(!is_passable_for_speed_type(
             rock.as_index(),
-            SpeedType::Float
+            SpeedType::Track // Track → row 2 → blocked on Impassable terrain
         ));
     }
 }

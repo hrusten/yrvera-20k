@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use super::passability;
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneCategory, ZoneId, ZoneInfo, ZoneMap};
-use super::{LayeredPathGrid, PathGrid};
+use super::PathGrid;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::movement::locomotor::MovementLayer;
 
@@ -33,13 +33,12 @@ pub(crate) const NEIGHBORS: [(i32, i32, bool); 8] = [
 #[allow(dead_code)]
 pub(crate) fn build_zone_map(
     path_grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     cost_grid: Option<&TerrainCostGrid>,
     cat: ZoneCategory,
     width: u16,
     height: u16,
 ) -> (ZoneMap, ZoneAdjacency) {
-    build_zone_map_with_terrain(path_grid, layered_grid, cost_grid, None, cat, width, height)
+    build_zone_map_with_terrain(path_grid, cost_grid, None, cat, width, height)
 }
 
 /// Build a zone map using the passability matrix when resolved terrain is available.
@@ -50,7 +49,6 @@ pub(crate) fn build_zone_map(
 /// checks when resolved terrain is not available.
 pub(crate) fn build_zone_map_with_terrain(
     path_grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     cost_grid: Option<&TerrainCostGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     cat: ZoneCategory,
@@ -93,7 +91,6 @@ pub(crate) fn build_zone_map_with_terrain(
                 path_grid,
                 cost_grid,
                 resolved_terrain,
-                layered_grid,
                 MovementLayer::Ground,
             );
             next_zone += 1;
@@ -107,25 +104,23 @@ pub(crate) fn build_zone_map_with_terrain(
         cat,
         ZoneCategory::Land | ZoneCategory::Infantry | ZoneCategory::Amphibious
     ) {
-        if let Some(lg) = layered_grid {
-            let mut bz = vec![ZONE_INVALID; total];
-            for ry in 0..height {
-                for rx in 0..width {
-                    let idx = ry as usize * width as usize + rx as usize;
-                    if bz[idx] != ZONE_INVALID {
-                        continue;
-                    }
-                    if !lg.is_walkable(rx, ry, MovementLayer::Bridge) {
-                        continue;
-                    }
-                    flood_fill_bridge(rx, ry, next_zone, &mut bz, width, height, lg);
-                    next_zone += 1;
+        let mut bz = vec![ZONE_INVALID; total];
+        let mut any_bridge = false;
+        for ry in 0..height {
+            for rx in 0..width {
+                let idx = ry as usize * width as usize + rx as usize;
+                if bz[idx] != ZONE_INVALID {
+                    continue;
                 }
+                if !path_grid.is_walkable_on_layer(rx, ry, MovementLayer::Bridge) {
+                    continue;
+                }
+                flood_fill_bridge(rx, ry, next_zone, &mut bz, width, height, path_grid);
+                next_zone += 1;
+                any_bridge = true;
             }
-            Some(bz)
-        } else {
-            None
         }
+        if any_bridge { Some(bz) } else { None }
     } else {
         None
     };
@@ -136,7 +131,7 @@ pub(crate) fn build_zone_map_with_terrain(
     let adj = extract_adjacency(
         &zone_ids,
         bridge_zone_ids.as_deref(),
-        layered_grid,
+        path_grid,
         width,
         height,
         zone_count,
@@ -239,7 +234,6 @@ pub(crate) fn flood_fill(
     path_grid: &PathGrid,
     cost_grid: Option<&TerrainCostGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    layered_grid: Option<&LayeredPathGrid>,
     layer: MovementLayer,
 ) {
     let mut queue = VecDeque::new();
@@ -283,11 +277,9 @@ pub(crate) fn flood_fill(
             // never claims two cells are mutually reachable when A* would fail due to
             // a cliff. Only checked on the ground layer for land-based categories.
             if layer == MovementLayer::Ground {
-                if let Some(lg) = layered_grid {
-                    if let (Some(cur), Some(nbr)) = (lg.cell(cx, cy), lg.cell(nx, ny)) {
-                        if (cur.ground_level as i16 - nbr.ground_level as i16).abs() > 1 {
-                            continue;
-                        }
+                if let (Some(cur), Some(nbr)) = (path_grid.cell(cx, cy), path_grid.cell(nx, ny)) {
+                    if (cur.ground_level as i16 - nbr.ground_level as i16).abs() > 1 {
+                        continue;
                     }
                 }
             }
@@ -306,7 +298,7 @@ pub(crate) fn flood_fill_bridge(
     zone_ids: &mut [ZoneId],
     width: u16,
     height: u16,
-    lg: &LayeredPathGrid,
+    path_grid: &PathGrid,
 ) {
     let mut queue = VecDeque::new();
     let start_idx = start_y as usize * width as usize + start_x as usize;
@@ -327,7 +319,7 @@ pub(crate) fn flood_fill_bridge(
             if zone_ids[n_idx] != ZONE_INVALID {
                 continue;
             }
-            if !lg.is_walkable(nx, ny, MovementLayer::Bridge) {
+            if !path_grid.is_walkable_on_layer(nx, ny, MovementLayer::Bridge) {
                 continue;
             }
 
@@ -336,8 +328,8 @@ pub(crate) fn flood_fill_bridge(
                 let ax = (cx as i32 + dx) as u16;
                 let bx = cx;
                 let by = (cy as i32 + dy) as u16;
-                if !lg.is_walkable(ax, cy, MovementLayer::Bridge)
-                    || !lg.is_walkable(bx, by, MovementLayer::Bridge)
+                if !path_grid.is_walkable_on_layer(ax, cy, MovementLayer::Bridge)
+                    || !path_grid.is_walkable_on_layer(bx, by, MovementLayer::Bridge)
                 {
                     continue;
                 }
@@ -404,7 +396,7 @@ pub(crate) fn compute_zone_info(
 pub(crate) fn extract_adjacency(
     ground_zones: &[ZoneId],
     bridge_zones: Option<&[ZoneId]>,
-    layered_grid: Option<&LayeredPathGrid>,
+    path_grid: &PathGrid,
     width: u16,
     height: u16,
     zone_count: u16,
@@ -462,12 +454,10 @@ pub(crate) fn extract_adjacency(
                 }
 
                 // Transition edge: bridge zone <-> ground zone at transition cells.
-                if let Some(lg) = layered_grid {
-                    if lg.is_transition(rx, ry) {
-                        let gz = ground_zones[idx];
-                        if gz != ZONE_INVALID && z != gz {
-                            add_adjacency(&mut adj_sets, z, gz);
-                        }
+                if path_grid.is_transition(rx, ry) {
+                    let gz = ground_zones[idx];
+                    if gz != ZONE_INVALID && z != gz {
+                        add_adjacency(&mut adj_sets, z, gz);
                     }
                 }
             }

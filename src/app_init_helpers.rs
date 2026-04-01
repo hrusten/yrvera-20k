@@ -367,7 +367,6 @@ pub(crate) fn spawn_entities(
                 .collect()
         })
         .unwrap_or_default();
-    sim.refresh_terrain_views();
     if !map_data.entities.is_empty() {
         let _count: u32 = sim.spawn_from_map_with_resolved(
             &map_data.entities,
@@ -377,8 +376,6 @@ pub(crate) fn spawn_entities(
         );
         let miner_count: usize = sim.entities.values().filter(|e| e.miner.is_some()).count();
         log::info!("Miner components attached: {}", miner_count);
-        // Sync building footprints to LayeredPathGrid so layered A* respects buildings.
-        sim.sync_building_footprints_to_layered_grid(rules);
     }
     let (unit_atlas, shp_atlas) = build_entity_atlases(
         &sim,

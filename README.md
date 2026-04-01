@@ -1,4 +1,4 @@
-# Vera 20k 
+# VERA20k 
 
 **Early development**
 
@@ -14,22 +14,18 @@ This project stands on the shoulders of giants. Thanks to OpenRA team, XCC mixer
 
 ## Project Goals
 
-### 1. Faithful Engine Replacement
+<small>
 
+**1. Faithful Engine Replacement**
 A drop-in replacement for `gamemd.exe` that stays 100% true to the original Westwood RA2 visual fidelity, atmosphere, and gameplay.
 
-### 2. Built for Scale
-
+**2. Built for Scale**
 Constructed from the ground up for large multiplayer — targeting support for up to **30 players** and **20,000 units** on significantly bigger maps.
 
-
-
-### 3. Integrated Multiplayer Client
-
+**3. Integrated Multiplayer Client**
 A multiplayer client embedded directly into the game, supporting both original RA2:YR and Allied Uprising. Built to handle 30-player lobbies and designed to minimize cheating, lag, and toxic behavior.
 
-### 4. Allied Uprising
-
+**4. Allied Uprising**
 A full game built on the Vera 20k engine using RA2:YR game assets. Same Westwood RA2 atmosphere and core gameplay, but with added strategic depth tailored for large team games, co-op, and FFA.
 
 All new art assets stay true to the original Westwood RA2 style.
@@ -47,6 +43,8 @@ Feature scope is still being defined:
 - New map features and systems
 - Camera zoom
 - Advanced minimap
+
+</small>
 
 
 ## Current Status

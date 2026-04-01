@@ -302,7 +302,6 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
     let terrain = water_terrain(32, 32);
     let grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain.clone());
-    sim.refresh_terrain_views();
     sim.terrain_costs.insert(
         SpeedType::Float,
         TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Float),

@@ -26,7 +26,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed::{self, TerrainSpeedConfig};
 use crate::sim::pathfinding::zone_map::{ZoneCategory, ZoneGrid};
-use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, dt_from_tick_ms, fixed_distance,
@@ -100,8 +100,6 @@ fn handle_path_exhaustion(
     ctx: PathfindingContext<'_>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    layered_grid: Option<&LayeredPathGrid>,
-    path_grid: Option<&PathGrid>,
     path_delay_ticks: u16,
     sim_tick: u64,
 ) -> PathExhaustionResult {
@@ -121,8 +119,8 @@ fn handle_path_exhaustion(
         let layered_pathing_for_seg = snap
             .locomotor
             .as_ref()
-            .zip(layered_grid)
-            .is_some_and(|(loco, lg)| supports_layered_bridge_pathing(loco, lg, snap.on_bridge));
+            .zip(ctx.path_grid)
+            .is_some_and(|(loco, pg)| supports_layered_bridge_pathing(loco, pg, snap.on_bridge));
         // DIAGNOSTIC: log segment repath when on bridge layer
         if active_layer == MovementLayer::Bridge {
             log::warn!(
@@ -142,7 +140,7 @@ fn handle_path_exhaustion(
             .as_ref()
             .map(|l| ZoneCategory::from_movement_zone(l.movement_zone))
             .unwrap_or(ZoneCategory::Land);
-        if path_grid.is_some() {
+        if ctx.path_grid.is_some() {
             if let Some((new_path, new_layers)) = find_move_path(
                 ctx,
                 layered_pathing_for_seg,
@@ -281,7 +279,6 @@ fn apply_subcell_redirect(
 pub fn tick_movement_with_grids(
     entities: &mut EntityStore,
     path_grid: Option<&PathGrid>,
-    layered_grid: Option<&LayeredPathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     alliances: &HouseAllianceMap,
     rng: &mut SimRng,
@@ -301,7 +298,6 @@ pub fn tick_movement_with_grids(
     }
     let ctx = PathfindingContext {
         path_grid,
-        layered_grid,
         zone_grid,
         resolved_terrain,
     };
@@ -407,8 +403,6 @@ pub fn tick_movement_with_grids(
                 ctx,
                 entity_cost_grid,
                 mover_entity_blocks,
-                layered_grid,
-                path_grid,
                 path_delay_ticks,
                 sim_tick,
             ) {
@@ -492,7 +486,7 @@ pub fn tick_movement_with_grids(
                 // premature braking.
                 if snap.movement_zone.is_water_mover() {
                     if let Some(cell) =
-                        layered_grid.and_then(|lg| lg.cell(entity.position.rx, entity.position.ry))
+                        path_grid.and_then(|pg| pg.cell(entity.position.rx, entity.position.ry))
                     {
                         if cell.bridge_deck_level_if_any().is_some() {
                             dist += BRIDGE_Z_OFFSET;
@@ -568,12 +562,12 @@ pub fn tick_movement_with_grids(
                         entity.position.rx = nx;
                         entity.position.ry = ny;
                         // Bridge/layer resolution.
-                        if let Some(lg) = layered_grid {
+                        if let Some(pg) = path_grid {
                             let next_layer = target.layer_at(target.next_index);
                             let (resolved_layer, bridge_update) =
                                 super::movement_bridge::resolve_cell_transition_bridge_state(
                                     &mut entity.position,
-                                    Some(lg),
+                                    Some(pg),
                                     next_layer,
                                     nx,
                                     ny,
@@ -706,7 +700,6 @@ pub fn tick_movement_with_grids(
                 active_layer,
                 &snap,
                 path_grid,
-                layered_grid,
                 resolved_terrain,
                 entity_cost_grid,
                 mover_entity_blocks,
@@ -762,7 +755,7 @@ pub fn tick_movement_with_grids(
                 snap.movement_zone,
                 bridge_lookahead,
                 lookahead_layer,
-                layered_grid,
+                path_grid,
             );
 
             // DIAGNOSTIC: detect unexpected z-drop on bridge cells.

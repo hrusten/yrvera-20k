@@ -542,16 +542,10 @@ pub(crate) fn rebuild_dynamic_path_grid(state: &mut AppState) {
 
     state.path_grid = Some(grid);
 
-    // Sync building footprints + wall overlays to the LayeredPathGrid so layered A*
-    // (used for Walk/Drive/Mech units) also respects buildings and walls.
+    // Rebuild zone connectivity map for instant unreachability detection.
+    // The unified PathGrid already contains building/wall/bridge data from
+    // resolved terrain, so no separate sync step is needed.
     if let Some(ref mut sim) = state.simulation {
-        sim.refresh_terrain_views();
-        sim.sync_building_footprints_to_layered_grid(state.rules.as_ref());
-        // Also block wall overlay cells on the layered grid.
-        if let Some(ref registry) = state.overlay_registry {
-            sim.sync_wall_overlays_to_layered_grid(&state.overlays, registry);
-        }
-        // Rebuild zone connectivity map for instant unreachability detection.
         if let Some(ref grid) = state.path_grid {
             sim.rebuild_zone_grid(grid);
         }
@@ -803,14 +797,13 @@ fn load_unit_palette(asset_manager: &AssetManager, theater_ext: &str) -> Option<
 }
 
 /// Check if a cell is walkable on either the ground or bridge layer.
-/// Delegates to the sim-layer helper in `pathfinding.rs`.
+/// Delegates to the unified `PathGrid::is_any_layer_walkable()` method.
 pub(crate) fn is_any_layer_walkable(
     grid: &crate::sim::pathfinding::PathGrid,
-    layered: Option<&crate::sim::pathfinding::LayeredPathGrid>,
     x: u16,
     y: u16,
 ) -> bool {
-    crate::sim::pathfinding::is_any_layer_walkable(grid, layered, x, y)
+    grid.is_any_layer_walkable(x, y)
 }
 
 pub(crate) fn screen_point_to_world(state: &AppState, screen_x: f32, screen_y: f32) -> (f32, f32) {
@@ -866,20 +859,15 @@ pub(crate) fn nearest_walkable_cell(
     start: (u16, u16),
     max_radius: u16,
 ) -> Option<(u16, u16)> {
-    crate::sim::pathfinding::nearest_walkable_layered(
-        grid, None, start.0, start.1, max_radius, None, None,
-    )
+    grid.nearest_walkable_any_layer(start.0, start.1, max_radius, None, None)
 }
 
 pub(crate) fn nearest_walkable_cell_layered(
     grid: &crate::sim::pathfinding::PathGrid,
-    layered: Option<&crate::sim::pathfinding::LayeredPathGrid>,
     start: (u16, u16),
     max_radius: u16,
 ) -> Option<(u16, u16)> {
-    crate::sim::pathfinding::nearest_walkable_layered(
-        grid, layered, start.0, start.1, max_radius, None, None,
-    )
+    grid.nearest_walkable_any_layer(start.0, start.1, max_radius, None, None)
 }
 
 pub(crate) fn clamp_cell_to_grid(

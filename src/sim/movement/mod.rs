@@ -37,7 +37,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
-use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed, facing_from_delta_int};
 
@@ -102,7 +102,6 @@ const MIN_BRAKE_FRACTION: SimFixed = SimFixed::lit("0.3");
 #[derive(Clone, Copy)]
 pub(super) struct PathfindingContext<'a> {
     pub path_grid: Option<&'a PathGrid>,
-    pub layered_grid: Option<&'a LayeredPathGrid>,
     pub zone_grid: Option<&'a ZoneGrid>,
     pub resolved_terrain: Option<&'a ResolvedTerrainGrid>,
 }
@@ -219,7 +218,6 @@ pub fn tick_movement_with_grid(
     tick_movement_with_grids(
         entities,
         path_grid,
-        None,
         terrain_costs,
         alliances,
         rng,

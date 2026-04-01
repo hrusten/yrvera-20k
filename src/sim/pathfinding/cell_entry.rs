@@ -16,7 +16,7 @@
 use std::collections::BTreeSet;
 
 use super::terrain_cost::TerrainCostGrid;
-use super::{LayeredPathGrid, PathGrid};
+use super::PathGrid;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::{self, HouseAllianceMap};
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
@@ -85,7 +85,6 @@ pub fn check_terrain(
     target_layer: MovementLayer,
     mover_category: EntityCategory,
     path_grid: Option<&PathGrid>,
-    layered_grid: Option<&LayeredPathGrid>,
     cost_grid: Option<&TerrainCostGrid>,
     reserved_destinations: &BTreeSet<(MovementLayer, u16, u16)>,
     occ_map: &OccupancyMap,
@@ -101,7 +100,7 @@ pub fn check_terrain(
             grid_ok && cost_ok
         }
         MovementLayer::Bridge => {
-            layered_grid.is_some_and(|grid| grid.is_walkable(nx, ny, MovementLayer::Bridge))
+            path_grid.is_some_and(|grid| grid.is_walkable_on_layer(nx, ny, MovementLayer::Bridge))
         }
         MovementLayer::Air | MovementLayer::Underground => {
             // Air/underground don't use ground/bridge walkability.
@@ -266,7 +265,6 @@ mod tests {
             EntityCategory::Unit,
             None,
             None,
-            None,
             &BTreeSet::new(),
             &empty_occ(),
             None,
@@ -285,7 +283,6 @@ mod tests {
             EntityCategory::Unit,
             Some(&grid),
             None,
-            None,
             &BTreeSet::new(),
             &empty_occ(),
             None,
@@ -301,7 +298,6 @@ mod tests {
             (5, 5),
             MovementLayer::Ground,
             EntityCategory::Unit,
-            None,
             None,
             None,
             &reserved,
@@ -327,7 +323,6 @@ mod tests {
             EntityCategory::Unit,
             None,
             None,
-            None,
             &BTreeSet::new(),
             &occ,
             None,
@@ -351,7 +346,6 @@ mod tests {
             EntityCategory::Infantry,
             None,
             None,
-            None,
             &BTreeSet::new(),
             &occ,
             None,
@@ -373,7 +367,6 @@ mod tests {
             (5, 5),
             MovementLayer::Ground,
             EntityCategory::Infantry,
-            None,
             None,
             None,
             &BTreeSet::new(),

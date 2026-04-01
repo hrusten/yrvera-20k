@@ -51,7 +51,7 @@ use crate::sim::passenger;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
-use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::power_system::{self, PowerState};
 use crate::sim::production::{self, ProductionState};
 use crate::sim::radar::{RadarEventQueue, RadarEventType};
@@ -164,10 +164,8 @@ pub struct Simulation {
     /// Built once at map load — units look up their SpeedType to pick the right grid.
     #[serde(skip)]
     pub terrain_costs: BTreeMap<SpeedType, TerrainCostGrid>,
-    #[serde(skip)]
-    pub layered_path_grid: Option<LayeredPathGrid>,
     /// Flat per-cell height grid for height-based LOS (RevealByHeight).
-    /// Built once from LayeredPathGrid; indexed by `ry * width + rx`.
+    /// Built from PathGrid; indexed by `ry * width + rx`.
     #[serde(skip)]
     pub(crate) vision_height_grid: Option<Vec<u8>>,
     /// Zone-based connectivity map for instant unreachability detection.
@@ -261,7 +259,6 @@ impl Simulation {
             ai_players: Vec::new(),
             houses: BTreeMap::new(),
             terrain_costs: BTreeMap::new(),
-            layered_path_grid: None,
             vision_height_grid: None,
             zone_grid: None,
             prev_path_grid: None,
@@ -477,39 +474,29 @@ impl Simulation {
         self.effect_frame_counts = effect_frame_counts;
         self.terrain_costs = terrain_costs;
 
-        // 2. Rebuild spatial caches from restored data
-        self.refresh_terrain_views();
-        self.sync_building_footprints_to_layered_grid(None);
-
-        // 3. Rebuild cached screen coords for all entities
+        // 2. Rebuild cached screen coords for all entities
         for entity in self.entities.values_mut() {
             entity.position.refresh_screen_coords();
         }
     }
 
-    pub fn refresh_terrain_views(&mut self) {
-        self.layered_path_grid = self.resolved_terrain.as_ref().map(|terrain| {
-            LayeredPathGrid::from_resolved_terrain_with_bridges(terrain, self.bridge_state.as_ref())
-        });
-        // Build flat height grid for RevealByHeight LOS checks.
-        self.vision_height_grid = self.layered_path_grid.as_ref().map(|lg| {
-            let w = lg.width() as usize;
-            let h = lg.height() as usize;
-            let mut grid = vec![0u8; w * h];
-            for y in 0..lg.height() {
-                for x in 0..lg.width() {
-                    if let Some(cell) = lg.cell(x, y) {
-                        grid[y as usize * w + x as usize] = cell.ground_level;
-                    }
+    pub fn refresh_vision_heights(&mut self, grid: &PathGrid) {
+        let w = grid.width() as usize;
+        let h = grid.height() as usize;
+        let mut heights = vec![0u8; w * h];
+        for y in 0..grid.height() {
+            for x in 0..grid.width() {
+                if let Some(cell) = grid.cell(x, y) {
+                    heights[y as usize * w + x as usize] = cell.ground_level;
                 }
             }
-            grid
-        });
+        }
+        self.vision_height_grid = Some(heights);
     }
 
     /// Rebuild the zone connectivity map from the current PathGrid and terrain costs.
-    /// Call after `refresh_terrain_views` and `sync_building_footprints_to_layered_grid`
-    /// so that zones reflect the latest walkability state.
+    /// Call after the PathGrid has been rebuilt so that zones reflect the latest
+    /// walkability state.
     ///
     /// Tries an incremental update first (diffing against the previous PathGrid).
     /// Falls back to full rebuild if too many cells changed or no previous state.
@@ -532,7 +519,6 @@ impl Simulation {
                     zones,
                     &changed,
                     path_grid,
-                    self.layered_path_grid.as_ref(),
                     &self.terrain_costs,
                 ) {
                     log::trace!("zone: incremental update ({} cells changed)", changed.len(),);
@@ -545,57 +531,12 @@ impl Simulation {
         // Full rebuild fallback.
         self.zone_grid = Some(ZoneGrid::build_with_terrain(
             path_grid,
-            self.layered_path_grid.as_ref(),
             &self.terrain_costs,
             self.resolved_terrain.as_ref(),
             width,
             height,
         ));
         self.prev_path_grid = Some(path_grid.clone());
-    }
-
-    /// Block wall overlay cells on the LayeredPathGrid.
-    ///
-    /// Auto-filled wall overlays have no entity but still physically block units.
-    /// Called from `rebuild_dynamic_path_grid` after `sync_building_footprints_to_layered_grid`.
-    pub fn sync_wall_overlays_to_layered_grid(
-        &mut self,
-        overlays: &[crate::map::overlay::OverlayEntry],
-        registry: &crate::map::overlay_types::OverlayTypeRegistry,
-    ) {
-        let Some(ref mut grid) = self.layered_path_grid else {
-            return;
-        };
-        for entry in overlays {
-            let is_wall = registry
-                .flags(entry.overlay_id)
-                .map(|f| f.wall)
-                .unwrap_or(false);
-            if is_wall {
-                grid.block_building_footprint(entry.rx, entry.ry, "1x1");
-            }
-        }
-    }
-
-    /// Block building footprints on the LayeredPathGrid (ground layer).
-    ///
-    /// Called after `refresh_terrain_views` and whenever buildings are
-    /// placed or destroyed, so the layered grid stays in sync with the
-    /// PathGrid.
-    pub fn sync_building_footprints_to_layered_grid(&mut self, rules: Option<&RuleSet>) {
-        let Some(ref mut grid) = self.layered_path_grid else {
-            return;
-        };
-        for entity in self.entities.values() {
-            if entity.category != crate::map::entities::EntityCategory::Structure {
-                continue;
-            }
-            let foundation: &str = rules
-                .and_then(|r| r.object(self.interner.resolve(entity.type_ref)))
-                .map(|obj| obj.foundation.as_str())
-                .unwrap_or("1x1");
-            grid.block_building_footprint(entity.position.rx, entity.position.ry, foundation);
-        }
     }
 
     pub(crate) fn effective_build_blocked(&self, rx: u16, ry: u16) -> Option<bool> {
@@ -641,7 +582,6 @@ impl Simulation {
             return Vec::new();
         }
 
-        self.refresh_terrain_views();
         let destroyed_cells: BTreeSet<(u16, u16)> = changes
             .iter()
             .flat_map(|change| change.destroyed_cells.iter().copied())
@@ -1026,7 +966,6 @@ impl Simulation {
         let movement_stats = movement::tick_movement_with_grids(
             &mut self.entities,
             path_grid,
-            self.layered_path_grid.as_ref(),
             &self.terrain_costs,
             &self.house_alliances,
             &mut self.rng,
@@ -1217,7 +1156,6 @@ impl Simulation {
             //     &mut self.entities,
             //     Some(rules),
             //     path_grid,
-            //     self.layered_path_grid.as_ref(),
             //     &self.terrain_costs,
             //     &mut self.rng,
             //     self.tick,

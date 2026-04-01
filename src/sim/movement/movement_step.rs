@@ -23,7 +23,7 @@ use crate::sim::movement::movement_occupancy::{
 use crate::sim::movement::movement_reservation::reserve_destination_after_transition;
 use crate::sim::movement::turret::{rot_to_facing_delta, shortest_rotation};
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
-use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, facing_from_delta_int as facing_from_delta,
@@ -372,7 +372,6 @@ pub(super) fn process_cell_crossings(
     mut active_layer: MovementLayer,
     snap: &MoverSnapshot,
     path_grid: Option<&PathGrid>,
-    layered_grid: Option<&LayeredPathGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
@@ -447,8 +446,8 @@ pub(super) fn process_cell_crossings(
                 layer_terrain_ok = Some(terrain_ok);
                 grid_ok && terrain_ok
             }
-            MovementLayer::Bridge => layered_grid.is_some_and(|grid| {
-                if !grid.is_walkable(nx, ny, MovementLayer::Bridge) {
+            MovementLayer::Bridge => path_grid.is_some_and(|grid| {
+                if !grid.is_walkable_on_layer(nx, ny, MovementLayer::Bridge) {
                     return false;
                 }
                 // Bridgehead gate:
@@ -515,8 +514,8 @@ pub(super) fn process_cell_crossings(
         // Original engine: if height difference >= 3 levels and not a
         // bridge ramp, treat as cliff. Catches stale paths after terrain
         // changes, bump/scatter toward cliff edges, etc.
-        if let Some(lg) = layered_grid {
-            if let Some(next_cell) = lg.cell(nx, ny) {
+        if let Some(pg) = path_grid {
+            if let Some(next_cell) = pg.cell(nx, ny) {
                 let next_level = next_cell.effective_cell_z_for_layer(next_layer);
                 let diff = (position.z as i16 - next_level as i16).unsigned_abs();
                 let is_bridge_ramp =
@@ -612,7 +611,7 @@ pub(super) fn process_cell_crossings(
         // don't duplicate deck/ground height rules across the tick loop.
         let (resolved_layer, bridge_update) = resolve_cell_transition_bridge_state(
             position,
-            layered_grid,
+            path_grid,
             next_layer,
             nx,
             ny,

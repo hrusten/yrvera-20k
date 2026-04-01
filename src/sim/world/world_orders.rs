@@ -128,7 +128,6 @@ impl Simulation {
                 let _ = movement::issue_move_command_with_layered(
                     &mut self.entities,
                     grid,
-                    self.layered_path_grid.as_ref(),
                     stable_id,
                     (goal_rx, goal_ry),
                     speed,

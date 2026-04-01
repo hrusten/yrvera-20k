@@ -14,10 +14,7 @@ use crate::sim::pathfinding::path_smooth;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_map::ZoneCategory;
 use crate::sim::pathfinding::zone_search;
-use crate::sim::pathfinding::{
-    LayeredPathGrid, MAX_PATH_SEGMENT_STEPS, PathGrid, is_any_layer_walkable,
-    nearest_walkable_layered, truncate_layered_path,
-};
+use crate::sim::pathfinding::{MAX_PATH_SEGMENT_STEPS, PathGrid, truncate_layered_path};
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::facing_from_delta_int as facing_from_delta;
 
@@ -46,10 +43,10 @@ pub(super) fn merge_path_blocks(
 
 pub(super) fn supports_layered_bridge_pathing(
     loco: &LocomotorState,
-    layered_grid: &LayeredPathGrid,
+    grid: &PathGrid,
     on_bridge: bool,
 ) -> bool {
-    if layered_grid.width() == 0 || layered_grid.height() == 0 {
+    if grid.width() == 0 || grid.height() == 0 {
         return false;
     }
     matches!(
@@ -58,21 +55,16 @@ pub(super) fn supports_layered_bridge_pathing(
     ) || on_bridge
 }
 
-fn is_bridge_layer_walkable(layered_grid: Option<&LayeredPathGrid>, cell: (u16, u16)) -> bool {
-    layered_grid.is_some_and(|grid| grid.is_walkable(cell.0, cell.1, MovementLayer::Bridge))
+fn is_bridge_layer_walkable(grid: Option<&PathGrid>, cell: (u16, u16)) -> bool {
+    grid.is_some_and(|g| g.is_walkable_on_layer(cell.0, cell.1, MovementLayer::Bridge))
 }
 
-fn is_bridge_only_goal(
-    grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
-    goal: (u16, u16),
-) -> bool {
-    !grid.is_walkable(goal.0, goal.1) && is_bridge_layer_walkable(layered_grid, goal)
+fn is_bridge_only_goal(grid: &PathGrid, goal: (u16, u16)) -> bool {
+    !grid.is_walkable(goal.0, goal.1) && is_bridge_layer_walkable(Some(grid), goal)
 }
 
 pub(super) fn is_move_goal_walkable(
     grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     goal: (u16, u16),
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
@@ -86,12 +78,11 @@ pub(super) fn is_move_goal_walkable(
             resolved_terrain,
         );
     }
-    is_any_layer_walkable(grid, layered_grid, goal.0, goal.1)
+    grid.is_any_layer_walkable(goal.0, goal.1)
 }
 
 fn nearest_move_goal(
     grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     goal: (u16, u16),
     max_radius: u16,
     blocked_cells: Option<&BTreeSet<(u16, u16)>>,
@@ -99,9 +90,7 @@ fn nearest_move_goal(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
 ) -> Option<(u16, u16)> {
     if !movement_zone.is_some_and(|mz| mz.is_water_mover()) {
-        return nearest_walkable_layered(
-            grid,
-            layered_grid,
+        return grid.nearest_walkable_any_layer(
             goal.0,
             goal.1,
             max_radius,
@@ -111,7 +100,7 @@ fn nearest_move_goal(
     }
 
     let check = |x: u16, y: u16| {
-        is_move_goal_walkable(grid, layered_grid, (x, y), movement_zone, resolved_terrain)
+        is_move_goal_walkable(grid, (x, y), movement_zone, resolved_terrain)
             && blocked_cells.map_or(true, |blocks| !blocks.contains(&(x, y)))
     };
     if check(goal.0, goal.1) {
@@ -142,14 +131,13 @@ fn nearest_move_goal(
 
 pub(super) fn resolve_requested_move_goal(
     grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     goal: (u16, u16),
     blocked_cells: Option<&BTreeSet<(u16, u16)>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     max_radius: u16,
 ) -> Option<(u16, u16)> {
-    if is_move_goal_walkable(grid, layered_grid, goal, movement_zone, resolved_terrain)
+    if is_move_goal_walkable(grid, goal, movement_zone, resolved_terrain)
         && blocked_cells.map_or(true, |blocks| !blocks.contains(&goal))
     {
         return Some(goal);
@@ -157,7 +145,6 @@ pub(super) fn resolve_requested_move_goal(
 
     nearest_move_goal(
         grid,
-        layered_grid,
         goal,
         max_radius,
         blocked_cells,
@@ -181,7 +168,6 @@ pub(super) fn find_move_path(
     too_big_to_fit_under_bridge: bool,
 ) -> Option<(Vec<(u16, u16)>, Vec<MovementLayer>)> {
     let grid = ctx.path_grid?;
-    let layered_grid = ctx.layered_grid;
     let zone_grid = ctx.zone_grid;
     let resolved_terrain = ctx.resolved_terrain;
     let merged_entity_blocks = merge_path_blocks(
@@ -192,62 +178,58 @@ pub(super) fn find_move_path(
     );
     let entity_blocks = (!merged_entity_blocks.is_empty()).then_some(&merged_entity_blocks);
     if layered_pathing {
-        if let Some(layered_grid) = layered_grid {
-            let layered_result = zone_search::find_layered_path_zoned(
-                layered_grid,
-                Some(grid),
-                ground_blocks,
-                bridge_blocks,
+        let layered_result = zone_search::find_layered_path_zoned(
+            grid,
+            ground_blocks,
+            bridge_blocks,
+            start,
+            start_layer,
+            goal,
+            zone_grid,
+            zone_cat,
+            terrain_costs,
+        );
+        if let Some(path) = layered_result {
+            log::trace!(
+                "find_move_path: layered A* succeeded ({:?}→{:?}), {} steps",
+                start,
+                goal,
+                path.len(),
+            );
+            let coords: Vec<(u16, u16)> = path.iter().map(|step| (step.rx, step.ry)).collect();
+            let layers: Vec<MovementLayer> = path.iter().map(|step| step.layer).collect();
+            let layered_smooth_walkable = |x: u16, y: u16, layer: MovementLayer| -> bool {
+                if !grid.is_walkable_on_layer(x, y, layer) {
+                    return false;
+                }
+                match layer {
+                    MovementLayer::Ground => {
+                        !ground_blocks.is_some_and(|gb| gb.contains(&(x, y)))
+                    }
+                    MovementLayer::Bridge => {
+                        !bridge_blocks.is_some_and(|bb| bb.contains(&(x, y)))
+                    }
+                    _ => true,
+                }
+            };
+            let (coords, layers) =
+                path_smooth::smooth_layered_path(coords, layers, &layered_smooth_walkable);
+            let (coords, layers) =
+                path_smooth::optimize_layered_path(coords, layers, &layered_smooth_walkable);
+            let (coords, layers) =
+                truncate_layered_path(coords, layers, MAX_PATH_SEGMENT_STEPS);
+            return Some((coords, layers));
+        } else {
+            log::info!(
+                "find_move_path: layered A* FAILED ({:?} layer={:?} → {:?}), falling back to flat A*",
                 start,
                 start_layer,
                 goal,
-                zone_grid,
-                zone_cat,
-                terrain_costs,
             );
-            if let Some(path) = layered_result {
-                log::trace!(
-                    "find_move_path: layered A* succeeded ({:?}→{:?}), {} steps",
-                    start,
-                    goal,
-                    path.len(),
-                );
-                let coords: Vec<(u16, u16)> = path.iter().map(|step| (step.rx, step.ry)).collect();
-                let layers: Vec<MovementLayer> = path.iter().map(|step| step.layer).collect();
-                let lg = layered_grid;
-                let layered_smooth_walkable = |x: u16, y: u16, layer: MovementLayer| -> bool {
-                    if !lg.is_walkable(x, y, layer) {
-                        return false;
-                    }
-                    match layer {
-                        MovementLayer::Ground => {
-                            !ground_blocks.is_some_and(|gb| gb.contains(&(x, y)))
-                        }
-                        MovementLayer::Bridge => {
-                            !bridge_blocks.is_some_and(|bb| bb.contains(&(x, y)))
-                        }
-                        _ => true,
-                    }
-                };
-                let (coords, layers) =
-                    path_smooth::smooth_layered_path(coords, layers, &layered_smooth_walkable);
-                let (coords, layers) =
-                    path_smooth::optimize_layered_path(coords, layers, &layered_smooth_walkable);
-                let (coords, layers) =
-                    truncate_layered_path(coords, layers, MAX_PATH_SEGMENT_STEPS);
-                return Some((coords, layers));
-            } else {
-                log::info!(
-                    "find_move_path: layered A* FAILED ({:?} layer={:?} → {:?}), falling back to flat A*",
-                    start,
-                    start_layer,
-                    goal,
-                );
-            }
         }
     }
 
-    if is_bridge_only_goal(grid, layered_grid, goal) {
+    if is_bridge_only_goal(grid, goal) {
         return None;
     }
 
@@ -279,7 +261,7 @@ pub(super) fn find_move_path(
     };
     let path = path_smooth::smooth_path(path, &smooth_walkable);
     let path = path_smooth::optimize_path(path, &smooth_walkable);
-    let path_layers = build_flat_fallback_layers(&path, start_layer, layered_grid);
+    let path_layers = build_flat_fallback_layers(&path, start_layer, grid);
     let (path, path_layers) = truncate_layered_path(path, path_layers, MAX_PATH_SEGMENT_STEPS);
     Some((path, path_layers))
 }
@@ -292,18 +274,15 @@ pub(super) fn find_move_path(
 fn build_flat_fallback_layers(
     path: &[(u16, u16)],
     start_layer: MovementLayer,
-    layered_grid: Option<&LayeredPathGrid>,
+    grid: &PathGrid,
 ) -> Vec<MovementLayer> {
     if start_layer != MovementLayer::Bridge {
         return vec![MovementLayer::Ground; path.len()];
     }
-    let Some(lg) = layered_grid else {
-        return vec![MovementLayer::Ground; path.len()];
-    };
     let mut layers = Vec::with_capacity(path.len());
     let mut on_bridge = true;
     for &(x, y) in path {
-        if on_bridge && lg.is_walkable(x, y, MovementLayer::Bridge) {
+        if on_bridge && grid.is_walkable_on_layer(x, y, MovementLayer::Bridge) {
             layers.push(MovementLayer::Bridge);
         } else {
             on_bridge = false;
@@ -354,7 +333,6 @@ pub(super) fn try_repath_after_block(
 
     let Some(effective_goal) = resolve_requested_move_goal(
         grid,
-        ctx.layered_grid,
         goal,
         Some(&combined_blocks),
         movement_zone,
@@ -524,7 +502,6 @@ mod tests {
 
         let redirected = resolve_requested_move_goal(
             &grid,
-            None,
             (1, 1),
             Some(&blocked),
             Some(MovementZone::Water),

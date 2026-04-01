@@ -181,7 +181,6 @@ impl Simulation {
                             return movement::issue_move_command_with_layered(
                                 &mut self.entities,
                                 grid,
-                                self.layered_path_grid.as_ref(),
                                 *entity_id,
                                 (*target_rx, *target_ry),
                                 info.speed,
@@ -205,7 +204,6 @@ impl Simulation {
                     movement::issue_move_command_with_layered(
                         &mut self.entities,
                         grid,
-                        self.layered_path_grid.as_ref(),
                         *entity_id,
                         (*target_rx, *target_ry),
                         info.speed,
@@ -360,7 +358,6 @@ impl Simulation {
                     movement::issue_move_command_with_layered(
                         &mut self.entities,
                         grid,
-                        self.layered_path_grid.as_ref(),
                         *entity_id,
                         (*target_rx, *target_ry),
                         info.speed,
@@ -543,7 +540,6 @@ impl Simulation {
                     movement::issue_move_command_with_layered(
                         &mut self.entities,
                         grid,
-                        self.layered_path_grid.as_ref(),
                         *entity_id,
                         (dock_rx, dock_ry),
                         speed,
@@ -623,7 +619,6 @@ impl Simulation {
                     movement::issue_move_command_with_layered(
                         &mut self.entities,
                         grid,
-                        self.layered_path_grid.as_ref(),
                         *passenger_id,
                         (trx, try_),
                         speed,
@@ -742,7 +737,6 @@ impl Simulation {
                     movement::issue_move_command_with_layered(
                         &mut self.entities,
                         grid,
-                        self.layered_path_grid.as_ref(),
                         *engineer_id,
                         (trx, try_),
                         speed,

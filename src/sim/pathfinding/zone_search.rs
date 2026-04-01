@@ -19,7 +19,7 @@ use std::collections::{BTreeSet, BinaryHeap};
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneCategory, ZoneGrid, ZoneId, ZoneMap};
 use super::{
-    LayeredPathGrid, LayeredPathStep, PathGrid, find_layered_path, find_path_with_costs,
+    LayeredPathStep, PathGrid, find_layered_path, find_path_with_costs,
     find_path_with_costs_corridor,
 };
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
@@ -166,8 +166,7 @@ pub fn find_path_zoned(
 /// make zone corridor semantics complex; the layered A* already benefits
 /// from the increased search budget).
 pub fn find_layered_path_zoned(
-    layered_grid: &LayeredPathGrid,
-    path_grid: Option<&PathGrid>,
+    grid: &PathGrid,
     ground_blocks: Option<&BTreeSet<(u16, u16)>>,
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     start: (u16, u16),
@@ -196,8 +195,7 @@ pub fn find_layered_path_zoned(
     }
 
     find_layered_path(
-        layered_grid,
-        path_grid,
+        grid,
         ground_blocks,
         bridge_blocks,
         start,

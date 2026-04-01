@@ -90,7 +90,7 @@ fn test_find_path_diagonal() {
 
 #[test]
 fn test_layered_path_cell_bridge_helpers() {
-    let bridge_cell = LayeredPathCell {
+    let bridge_cell = PathCell {
         ground_walkable: true,
         bridge_walkable: true,
         transition: true,
@@ -110,7 +110,7 @@ fn test_layered_path_cell_bridge_helpers() {
     );
     assert!(bridge_cell.can_enter_bridge_layer_from_ground());
 
-    let low_bridge = LayeredPathCell {
+    let low_bridge = PathCell {
         ground_walkable: true,
         bridge_walkable: true,
         transition: false,
@@ -349,10 +349,9 @@ fn test_layered_path_transitions_onto_bridge_and_stays_on_deck() {
             },
         ],
     );
-    let grid = LayeredPathGrid::from_resolved_terrain(&terrain);
+    let grid = PathGrid::from_resolved_terrain(&terrain);
     let path = find_layered_path(
         &grid,
-        None,
         None,
         None,
         (0, 0),
@@ -381,10 +380,9 @@ fn test_layered_path_stays_on_ground_when_bridge_not_needed() {
             make_resolved_cell(2, 0),
         ],
     );
-    let grid = LayeredPathGrid::from_resolved_terrain(&terrain);
+    let grid = PathGrid::from_resolved_terrain(&terrain);
     let path = find_layered_path(
         &grid,
-        None,
         None,
         None,
         (0, 0),
@@ -433,11 +431,10 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
     );
     let mut bridge_state = BridgeRuntimeState::from_resolved_terrain(&terrain, true, 10);
     let intact_grid =
-        LayeredPathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
+        PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
     assert!(
         find_layered_path(
             &intact_grid,
-            None,
             None,
             None,
             (0, 0),
@@ -459,11 +456,10 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
     assert_eq!(change.destroyed_cells, vec![(0, 0), (1, 0), (2, 0)]);
 
     let destroyed_grid =
-        LayeredPathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
+        PathGrid::from_resolved_terrain_with_bridges(&terrain, Some(&bridge_state));
     assert!(
         find_layered_path(
             &destroyed_grid,
-            None,
             None,
             None,
             (0, 0),

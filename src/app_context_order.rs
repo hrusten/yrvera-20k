@@ -422,17 +422,14 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             }
                         }
                     }
-                    let layered = sim.layered_path_grid.as_ref();
                     let center: (u16, u16) = crate::app_sim_tick::nearest_walkable_cell_layered(
                         grid,
-                        layered,
                         (target_rx, target_ry),
                         12,
                     )
                     .unwrap_or((target_rx, target_ry));
                     let assignments = group_destination::distribute_group_destinations(
                         grid,
-                        layered,
                         center,
                         &vehicle_ids,
                         &infantry_ids,
@@ -484,13 +481,12 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                                 .unwrap_or_else(|| {
                                     let mut g = (target_rx, target_ry);
                                     if let Some(grid) = state.path_grid.as_ref() {
-                                        let layered = sim.layered_path_grid.as_ref();
                                         if !crate::app_sim_tick::is_any_layer_walkable(
-                                            grid, layered, g.0, g.1,
+                                            grid, g.0, g.1,
                                         ) {
                                             if let Some(nearest) =
                                                 crate::app_sim_tick::nearest_walkable_cell_layered(
-                                                    grid, layered, g, 12,
+                                                    grid, g, 12,
                                                 )
                                             {
                                                 g = nearest;

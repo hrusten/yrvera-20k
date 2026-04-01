@@ -7,7 +7,7 @@
 //! - Part of sim/ — depends on map/ (terrain, resolved_terrain).
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
-// Core A* algorithm, PathGrid, LayeredPathGrid
+// Core A* algorithm, PathGrid, PathCell
 mod core;
 
 // Path post-processing
@@ -28,3 +28,7 @@ pub mod zone_search;
 
 // Re-export core types so external code uses crate::sim::pathfinding::PathGrid etc.
 pub use self::core::*;
+
+#[cfg(test)]
+#[path = "zone_map_tests.rs"]
+mod zone_map_tests;

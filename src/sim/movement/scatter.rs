@@ -31,7 +31,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::movement;
 use crate::sim::movement::bump_crush::{self, OccupancyMap};
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
-use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
 
@@ -70,7 +70,6 @@ pub fn tick_idle_scatter(
     entities: &mut EntityStore,
     rules: Option<&RuleSet>,
     path_grid: Option<&PathGrid>,
-    layered_grid: Option<&LayeredPathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     rng: &mut SimRng,
     frame_counter: u64,
@@ -181,7 +180,6 @@ pub fn tick_idle_scatter(
         movement::issue_move_command_with_layered(
             entities,
             grid,
-            layered_grid,
             entity_id,
             dest,
             speed,
@@ -207,7 +205,6 @@ pub fn scatter_units_from_cell(
     owner: crate::sim::intern::InternedId,
     target_cell: (u16, u16),
     path_grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     interner: &crate::sim::intern::StringInterner,
 ) -> u32 {
@@ -286,7 +283,6 @@ pub fn scatter_units_from_cell(
         let success = movement::issue_move_command_with_layered(
             entities,
             path_grid,
-            layered_grid,
             *entity_id,
             dest,
             speed,

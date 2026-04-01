@@ -23,7 +23,7 @@ use super::zone_build::{
 };
 use super::zone_hierarchy::SuperZoneMap;
 use super::zone_map::{ZONE_INVALID, ZoneCategory, ZoneGrid, ZoneId};
-use super::{LayeredPathGrid, PathGrid};
+use super::PathGrid;
 use crate::rules::locomotor_type::SpeedType;
 use crate::sim::movement::locomotor::MovementLayer;
 
@@ -44,7 +44,6 @@ pub(crate) fn try_incremental_update(
     zone_grid: &mut ZoneGrid,
     changed_cells: &[(u16, u16)],
     path_grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
 ) -> bool {
     if changed_cells.is_empty() {
@@ -70,7 +69,6 @@ pub(crate) fn try_incremental_update(
             &bbox,
             changed_cells,
             path_grid,
-            layered_grid,
             terrain_costs,
             width,
             height,
@@ -89,7 +87,6 @@ fn update_category(
     bbox: &(u16, u16, u16, u16),
     changed_cells: &[(u16, u16)],
     path_grid: &PathGrid,
-    layered_grid: Option<&LayeredPathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     width: u16,
     height: u16,
@@ -200,7 +197,6 @@ fn update_category(
                 path_grid,
                 cost_grid,
                 None,
-                layered_grid,
                 MovementLayer::Ground,
             );
             next_zone += 1;
@@ -208,24 +204,22 @@ fn update_category(
     }
 
     // Re-flood-fill cleared bridge cells.
-    if let Some(lg) = layered_grid {
-        if matches!(
-            cat,
-            ZoneCategory::Land | ZoneCategory::Infantry | ZoneCategory::Amphibious
-        ) {
-            if let Some(bridge_ids) = zone_map.bridge_zone_ids_mut() {
-                for ry in 0..height {
-                    for rx in 0..width {
-                        let idx = ry as usize * w + rx as usize;
-                        if bridge_ids[idx] != ZONE_INVALID {
-                            continue;
-                        }
-                        if !lg.is_walkable(rx, ry, MovementLayer::Bridge) {
-                            continue;
-                        }
-                        flood_fill_bridge(rx, ry, next_zone, bridge_ids, width, height, lg);
-                        next_zone += 1;
+    if matches!(
+        cat,
+        ZoneCategory::Land | ZoneCategory::Infantry | ZoneCategory::Amphibious
+    ) {
+        if let Some(bridge_ids) = zone_map.bridge_zone_ids_mut() {
+            for ry in 0..height {
+                for rx in 0..width {
+                    let idx = ry as usize * w + rx as usize;
+                    if bridge_ids[idx] != ZONE_INVALID {
+                        continue;
                     }
+                    if !path_grid.is_walkable_on_layer(rx, ry, MovementLayer::Bridge) {
+                        continue;
+                    }
+                    flood_fill_bridge(rx, ry, next_zone, bridge_ids, width, height, path_grid);
+                    next_zone += 1;
                 }
             }
         }
@@ -245,7 +239,7 @@ fn update_category(
     let new_adj = extract_adjacency(
         ground_slice,
         bridge_slice,
-        layered_grid,
+        path_grid,
         width,
         height,
         new_zone_count,

@@ -389,19 +389,19 @@ fn test_spawn_from_map_high_without_bridge_falls_back_to_ground() {
 }
 
 #[test]
-fn test_bridge_damage_rebuilds_layered_grid() {
+fn test_bridge_damage_rebuilds_path_grid() {
     let mut sim = Simulation::new();
     let resolved = single_bridge_cell(2, 0, 2);
     sim.resolved_terrain = Some(resolved.clone());
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
         &resolved, true, 20,
     ));
-    sim.refresh_terrain_views();
-    assert!(
-        sim.layered_path_grid
-            .as_ref()
-            .is_some_and(|grid| grid.is_walkable(2, 0, MovementLayer::Bridge))
+    // Build PathGrid before damage — bridge should be walkable.
+    let grid_before = PathGrid::from_resolved_terrain_with_bridges(
+        &resolved,
+        sim.bridge_state.as_ref(),
     );
+    assert!(grid_before.is_walkable_on_layer(2, 0, MovementLayer::Bridge));
 
     let changes = sim.apply_bridge_damage_events(&[BridgeDamageEvent {
         rx: 2,
@@ -410,11 +410,12 @@ fn test_bridge_damage_rebuilds_layered_grid() {
     }]);
     assert_eq!(changes.len(), 1);
     let _ = sim.resolve_bridge_state_changes(&changes);
-    assert!(
-        sim.layered_path_grid
-            .as_ref()
-            .is_some_and(|grid| !grid.is_walkable(2, 0, MovementLayer::Bridge))
+    // Rebuild PathGrid after damage — bridge should no longer be walkable.
+    let grid_after = PathGrid::from_resolved_terrain_with_bridges(
+        sim.resolved_terrain.as_ref().unwrap(),
+        sim.bridge_state.as_ref(),
     );
+    assert!(!grid_after.is_walkable_on_layer(2, 0, MovementLayer::Bridge));
 }
 
 #[test]
@@ -425,7 +426,7 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
         &resolved, true, 15,
     ));
-    sim.refresh_terrain_views();
+
     sim.spawn_from_map_with_resolved(
         &[MapEntity {
             owner: "Americans".to_string(),
@@ -470,7 +471,7 @@ fn test_destroyed_bridge_despawns_unit_over_blocked_ground() {
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
         &resolved, true, 15,
     ));
-    sim.refresh_terrain_views();
+
     sim.spawn_from_map_with_resolved(
         &[MapEntity {
             owner: "Americans".to_string(),
@@ -508,7 +509,7 @@ fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
         &resolved, true, 15,
     ));
-    sim.refresh_terrain_views();
+
 
     let boat_id = sim
         .spawn_object("BOAT", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
@@ -555,7 +556,7 @@ fn test_too_big_ship_can_move_under_bridge_route() {
     sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
         &resolved, true, 15,
     ));
-    sim.refresh_terrain_views();
+
 
     let ship_id = sim
         .spawn_object("DRED", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
@@ -637,7 +638,7 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
     let terrain = water_terrain(4, 4);
     let path_grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain.clone());
-    sim.refresh_terrain_views();
+
     sim.terrain_costs.insert(
         crate::rules::locomotor_type::SpeedType::Float,
         crate::sim::pathfinding::terrain_cost::TerrainCostGrid::from_resolved_terrain(
@@ -694,7 +695,7 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
     let terrain = water_terrain_with_land_type(4, 4, 7, false);
     let path_grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain.clone());
-    sim.refresh_terrain_views();
+
     sim.terrain_costs.insert(
         crate::rules::locomotor_type::SpeedType::Float,
         crate::sim::pathfinding::terrain_cost::TerrainCostGrid::from_resolved_terrain(
@@ -753,7 +754,7 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
     terrain.cells[bridge_idx].bridge_transition = true;
     let path_grid = PathGrid::from_resolved_terrain(&terrain);
     sim.resolved_terrain = Some(terrain.clone());
-    sim.refresh_terrain_views();
+
     sim.terrain_costs.insert(
         crate::rules::locomotor_type::SpeedType::Float,
         crate::sim::pathfinding::terrain_cost::TerrainCostGrid::from_resolved_terrain(

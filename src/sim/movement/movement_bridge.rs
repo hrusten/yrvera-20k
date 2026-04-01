@@ -19,7 +19,7 @@
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::components::{BridgeOccupancy, Position};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-use crate::sim::pathfinding::LayeredPathGrid;
+use crate::sim::pathfinding::PathGrid;
 use crate::util::fixed_math::SimFixed;
 
 /// Threshold for ground vs bridge level detection.
@@ -44,7 +44,7 @@ pub(super) const BRIDGE_Z_OFFSET: SimFixed = SimFixed::lit("360");
 /// but currently unused — see module-level TODO.
 pub(super) fn resolve_cell_transition_bridge_state(
     position: &mut Position,
-    layered_grid: Option<&LayeredPathGrid>,
+    path_grid: Option<&PathGrid>,
     _next_layer: MovementLayer,
     nx: u16,
     ny: u16,
@@ -53,7 +53,7 @@ pub(super) fn resolve_cell_transition_bridge_state(
 ) -> (MovementLayer, Option<Option<u8>>) {
     let mut pending_bridge_update: Option<Option<u8>> = None;
 
-    if let Some(grid) = layered_grid {
+    if let Some(grid) = path_grid {
         if let Some(cell) = grid.cell(nx, ny) {
             if let Some(deck_level) = cell.bridge_deck_level_if_any() {
                 // Cell has a bridge deck. Use height comparison to decide layer.
@@ -117,7 +117,7 @@ pub(super) fn apply_bridge_lookahead_if_needed(
     mover_zone: MovementZone,
     next_step: Option<(u16, u16)>,
     _next_step_layer: MovementLayer,
-    layered_grid: Option<&LayeredPathGrid>,
+    path_grid: Option<&PathGrid>,
 ) {
     if mover_zone.is_water_mover() || bridge_occupancy.is_some() {
         return;
@@ -126,8 +126,8 @@ pub(super) fn apply_bridge_lookahead_if_needed(
     let Some((nx, ny)) = next_step else {
         return;
     };
-    if let Some(lg) = layered_grid {
-        if let Some(cell) = lg.cell(nx, ny) {
+    if let Some(pg) = path_grid {
+        if let Some(cell) = pg.cell(nx, ny) {
             if let Some(deck) = cell.bridge_deck_level_if_any() {
                 // Same height check as resolve: if unit Z is far from ground,
                 // it's approaching at bridge level (e.g., coming from a ramp).
