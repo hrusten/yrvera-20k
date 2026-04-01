@@ -11,8 +11,7 @@ use crate::app::AppState;
 use crate::app_commands::preferred_local_owner_name;
 use crate::map::entities::EntityCategory;
 use crate::sim::components::{
-    AnimOverlayState, BuildingAnimOverlays, DamageFireAnim, DamageFireOverlays,
-    GarrisonMuzzleFlash,
+    AnimOverlayState, BuildingAnimOverlays, DamageFireAnim, DamageFireOverlays, GarrisonMuzzleFlash,
 };
 use crate::sim::production;
 
@@ -109,7 +108,10 @@ pub(crate) fn tick_damage_fire_overlays(state: &mut AppState, dt_ms: u32) {
                 }
                 let ratio = entity.health.current as f32 / entity.health.max as f32;
                 if ratio <= condition_yellow && entity.damage_fire_overlays.is_none() {
-                    Some((entity.stable_id, sim.interner.resolve(entity.type_ref).to_string()))
+                    Some((
+                        entity.stable_id,
+                        sim.interner.resolve(entity.type_ref).to_string(),
+                    ))
                 } else {
                     None
                 }
@@ -135,12 +137,12 @@ pub(crate) fn tick_damage_fire_overlays(state: &mut AppState, dt_ms: u32) {
                     .enumerate()
                     .map(|(i, &(px, py))| {
                         let (ref name, rate_ms) = fire_types[i % fire_types.len()];
-                        let name_id_for_lookup = state.simulation.as_ref()
+                        let name_id_for_lookup = state
+                            .simulation
+                            .as_ref()
                             .and_then(|sim| sim.interner.get(name));
                         let total_frames = effect_counts
-                            .and_then(|m| {
-                                m.get(&name_id_for_lookup?).copied()
-                            })
+                            .and_then(|m| m.get(&name_id_for_lookup?).copied())
                             .unwrap_or(1);
                         let start_frame = if total_frames > 1 {
                             (id.wrapping_mul(31).wrapping_add(i as u64 * 7) % total_frames as u64)
@@ -148,7 +150,9 @@ pub(crate) fn tick_damage_fire_overlays(state: &mut AppState, dt_ms: u32) {
                         } else {
                             0
                         };
-                        let shp_name_id = state.simulation.as_ref()
+                        let shp_name_id = state
+                            .simulation
+                            .as_ref()
                             .map(|s| s.interner.get(name).unwrap_or_default())
                             .unwrap_or_default();
                         DamageFireAnim {
@@ -288,7 +292,9 @@ pub(crate) fn trigger_crane_anim(state: &mut AppState, owner: &str) {
             rate,
             frame_count as f32 * rate as f32,
         );
-        let anim_type_id = state.simulation.as_mut()
+        let anim_type_id = state
+            .simulation
+            .as_mut()
             .map(|s| s.interner.intern(&anim_upper))
             .unwrap_or_default();
         new_anims.push(AnimOverlayState {
@@ -438,8 +444,7 @@ pub(crate) fn drain_sound_events(state: &mut AppState) {
                 );
             }
             // EVA events — temporarily disabled.
-            GameSoundEvent::BuildingReady { .. }
-            | GameSoundEvent::UnitReady { .. } => {}
+            GameSoundEvent::BuildingReady { .. } | GameSoundEvent::UnitReady { .. } => {}
             // UI events — always full volume (non-positional).
             GameSoundEvent::UiSound { .. } => {
                 sfx.play_sound(
@@ -526,11 +531,7 @@ pub(crate) fn tick_garrison_muzzle_flashes(state: &mut AppState, dt_ms: u32) {
                 }
                 let (px, py) =
                     art.muzzle_flash_positions[muzzle_idx % art.muzzle_flash_positions.len()];
-                let total_frames = sim
-                    .effect_frame_counts
-                    .get(anim_name)
-                    .copied()
-                    .unwrap_or(1);
+                let total_frames = sim.effect_frame_counts.get(anim_name).copied().unwrap_or(1);
                 Some(GarrisonMuzzleFlash {
                     building_id: ev.attacker_id,
                     shp_name: anim_name.clone(),

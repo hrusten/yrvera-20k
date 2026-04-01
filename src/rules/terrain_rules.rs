@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::locomotor_type::SpeedType;
-use crate::util::fixed_math::{SimFixed, SIM_HALF, SIM_ONE};
+use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SimFixed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TerrainClass {

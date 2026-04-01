@@ -150,7 +150,11 @@ fn try_deploy_mcv(
     execute_tick: u64,
 ) -> Option<CommandEnvelope> {
     for entity in sim.entities.values() {
-        if !sim.interner.resolve(entity.owner).eq_ignore_ascii_case(owner) {
+        if !sim
+            .interner
+            .resolve(entity.owner)
+            .eq_ignore_ascii_case(owner)
+        {
             continue;
         }
         let is_deployable: bool = rules
@@ -300,7 +304,9 @@ fn queue_units(
     execute_tick: u64,
     commands: &mut Vec<CommandEnvelope>,
 ) {
-    let Some(owner_id) = sim.interner.get(owner) else { return };
+    let Some(owner_id) = sim.interner.get(owner) else {
+        return;
+    };
     let current_queue = production::queue_view_for_owner(sim, rules, owner);
     let options = production::build_options_for_owner(sim, rules, owner);
 
@@ -374,7 +380,16 @@ fn place_ready_buildings(
 
         // Spiral outward from base center to find a valid placement.
         if let Some((rx, ry)) = find_placement_cell(
-            sim, rules, owner, type_id_str, center_rx, center_ry, fw, fh, path_grid, height_map,
+            sim,
+            rules,
+            owner,
+            type_id_str,
+            center_rx,
+            center_ry,
+            fw,
+            fh,
+            path_grid,
+            height_map,
         ) {
             if let Some(owner_id) = sim.interner.get(owner) {
                 commands.push(CommandEnvelope::new(
@@ -409,7 +424,11 @@ fn send_attack_wave(
     // Gather idle military units (no MovementTarget, not harvesters).
     let mut idle_units: Vec<(u64, u16, u16)> = Vec::new();
     for entity in sim.entities.values() {
-        if !sim.interner.resolve(entity.owner).eq_ignore_ascii_case(owner) {
+        if !sim
+            .interner
+            .resolve(entity.owner)
+            .eq_ignore_ascii_case(owner)
+        {
             continue;
         }
         if !matches!(
@@ -466,7 +485,10 @@ fn find_base_center(sim: &Simulation, owner: &str) -> Option<(u16, u16)> {
     let mut count: i64 = 0;
     for entity in sim.entities.values() {
         if entity.category == EntityCategory::Structure
-            && sim.interner.resolve(entity.owner).eq_ignore_ascii_case(owner)
+            && sim
+                .interner
+                .resolve(entity.owner)
+                .eq_ignore_ascii_case(owner)
         {
             sum_x += i64::from(entity.position.rx);
             sum_y += i64::from(entity.position.ry);
@@ -576,7 +598,11 @@ where
     })
 }
 
-fn find_buildable_refinery(options: &[production::BuildOption], rules: &RuleSet, interner: &crate::sim::intern::StringInterner) -> Option<InternedId> {
+fn find_buildable_refinery(
+    options: &[production::BuildOption],
+    rules: &RuleSet,
+    interner: &crate::sim::intern::StringInterner,
+) -> Option<InternedId> {
     find_buildable_matching(options, rules, interner, |object| {
         object.category == ObjectCategory::Building && object.refinery
     })
@@ -955,7 +981,10 @@ mod tests {
                 break;
             }
         }
-        let modproc_id = sim.interner.get("MODPROC").expect("MODPROC should be interned");
+        let modproc_id = sim
+            .interner
+            .get("MODPROC")
+            .expect("MODPROC should be interned");
         assert_eq!(
             production::ready_buildings_for_owner(&sim, &rules, "Americans")
                 .into_iter()
@@ -979,7 +1008,9 @@ mod tests {
             .entities
             .values()
             .find_map(|e| {
-                (sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans")
+                (sim.interner
+                    .resolve(e.owner)
+                    .eq_ignore_ascii_case("Americans")
                     && sim.interner.resolve(e.type_ref) == "MODPROC"
                     && e.category == EntityCategory::Structure)
                     .then_some(e.stable_id)
@@ -990,7 +1021,9 @@ mod tests {
             .entities
             .values()
             .find_map(|e| {
-                (sim.interner.resolve(e.owner).eq_ignore_ascii_case("Americans")
+                (sim.interner
+                    .resolve(e.owner)
+                    .eq_ignore_ascii_case("Americans")
                     && sim.interner.resolve(e.type_ref) == "MODHARV"
                     && e.category == EntityCategory::Unit)
                     .then_some(e.stable_id)

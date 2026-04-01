@@ -55,11 +55,7 @@ impl AudHeader {
 
     /// Number of audio channels.
     pub fn channels(&self) -> u16 {
-        if self.is_stereo() {
-            2
-        } else {
-            1
-        }
+        if self.is_stereo() { 2 } else { 1 }
     }
 }
 

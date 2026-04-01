@@ -50,7 +50,9 @@ const DEFAULT_DIE_TICK_MS: u32 = 80;
 /// by a `SequenceDef`. An entity plays one sequence at a time.
 ///
 /// Maps to art.ini sequence keys: Ready/Guard → Stand, FireUp → Attack, etc.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum SequenceKind {
     /// Standing alert pose. Default state for idle entities (Ready/Guard in INI).
     Stand,

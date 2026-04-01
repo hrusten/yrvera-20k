@@ -72,7 +72,9 @@ pub(crate) fn queue_default_build(state: &mut AppState) {
             mode: QueueMode::Append,
         },
     );
-    let type_name = state.simulation.as_ref().map_or("?".to_string(), |s| s.interner.resolve(default_type).to_string());
+    let type_name = state.simulation.as_ref().map_or("?".to_string(), |s| {
+        s.interner.resolve(default_type).to_string()
+    });
     log::info!(
         "Build command queued: owner={} type={} execute_tick>=current+{}",
         owner,
@@ -152,9 +154,7 @@ pub(crate) fn cancel_last_build(state: &mut AppState) {
     schedule_command(
         state,
         &owner,
-        Command::CancelLastProduction {
-            owner: owner_id,
-        },
+        Command::CancelLastProduction { owner: owner_id },
     );
     log::info!(
         "Build cancel command queued: owner={} execute_tick>=current+{}",
@@ -315,7 +315,11 @@ fn fill_wall_between_endpoints(state: &mut AppState, type_id: &str, rx: u16, ry:
             // Stop if a non-wall building occupies this cell (can't build through it).
             if let (Some(sim), Some(rules)) = (&state.simulation, &state.rules) {
                 if crate::sim::production::structure_occupies_cell(
-                    &sim.entities, rules, cell.0, cell.1, &sim.interner,
+                    &sim.entities,
+                    rules,
+                    cell.0,
+                    cell.1,
+                    &sim.interner,
                 ) {
                     break;
                 }
@@ -386,12 +390,10 @@ pub(crate) fn place_starter_base_for_local_owner(state: &mut AppState) {
         .into_iter()
         .flatten()
         .filter(|type_id| {
-            build_options
-                .iter()
-                .any(|opt| {
-                    let opt_str = sim.interner.resolve(opt.type_id);
-                    opt_str.eq_ignore_ascii_case(type_id) && opt.enabled
-                })
+            build_options.iter().any(|opt| {
+                let opt_str = sim.interner.resolve(opt.type_id);
+                opt_str.eq_ignore_ascii_case(type_id) && opt.enabled
+            })
         })
         .collect();
     let mut queued = 0u32;

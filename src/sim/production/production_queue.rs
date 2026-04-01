@@ -482,15 +482,13 @@ pub fn tick_production(
             continue;
         }
         // Aircraft use helipad spawn path; other units use exit cell path.
-        let is_aircraft = produced_category
-            == Some(crate::rules::object_type::ObjectCategory::Aircraft);
+        let is_aircraft =
+            produced_category == Some(crate::rules::object_type::ObjectCategory::Aircraft);
         let spawn_cell: Option<(u16, u16)>;
         let helipad_airfield: Option<u64>;
 
         if is_aircraft {
-            if let Some((af_id, rx, ry)) =
-                find_helipad_for_aircraft(sim, rules, &owner_str)
-            {
+            if let Some((af_id, rx, ry)) = find_helipad_for_aircraft(sim, rules, &owner_str) {
                 spawn_cell = Some((rx, ry));
                 helipad_airfield = Some(af_id);
             } else {
@@ -556,7 +554,8 @@ pub fn tick_production(
                     let speed = obj
                         .map(|o| crate::util::fixed_math::ra2_speed_to_leptons_per_second(o.speed))
                         .unwrap_or(crate::util::fixed_math::ra2_speed_to_leptons_per_second(4));
-                    let speed = (speed * loco_mult).max(crate::util::fixed_math::SimFixed::lit("25"));
+                    let speed =
+                        (speed * loco_mult).max(crate::util::fixed_math::SimFixed::lit("25"));
                     let speed_type = sim
                         .entities
                         .get(stable_id)

@@ -77,8 +77,14 @@ pub fn active_producer_for_owner_category(
     owner: &str,
     category: ProductionCategory,
 ) -> Option<ProducerFocusView> {
-    let candidates =
-        producer_candidates_for_owner_category(&sim.entities, rules, owner, category, true, &sim.interner);
+    let candidates = producer_candidates_for_owner_category(
+        &sim.entities,
+        rules,
+        owner,
+        category,
+        true,
+        &sim.interner,
+    );
     let owner_id = sim.interner.get(owner);
     let active_sid = owner_id
         .and_then(|id| sim.production.active_producer_by_owner.get(&id))
@@ -137,8 +143,14 @@ pub fn cycle_active_producer_for_owner_category(
     owner: &str,
     category: ProductionCategory,
 ) -> bool {
-    let candidates =
-        producer_candidates_for_owner_category(&sim.entities, rules, owner, category, true, &sim.interner);
+    let candidates = producer_candidates_for_owner_category(
+        &sim.entities,
+        rules,
+        owner,
+        category,
+        true,
+        &sim.interner,
+    );
     if candidates.is_empty() {
         return false;
     }
@@ -185,10 +197,7 @@ pub fn place_ready_building(
     let Some(ready_queue) = sim.production.ready_by_owner.get(&owner_id) else {
         return false;
     };
-    if !ready_queue
-        .iter()
-        .any(|&queued| queued == type_interned)
-    {
+    if !ready_queue.iter().any(|&queued| queued == type_interned) {
         return false;
     }
     if evaluate_building_placement(sim, rules, owner, type_id, rx, ry, path_grid, height_map)
@@ -275,7 +284,9 @@ fn evaluate_building_placement(
     let Some(ready_for_owner) = ready_for_owner else {
         return Err(BuildingPlacementError::NotReady);
     };
-    let has_type = type_interned.map_or(false, |tid| ready_for_owner.iter().any(|&queued| queued == tid));
+    let has_type = type_interned.map_or(false, |tid| {
+        ready_for_owner.iter().any(|&queued| queued == tid)
+    });
     if !has_type {
         return Err(BuildingPlacementError::NotReady);
     }
@@ -311,7 +322,8 @@ fn evaluate_building_placement(
             .entities
             .values()
             .filter(|e| {
-                e.category == EntityCategory::Structure && sim.interner.resolve(e.owner).eq_ignore_ascii_case(owner)
+                e.category == EntityCategory::Structure
+                    && sim.interner.resolve(e.owner).eq_ignore_ascii_case(owner)
             })
             .map(|e| {
                 let type_str = sim.interner.resolve(e.type_ref);
@@ -436,7 +448,9 @@ fn is_within_build_area(
         return false;
     }
     for e in sim.entities.values() {
-        if e.category != EntityCategory::Structure || !sim.interner.resolve(e.owner).eq_ignore_ascii_case(owner) {
+        if e.category != EntityCategory::Structure
+            || !sim.interner.resolve(e.owner).eq_ignore_ascii_case(owner)
+        {
             continue;
         }
         let Some(existing) = rules.object(sim.interner.resolve(e.type_ref)) else {

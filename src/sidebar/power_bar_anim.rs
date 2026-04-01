@@ -351,8 +351,8 @@ mod tests {
     fn test_surplus_distribution() {
         let mut anim = PowerBarAnimState::new();
         anim.set_max_segments(300); // 100 segments
-                                    // Output 300, drain 100 → surplus = 200. output_portion = 100, surplus_portion = 100.
-                                    // Sum = 100 + 100 + 100 = 300. Each fraction = 1/3.
+        // Output 300, drain 100 → surplus = 200. output_portion = 100, surplus_portion = 100.
+        // Sum = 100 + 100 + 100 = 300. Each fraction = 1/3.
         anim.update(300, 100, 400);
         let (_, surplus, output, drain) = anim.segment_counts();
         // With theoretical=400, filled=50.
@@ -371,8 +371,8 @@ mod tests {
     fn test_deficit_all_drain() {
         let mut anim = PowerBarAnimState::new();
         anim.set_max_segments(300); // 100 segments
-                                    // Output=0, drain=200 → surplus_raw = -200. output_portion=0, surplus_portion=0.
-                                    // All filled segments should be drain.
+        // Output=0, drain=200 → surplus_raw = -200. output_portion=0, surplus_portion=0.
+        // All filled segments should be drain.
         anim.update(0, 200, 200);
         let (_, surplus, output, drain) = anim.segment_counts();
         assert_eq!(surplus, 0);
@@ -500,8 +500,8 @@ mod tests {
     fn test_small_surplus_goes_to_output_band() {
         let mut anim = PowerBarAnimState::new();
         anim.set_max_segments(300); // 100 segments
-                                    // Output=150, drain=100 → surplus_raw=50 < 100 cap.
-                                    // output_portion=50, surplus_portion=0.
+        // Output=150, drain=100 → surplus_raw=50 < 100 cap.
+        // output_portion=50, surplus_portion=0.
         anim.update(150, 100, 250);
 
         let (_, surplus, output, drain) = anim.segment_counts();

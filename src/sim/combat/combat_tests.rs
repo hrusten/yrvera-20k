@@ -10,7 +10,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::Health;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::intern::{test_intern, test_interner, InternedId};
+use crate::sim::intern::{InternedId, test_intern, test_interner};
 use crate::sim::miner::{ResourceNode, ResourceType};
 use crate::sim::power_system::PowerState;
 use crate::sim::vision::FogState;
@@ -402,12 +402,18 @@ fn test_weapon_fire_destroys_ore_in_spread() {
     // 6 density levels of ore at target (8,5): remaining = 6 * 120 = 720.
     resource_nodes.insert(
         (8, 5),
-        ResourceNode { resource_type: ResourceType::Ore, remaining: 720 },
+        ResourceNode {
+            resource_type: ResourceType::Ore,
+            remaining: 720,
+        },
     );
     // 3 density levels at (9,5): remaining = 3 * 120 = 360.
     resource_nodes.insert(
         (9, 5),
-        ResourceNode { resource_type: ResourceType::Ore, remaining: 360 },
+        ResourceNode {
+            resource_type: ResourceType::Ore,
+            remaining: 360,
+        },
     );
 
     tick_combat_with_fog(
@@ -446,12 +452,18 @@ fn test_direct_hit_weapon_destroys_center_ore() {
     let mut resource_nodes = BTreeMap::new();
     resource_nodes.insert(
         (8, 5),
-        ResourceNode { resource_type: ResourceType::Ore, remaining: 720 },
+        ResourceNode {
+            resource_type: ResourceType::Ore,
+            remaining: 720,
+        },
     );
     // Ore at adjacent cell (9,5) should NOT be affected (CellSpread=0 = center only).
     resource_nodes.insert(
         (9, 5),
-        ResourceNode { resource_type: ResourceType::Ore, remaining: 720 },
+        ResourceNode {
+            resource_type: ResourceType::Ore,
+            remaining: 720,
+        },
     );
 
     tick_combat_with_fog(
@@ -493,7 +505,10 @@ fn test_weak_weapon_partial_ore_reduction() {
     // 10 density levels of ore: remaining = 10 * 120 = 1200.
     resource_nodes.insert(
         (8, 5),
-        ResourceNode { resource_type: ResourceType::Ore, remaining: 1200 },
+        ResourceNode {
+            resource_type: ResourceType::Ore,
+            remaining: 1200,
+        },
     );
 
     tick_combat_with_fog(

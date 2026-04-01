@@ -213,8 +213,7 @@ pub fn can_enter_transport(
         // Pure integer comparison: health_ratio <= condition_red
         // ↔ current * 1000 <= max * condition_red_x1000
         let current_x1000: i64 = transport.health.current as i64 * 1000;
-        let threshold_x1000: i64 =
-            transport.health.max.max(1) as i64 * condition_red_x1000;
+        let threshold_x1000: i64 = transport.health.max.max(1) as i64 * condition_red_x1000;
         if current_x1000 <= threshold_x1000 {
             return false;
         }
@@ -309,17 +308,18 @@ fn tick_boarding(sim: &mut Simulation, rules: &RuleSet) -> bool {
 
         if dist <= BOARD_DISTANCE {
             // Passenger has arrived — attempt boarding.
-            let pax_type_str = sim.entities.get(pax_id)
+            let pax_type_str = sim
+                .entities
+                .get(pax_id)
                 .map(|e| sim.interner.resolve(e.type_ref).to_string())
                 .unwrap_or_default();
-            let transport_type_str = sim.entities.get(transport_id)
+            let transport_type_str = sim
+                .entities
+                .get(transport_id)
                 .map(|e| sim.interner.resolve(e.type_ref).to_string())
                 .unwrap_or_default();
 
-            let pax_size = rules
-                .object(&pax_type_str)
-                .map(|obj| obj.size)
-                .unwrap_or(1);
+            let pax_size = rules.object(&pax_type_str).map(|obj| obj.size).unwrap_or(1);
 
             let transport_gunner = rules
                 .object(&transport_type_str)
@@ -445,11 +445,7 @@ fn tick_unloading(sim: &mut Simulation, rules: &RuleSet) -> bool {
             }
             let (nx, ny) = (nx as u16, ny as u16);
             let occupied = occupied_cells.iter().any(|&(ox, oy)| ox == nx && oy == ny);
-            if occupied {
-                None
-            } else {
-                Some((nx, ny))
-            }
+            if occupied { None } else { Some((nx, ny)) }
         });
 
         let Some((exit_rx, exit_ry)) = exit_cell else {
@@ -473,13 +469,12 @@ fn tick_unloading(sim: &mut Simulation, rules: &RuleSet) -> bool {
         };
 
         // Get passenger size for total_size bookkeeping.
-        let pax_type_str = sim.entities.get(pax_id)
+        let pax_type_str = sim
+            .entities
+            .get(pax_id)
             .map(|e| sim.interner.resolve(e.type_ref).to_string())
             .unwrap_or_default();
-        let pax_size = rules
-            .object(&pax_type_str)
-            .map(|obj| obj.size)
-            .unwrap_or(1);
+        let pax_size = rules.object(&pax_type_str).map(|obj| obj.size).unwrap_or(1);
 
         // Adjust total_size on the cargo.
         if let Some(cargo) = sim
@@ -516,8 +511,9 @@ fn tick_unloading(sim: &mut Simulation, rules: &RuleSet) -> bool {
             let sy = exit_ry as i32 + dy as i32;
             if sx >= 0 && sy >= 0 {
                 let dest = (sx as u16, sy as u16);
-                let occupied =
-                    occupied_cells.iter().any(|&(ox, oy)| ox == dest.0 && oy == dest.1);
+                let occupied = occupied_cells
+                    .iter()
+                    .any(|&(ox, oy)| ox == dest.0 && oy == dest.1);
                 if !occupied {
                     movement::issue_direct_move(&mut sim.entities, pax_id, dest, scatter_speed);
                     break;
@@ -526,7 +522,9 @@ fn tick_unloading(sim: &mut Simulation, rules: &RuleSet) -> bool {
         }
 
         // If transport is Gunner=yes and now empty, revert weapon.
-        let transport_type_str = sim.entities.get(transport_id)
+        let transport_type_str = sim
+            .entities
+            .get(transport_id)
             .map(|e| sim.interner.resolve(e.type_ref).to_string())
             .unwrap_or_default();
         let transport_gunner = rules
@@ -566,10 +564,7 @@ fn tick_unloading(sim: &mut Simulation, rules: &RuleSet) -> bool {
             if let Some(t) = sim.entities.get_mut(transport_id) {
                 t.order_intent = None;
                 if is_garrison_building {
-                    let revert_owner = t
-                        .garrison_original_owner
-                        .take()
-                        .unwrap_or(neutral_id);
+                    let revert_owner = t.garrison_original_owner.take().unwrap_or(neutral_id);
                     t.owner = revert_owner;
                     ownership_changed = true;
                 }

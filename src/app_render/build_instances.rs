@@ -88,11 +88,7 @@ pub(super) struct SidebarInstances {
 /// Build all game-world sprite instances: terrain tiles, map overlays, bridges,
 /// VXL units, SHP buildings/infantry, world effects, damage fires.
 /// All instance vectors are Y-sorted (depth descending) for correct draw order.
-pub(super) fn build_world_instances(
-    state: &mut AppState,
-    sw: f32,
-    sh: f32,
-) -> WorldInstances {
+pub(super) fn build_world_instances(state: &mut AppState, sw: f32, sh: f32) -> WorldInstances {
     // Terrain tiles — look up atlas UVs with variant fallback.
     let uv_fn_closure;
     let uv_fn: Option<&dyn Fn(u16, u8, u8) -> Option<TilePlacement>> =
@@ -124,18 +120,24 @@ pub(super) fn build_world_instances(
         // Skip terrain for fully shrouded cells — matches gamemd which doesn't
         // render terrain under shroud. The multiply pass still darkens edges.
         let local_owner_name = crate::app_commands::preferred_local_owner_name(state);
-        let fog_vis: Option<(crate::sim::intern::InternedId, &crate::sim::vision::FogState)> =
-            if state.sandbox_full_visibility {
-                None
-            } else if let (Some(sim), Some(owner)) =
-                (&state.simulation, &local_owner_name)
-            {
-                sim.interner.get(owner).map(|id| (id, &sim.fog))
-            } else {
-                None
-            };
+        let fog_vis: Option<(
+            crate::sim::intern::InternedId,
+            &crate::sim::vision::FogState,
+        )> = if state.sandbox_full_visibility {
+            None
+        } else if let (Some(sim), Some(owner)) = (&state.simulation, &local_owner_name) {
+            sim.interner.get(owner).map(|id| (id, &sim.fog))
+        } else {
+            None
+        };
         terrain::build_visible_instances(
-            grid, state.camera_x, state.camera_y, sw, sh, uv_fn, fog_vis,
+            grid,
+            state.camera_x,
+            state.camera_y,
+            sw,
+            sh,
+            uv_fn,
+            fog_vis,
         )
     } else {
         terrain::TerrainInstances {
@@ -276,7 +278,9 @@ pub(super) fn update_minimap(state: &mut AppState, local_owner: &Option<String>)
             if state.sandbox_full_visibility {
                 None
             } else {
-                local_owner.as_deref().and_then(|owner| sim.interner.get(owner).map(|id| (id, &sim.fog)))
+                local_owner
+                    .as_deref()
+                    .and_then(|owner| sim.interner.get(owner).map(|id| (id, &sim.fog)))
             },
             state.rules.as_ref(),
             Some(&sim.radar_events),
@@ -347,7 +351,9 @@ fn build_placement_preview(
 ) {
     match (&state.selection_overlay, &state.building_placement_preview) {
         (Some(o), Some(preview)) => {
-            let preview_type_str = state.simulation.as_ref()
+            let preview_type_str = state
+                .simulation
+                .as_ref()
                 .map(|s| s.interner.resolve(preview.type_id).to_string())
                 .unwrap_or_default();
             let is_wall: bool = state
@@ -361,15 +367,11 @@ fn build_placement_preview(
                 // Walls show the cursor cell + auto-fill cells toward existing walls.
                 // Draws place.shp on every intermediate cell between cursor and
                 // nearest same-type wall.
-                let (mut valid, mut invalid) =
-                    o.build_building_preview(preview, &state.height_map);
+                let (mut valid, mut invalid) = o.build_building_preview(preview, &state.height_map);
                 let autofill = compute_wall_autofill_cells(state, preview);
                 if !autofill.is_empty() {
-                    let (av, ai) = o.build_wall_autofill_diamonds(
-                        &autofill,
-                        preview.valid,
-                        &state.height_map,
-                    );
+                    let (av, ai) =
+                        o.build_wall_autofill_diamonds(&autofill, preview.valid, &state.height_map);
                     valid.extend(av);
                     invalid.extend(ai);
                 }
@@ -415,7 +417,9 @@ fn compute_wall_autofill_cells(
     let Some(overlay_registry) = state.overlay_registry.as_ref() else {
         return Vec::new();
     };
-    let preview_type_str_wall = state.simulation.as_ref()
+    let preview_type_str_wall = state
+        .simulation
+        .as_ref()
         .map(|s| s.interner.resolve(preview.type_id).to_string())
         .unwrap_or_default();
     let Some(overlay_id) = overlay_registry.id_for_name(&preview_type_str_wall) else {
@@ -440,7 +444,11 @@ fn compute_wall_autofill_cells(
             // Stop if a non-wall building occupies this cell (can't build through it).
             if let (Some(s), Some(r)) = (sim, rules) {
                 if crate::sim::production::structure_occupies_cell(
-                    &s.entities, r, cell.0, cell.1, &s.interner,
+                    &s.entities,
+                    r,
+                    cell.0,
+                    cell.1,
+                    &s.interner,
                 ) {
                     break;
                 }
@@ -469,10 +477,7 @@ fn compute_wall_autofill_cells(
 pub(super) fn build_sidebar_instances(state: &mut AppState) -> SidebarInstances {
     let view = current_sidebar_view(state);
     let minimap_rect = active_minimap_screen_rect(state);
-    let (sw, sh) = (
-        state.render_width() as f32,
-        state.render_height() as f32,
-    );
+    let (sw, sh) = (state.render_width() as f32, state.render_height() as f32);
 
     // Only show minimap when radar is online (or no radar_anim = legacy fallback).
     let minimap_visible: bool = state

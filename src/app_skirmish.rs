@@ -9,7 +9,7 @@ use crate::assets::pal_file::Palette;
 use crate::map::houses::HouseRoster;
 use crate::map::map_file::MapFile;
 use crate::map::overlay::OverlayEntry;
-use crate::map::overlay_types::{resolve_overlay_name_for_render, OverlayTypeRegistry};
+use crate::map::overlay_types::{OverlayTypeRegistry, resolve_overlay_name_for_render};
 use crate::map::waypoints;
 use crate::render::batch::BatchRenderer;
 use crate::render::bridge_atlas::{self, BridgeAtlas};

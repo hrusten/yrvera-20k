@@ -23,7 +23,7 @@ use crate::sim::movement::air_movement;
 use crate::sim::movement::locomotor::AirMovePhase;
 use crate::sim::production::foundation_dimensions;
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::{SimFixed, SIM_ONE, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 
 /// Aircraft mission — determines the high-level behavior each tick.
 ///
@@ -238,7 +238,11 @@ pub fn tick_aircraft_missions(sim: &mut Simulation, rules: &RuleSet) {
                     if let Some(entity) = sim.entities.get(snap.id) {
                         let type_str = sim.interner.resolve(entity.type_ref);
                         if let Some(obj) = rules.object(type_str) {
-                            let cruise = crate::sim::movement::locomotor::LocomotorState::from_object_type(obj).target_altitude;
+                            let cruise =
+                                crate::sim::movement::locomotor::LocomotorState::from_object_type(
+                                    obj,
+                                )
+                                .target_altitude;
                             m.set_target_altitude = Some(cruise);
                         }
                     }
@@ -250,12 +254,10 @@ pub fn tick_aircraft_missions(sim: &mut Simulation, rules: &RuleSet) {
                     if let Some(entity) = sim.entities.get(snap.id) {
                         if let Some(tid) = entity.attack_target.as_ref().map(|at| at.target) {
                             if let Some(target) = sim.entities.get(tid) {
-                                let dx = (entity.position.rx as i32
-                                    - target.position.rx as i32)
-                                    .abs();
-                                let dy = (entity.position.ry as i32
-                                    - target.position.ry as i32)
-                                    .abs();
+                                let dx =
+                                    (entity.position.rx as i32 - target.position.rx as i32).abs();
+                                let dy =
+                                    (entity.position.ry as i32 - target.position.ry as i32).abs();
                                 let dist_cells = dx.max(dy);
 
                                 let speed_frac = if dist_cells < 1 {
@@ -293,14 +295,12 @@ pub fn tick_aircraft_missions(sim: &mut Simulation, rules: &RuleSet) {
                         (entity.position.rx, entity.position.ry),
                     );
                     if let Some((af_id, af_rx, af_ry)) = nearest {
-                        m.new_mission =
-                            AircraftMission::ReturnToBase { airfield_id: af_id };
+                        m.new_mission = AircraftMission::ReturnToBase { airfield_id: af_id };
                         m.move_to = Some((af_rx, af_ry));
                     } else {
                         let type_str = sim.interner.resolve(entity.type_ref);
-                        let airport_bound = rules
-                            .object(type_str)
-                            .map_or(false, |o| o.airport_bound);
+                        let airport_bound =
+                            rules.object(type_str).map_or(false, |o| o.airport_bound);
                         if airport_bound {
                             m.self_destruct = true;
                         }

@@ -293,7 +293,11 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                                 egui::Color32::from_rgb(160, 120, 0),
                                 format!(
                                     "In footprint: {} ({}) @ ({},{}) {}",
-                                    sim.interner.resolve(entity.type_ref), foundation, ex, ey, sim.interner.resolve(entity.owner)
+                                    sim.interner.resolve(entity.type_ref),
+                                    foundation,
+                                    ex,
+                                    ey,
+                                    sim.interner.resolve(entity.owner)
                                 ),
                             );
                         }
@@ -377,7 +381,8 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                     ui.label(
                         egui::RichText::new(format!(
                             "Miner: {} ({:?})",
-                            sim.interner.resolve(entity.type_ref), miner.kind
+                            sim.interner.resolve(entity.type_ref),
+                            miner.kind
                         ))
                         .strong(),
                     );
@@ -477,7 +482,8 @@ pub(crate) fn draw_event_history_panel(ctx: &egui::Context, state: &AppState) {
                     ui.label(
                         egui::RichText::new(format!(
                             "{} (id={})",
-                            sim.interner.resolve(entity.type_ref), entity.stable_id
+                            sim.interner.resolve(entity.type_ref),
+                            entity.stable_id
                         ))
                         .strong()
                         .color(egui::Color32::from_rgb(20, 20, 20)),

@@ -120,11 +120,7 @@ pub(crate) fn build_building_status_instances(
         let art_key: &str = obj
             .map(|o| {
                 let img = o.image.as_str();
-                if img.is_empty() {
-                    o.id.as_str()
-                } else {
-                    img
-                }
+                if img.is_empty() { o.id.as_str() } else { img }
             })
             .unwrap_or(type_str);
         let art_height: f32 = state
@@ -334,7 +330,9 @@ pub(crate) fn build_occupant_pip_instances(
                 let pax_id = cargo.passengers[i as usize];
                 sim.entities
                     .get(pax_id)
-                    .and_then(|pax| rules.and_then(|r| r.object(sim.interner.resolve(pax.type_ref))))
+                    .and_then(|pax| {
+                        rules.and_then(|r| r.object(sim.interner.resolve(pax.type_ref)))
+                    })
                     .map(|pax_obj| pax_obj.occupy_pip)
                     .unwrap_or(7) // default PersonGreen
             } else {
@@ -597,11 +595,7 @@ const CARGO_PIP_STEP_X: f32 = 4.0;
 /// Each bale in the cargo is one pip: ore=green (variant 1), gem=colored (variant 2).
 /// Empty slots shown as variant 0. Start at (sx - 15 + canvas_adj_x, sy + 10 + canvas_adj_y),
 /// step (+4, 0) per pip. Draw order: gem pips first, then ore pips, then empty slots.
-pub(crate) fn build_cargo_pip_instances(
-    state: &AppState,
-    sw: f32,
-    sh: f32,
-) -> Vec<SpriteInstance> {
+pub(crate) fn build_cargo_pip_instances(state: &AppState, sw: f32, sh: f32) -> Vec<SpriteInstance> {
     let (Some(sim), Some(overlay)) = (&state.simulation, &state.selection_overlay) else {
         return Vec::new();
     };
@@ -743,7 +737,10 @@ pub(crate) fn build_cargo_pip_instances(
         log::debug!(
             "cargo pips: {} instances for {} entities (pip_size={:?}, uv_size={:?})",
             instances.len(),
-            sim.entities.values().filter(|e| e.selected && e.miner.is_some()).count(),
+            sim.entities
+                .values()
+                .filter(|e| e.selected && e.miner.is_some())
+                .count(),
             pip_size,
             pip_uv_size,
         );

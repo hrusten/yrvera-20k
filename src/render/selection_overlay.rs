@@ -1141,8 +1141,18 @@ fn load_pipbrd_atlas(
     let texture: BatchTexture = batch.create_texture(gpu, &rgba, atlas_w, atlas_h);
     log::info!(
         "pipbrd atlas: {}x{} (vehicle {}x{} adj({:.0},{:.0}), infantry {}x{} adj({:.0},{:.0}), canvas {}x{})",
-        atlas_w, atlas_h, w0, h0, veh_adj_x, veh_adj_y, w1, h1, inf_adj_x, inf_adj_y,
-        shp.width, shp.height,
+        atlas_w,
+        atlas_h,
+        w0,
+        h0,
+        veh_adj_x,
+        veh_adj_y,
+        w1,
+        h1,
+        inf_adj_x,
+        inf_adj_y,
+        shp.width,
+        shp.height,
     );
     Some((
         Some(texture),

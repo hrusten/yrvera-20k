@@ -136,9 +136,11 @@ pub(crate) fn hover_target_at_point(
             || (sim
                 .fog
                 .is_cell_revealed(local_owner_id, entity.position.rx, entity.position.ry)
-                && !sim
-                    .fog
-                    .is_cell_gap_covered(local_owner_id, entity.position.rx, entity.position.ry));
+                && !sim.fog.is_cell_gap_covered(
+                    local_owner_id,
+                    entity.position.rx,
+                    entity.position.ry,
+                ));
         let kind = if is_friendly {
             if is_structure {
                 HoverTargetKind::FriendlyStructure
@@ -257,7 +259,16 @@ pub(crate) fn compute_box_selection_snapshot(
     interner: Option<&crate::sim::intern::StringInterner>,
 ) -> Option<Vec<u64>> {
     let current: Vec<u64> = selected_stable_ids_sorted_from_store(entities);
-    let candidates = entities_in_rect(entities, fog, local_owner, min_x, min_y, max_x, max_y, interner);
+    let candidates = entities_in_rect(
+        entities,
+        fog,
+        local_owner,
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+        interner,
+    );
     if candidates.is_empty() && additive {
         return None;
     }
@@ -314,7 +325,13 @@ fn entities_in_rect(
         .values()
         .filter_map(|entity| {
             let owner_str = interner.map_or("", |i| i.resolve(entity.owner));
-            if !is_selectable_entity(fog, local_owner, owner_str, &entity.position, local_owner_id) {
+            if !is_selectable_entity(
+                fog,
+                local_owner,
+                owner_str,
+                &entity.position,
+                local_owner_id,
+            ) {
                 return None;
             }
             // Structures excluded from band-box selection (RA2 convention).
@@ -381,7 +398,13 @@ fn pick_entity_at_point(
     for entity in entities.values() {
         let owner_str = interner.map_or("", |i| i.resolve(entity.owner));
         let type_str = interner.map_or("", |i| i.resolve(entity.type_ref));
-        if !is_selectable_entity(fog, local_owner, owner_str, &entity.position, local_owner_id) {
+        if !is_selectable_entity(
+            fog,
+            local_owner,
+            owner_str,
+            &entity.position,
+            local_owner_id,
+        ) {
             continue;
         }
         let is_structure = entity.category == EntityCategory::Structure;

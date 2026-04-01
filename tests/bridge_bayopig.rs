@@ -1,11 +1,11 @@
 //! Inspect bridge overlays in BayoPig map.
 //! Run with: cargo test --test bridge_bayopig -- --nocapture
 
+use std::path::Path;
 use vera20k::assets::asset_manager::AssetManager;
 use vera20k::map::map_file::MapFile;
 use vera20k::map::overlay_types::OverlayTypeRegistry;
 use vera20k::rules::ini_parser::IniFile;
-use std::path::Path;
 
 fn ra2_dir() -> String {
     std::env::var("RA2_DIR")

@@ -356,9 +356,7 @@ impl ApplicationHandler for App {
         // Exception: when paused or save/load panel is open, egui renders
         // interactive content.
         let egui_consumed: bool = egui_response.consumed
-            && (state.screen != GameScreen::InGame
-                || state.paused
-                || state.show_save_load_panel);
+            && (state.screen != GameScreen::InGame || state.paused || state.show_save_load_panel);
 
         match event {
             WindowEvent::CloseRequested => {
@@ -501,7 +499,8 @@ impl App {
                 let rh = cfg.graphics.render_height();
                 log::info!(
                     "Upscale pass enabled: render at {}x{}, upscale to window",
-                    rw, rh,
+                    rw,
+                    rh,
                 );
                 crate::render::upscale_pass::UpscalePass::new(&gpu, rw, rh)
             });
@@ -759,7 +758,11 @@ impl App {
                     let result = app_render::render_game(state, &mut encoder, &game_view);
                     state.depth_view = saved_depth;
                     let sv = result?;
-                    state.upscale_pass.as_ref().unwrap().draw(&mut encoder, &view);
+                    state
+                        .upscale_pass
+                        .as_ref()
+                        .unwrap()
+                        .draw(&mut encoder, &view);
                     sv
                 } else {
                     app_render::render_game(state, &mut encoder, &view)?

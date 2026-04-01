@@ -13,7 +13,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Interned string handle — `Copy`, `Eq`, `Ord`, `Hash`. Zero-cost clones.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub struct InternedId(u32);
 
 impl InternedId {
@@ -114,7 +116,10 @@ impl<'de> serde::Deserialize<'de> for StringInterner {
         for (i, s) in strings.iter().enumerate() {
             to_id.insert(s.to_ascii_uppercase(), InternedId(i as u32));
         }
-        Ok(StringInterner { to_id, to_str: strings })
+        Ok(StringInterner {
+            to_id,
+            to_str: strings,
+        })
     }
 }
 

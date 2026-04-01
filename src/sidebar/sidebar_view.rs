@@ -9,8 +9,8 @@ use crate::sim::production::{
 };
 
 use super::{
-    compute_layout_with_spec, Rect, SidebarAction, SidebarChromeLayoutSpec, SidebarControlButton,
-    SidebarItem, SidebarTab, SidebarTabButton, SidebarView, CAMEO_COLUMNS,
+    CAMEO_COLUMNS, Rect, SidebarAction, SidebarChromeLayoutSpec, SidebarControlButton, SidebarItem,
+    SidebarTab, SidebarTabButton, SidebarView, compute_layout_with_spec,
 };
 
 pub fn build_sidebar_view(
@@ -291,8 +291,7 @@ fn collect_build_entries(
     armed_building: Option<&str>,
     interner: Option<&crate::sim::intern::StringInterner>,
 ) -> Vec<BuildEntry> {
-    let armed_id: Option<InternedId> = armed_building
-        .and_then(|s| interner.and_then(|i| i.get(s)));
+    let armed_id: Option<InternedId> = armed_building.and_then(|s| interner.and_then(|i| i.get(s)));
     let resolve = |id: InternedId| -> String {
         interner.map_or(format!("#{}", id.index()), |i| i.resolve(id).to_string())
     };
@@ -308,9 +307,7 @@ fn collect_build_entries(
         })
         .map(|opt| {
             // Check if this type has a completed building waiting for placement.
-            let is_ready = ready_buildings
-                .iter()
-                .any(|r| r.type_id == opt.type_id);
+            let is_ready = ready_buildings.iter().any(|r| r.type_id == opt.type_id);
             let is_armed = is_ready && armed_id == Some(opt.type_id);
 
             if is_ready {
@@ -391,7 +388,7 @@ fn collect_build_entries(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{build_sidebar_view, SidebarAction, SidebarTab};
+    use super::super::{SidebarAction, SidebarTab, build_sidebar_view};
 
     fn approx_eq(a: f32, b: f32) {
         assert!(

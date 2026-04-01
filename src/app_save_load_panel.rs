@@ -237,15 +237,11 @@ pub(crate) fn draw_save_load_panel(
                                     .push_id(row_id, |ui| {
                                         ui.horizontal(|ui| {
                                             // Map name (truncated).
-                                            let map_label =
-                                                if entry.header.map_name.len() > 18 {
-                                                    format!(
-                                                        "{}...",
-                                                        &entry.header.map_name[..18]
-                                                    )
-                                                } else {
-                                                    entry.header.map_name.clone()
-                                                };
+                                            let map_label = if entry.header.map_name.len() > 18 {
+                                                format!("{}...", &entry.header.map_name[..18])
+                                            } else {
+                                                entry.header.map_name.clone()
+                                            };
                                             ui.add_sized(
                                                 egui::vec2(120.0, 20.0),
                                                 egui::Label::new(
@@ -304,9 +300,7 @@ pub(crate) fn draw_save_load_panel(
                                                 )
                                                 .clicked()
                                             {
-                                                action = SaveLoadAction::Load(
-                                                    entry.path.clone(),
-                                                );
+                                                action = SaveLoadAction::Load(entry.path.clone());
                                             }
 
                                             // Delete button.
@@ -321,9 +315,7 @@ pub(crate) fn draw_save_load_panel(
                                                 )
                                                 .clicked()
                                             {
-                                                action = SaveLoadAction::Delete(
-                                                    entry.path.clone(),
-                                                );
+                                                action = SaveLoadAction::Delete(entry.path.clone());
                                             }
                                         });
                                     })
@@ -344,9 +336,7 @@ pub(crate) fn draw_save_load_panel(
                 if ui
                     .add_sized(
                         egui::vec2(160.0, 36.0),
-                        egui::Button::new(
-                            egui::RichText::new("Close").size(16.0).strong(),
-                        ),
+                        egui::Button::new(egui::RichText::new("Close").size(16.0).strong()),
                     )
                     .clicked()
                 {

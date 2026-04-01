@@ -25,13 +25,15 @@
 use crate::rules::jumpjet_params::JumpjetParams;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::rules::object_type::ObjectType;
-use crate::util::fixed_math::{sim_from_f32, SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_from_f32};
 
 /// Which spatial layer the unit currently occupies.
 ///
 /// Affects occupancy checks, rendering, and targeting. Ground units block
 /// ground cells; air units occupy the air layer and can fly over obstacles.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum MovementLayer {
     /// Standard ground surface.
     Ground,

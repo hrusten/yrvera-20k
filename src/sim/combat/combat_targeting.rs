@@ -14,7 +14,7 @@
 //! - Part of sim/ — depends on rules/ (RuleSet) and sim/components.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
-use super::combat_weapon::{select_weapon_with_ifv, verses_gate, VersesGate};
+use super::combat_weapon::{VersesGate, select_weapon_with_ifv, verses_gate};
 use super::{is_within_range_leptons, lepton_distance_sq_raw};
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::ObjectCategory;
@@ -147,7 +147,8 @@ pub(crate) fn acquire_best_target(
         }
         let attacker_owner_str = interner.resolve(attacker.owner);
         let candidate_owner_str = interner.resolve(candidate.owner);
-        if fog.is_some_and(|fog_state| fog_state.is_friendly(attacker_owner_str, candidate_owner_str))
+        if fog
+            .is_some_and(|fog_state| fog_state.is_friendly(attacker_owner_str, candidate_owner_str))
             || candidate.owner == attacker.owner
         {
             continue;
@@ -213,7 +214,12 @@ pub(crate) fn acquire_best_target(
 }
 
 /// Check if an entity can retaliate against an attacker (weapon + Verses gate).
-fn can_retaliate(entity: &GameEntity, attacker: &GameEntity, rules: &RuleSet, interner: &StringInterner) -> bool {
+fn can_retaliate(
+    entity: &GameEntity,
+    attacker: &GameEntity,
+    rules: &RuleSet,
+    interner: &StringInterner,
+) -> bool {
     let obj = match rules.object(interner.resolve(entity.type_ref)) {
         Some(o) => o,
         None => return false,
@@ -293,16 +299,25 @@ pub fn tick_retaliation(entities: &mut EntityStore, rules: &RuleSet, interner: &
         if retaliate {
             // Compute facing toward attacker (lepton-precise for turrets).
             let attacker_pos = match entities.get(attacker_sid) {
-                Some(a) => (a.position.rx, a.position.ry, a.position.sub_x, a.position.sub_y),
+                Some(a) => (
+                    a.position.rx,
+                    a.position.ry,
+                    a.position.sub_x,
+                    a.position.sub_y,
+                ),
                 None => continue,
             };
             if let Some(entity) = entities.get_mut(entity_id) {
                 if entity.turret_facing.is_some() {
                     let desired_u16 = crate::sim::movement::turret::facing_toward_lepton(
-                        entity.position.rx, entity.position.ry,
-                        entity.position.sub_x, entity.position.sub_y,
-                        attacker_pos.0, attacker_pos.1,
-                        attacker_pos.2, attacker_pos.3,
+                        entity.position.rx,
+                        entity.position.ry,
+                        entity.position.sub_x,
+                        entity.position.sub_y,
+                        attacker_pos.0,
+                        attacker_pos.1,
+                        attacker_pos.2,
+                        attacker_pos.3,
                     );
                     entity.turret_facing = Some(desired_u16);
                 } else {

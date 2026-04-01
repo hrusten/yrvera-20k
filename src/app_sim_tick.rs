@@ -19,13 +19,13 @@ use crate::assets::pal_file::Palette;
 use crate::audio::events::GameSoundEvent;
 use crate::map::entities::EntityCategory;
 use crate::map::terrain;
-use crate::sim::trigger_runtime::TriggerEffect;
 use crate::render::sprite_atlas;
 use crate::render::unit_atlas;
 use crate::sim::animation::{self, SequenceSet};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production;
 use crate::sim::replay::{ReplayHeader, ReplayLog};
+use crate::sim::trigger_runtime::TriggerEffect;
 use crate::sim::world::SimSoundEvent;
 use crate::ui::game_screen::GameScreen;
 
@@ -137,7 +137,11 @@ pub(crate) fn advance_in_game_runtime(state: &mut AppState, elapsed_ms: u64) {
     };
 
     // When frame-stepping, inject exactly one tick instead of using wall-clock elapsed time.
-    let sim_elapsed = if frame_stepping { SIM_TICK_MS as u64 } else { elapsed_ms };
+    let sim_elapsed = if frame_stepping {
+        SIM_TICK_MS as u64
+    } else {
+        elapsed_ms
+    };
 
     if run_sim {
         if let Some(deadline) = state.mission_announcement_deadline {
@@ -168,18 +172,21 @@ pub(crate) fn advance_in_game_runtime(state: &mut AppState, elapsed_ms: u64) {
 
     crate::app_building_anim::update_radar_state(state, SIM_TICK_MS as f32);
     crate::app_building_anim::update_power_bar_anim(state);
-    if let (Some(player), Some(assets)) =
-        (&mut state.music_player, &state.asset_manager)
-    {
+    if let (Some(player), Some(assets)) = (&mut state.music_player, &state.asset_manager) {
         player.update(assets);
     }
     crate::app_camera::update_camera(state);
     update_building_placement_preview(state);
     let sw = state.render_width() as f32;
     let sh = state.render_height() as f32;
-    state
-        .batch_renderer
-        .update_camera(&state.gpu, sw, sh, state.camera_x, state.camera_y, state.zoom_level);
+    state.batch_renderer.update_camera(
+        &state.gpu,
+        sw,
+        sh,
+        state.camera_x,
+        state.camera_y,
+        state.zoom_level,
+    );
 }
 
 /// Tick simulation: advance movement and animation systems.
@@ -307,8 +314,10 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
                         {
                             continue;
                         }
-                        let faction =
-                            crate::app_building_anim::eva_faction_key(owner_str, &state.house_roster);
+                        let faction = crate::app_building_anim::eva_faction_key(
+                            owner_str,
+                            &state.house_roster,
+                        );
                         let sound_id = state
                             .eva_registry
                             .get("EVA_ConstructionComplete", faction)
@@ -324,8 +333,10 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
                         {
                             continue;
                         }
-                        let faction =
-                            crate::app_building_anim::eva_faction_key(owner_str, &state.house_roster);
+                        let faction = crate::app_building_anim::eva_faction_key(
+                            owner_str,
+                            &state.house_roster,
+                        );
                         let sound_id = state
                             .eva_registry
                             .get("EVA_UnitReady", faction)
@@ -630,8 +641,11 @@ pub(crate) fn refresh_entity_atlases(state: &mut AppState) {
     };
 
     // Check if sprite atlas needs rebuilding (new SHP entity types appeared).
-    let extra_buildings: Vec<&str> =
-        crate::app_skirmish::deployable_building_types(&sim.entities, state.rules.as_ref(), Some(&sim.interner));
+    let extra_buildings: Vec<&str> = crate::app_skirmish::deployable_building_types(
+        &sim.entities,
+        state.rules.as_ref(),
+        Some(&sim.interner),
+    );
     let sprite_base_keys = sprite_atlas::collect_needed_base_keys(
         &sim.entities,
         &state.house_color_map,
@@ -801,7 +815,10 @@ pub(crate) fn is_any_layer_walkable(
 
 pub(crate) fn screen_point_to_world(state: &AppState, screen_x: f32, screen_y: f32) -> (f32, f32) {
     // Screen pixel / zoom = world offset from camera top-left.
-    (screen_x / state.zoom_level + state.camera_x, screen_y / state.zoom_level + state.camera_y)
+    (
+        screen_x / state.zoom_level + state.camera_x,
+        screen_y / state.zoom_level + state.camera_y,
+    )
 }
 
 /// Shared owner for world-space point -> map-cell resolution in the app layer.
@@ -886,7 +903,7 @@ pub(crate) fn rules_hash(rules: &crate::rules::ruleset::RuleSet) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        schedule_fixed_steps, world_point_to_cell, FixedStepSchedule, MAX_SIM_STEPS_PER_FRAME,
+        FixedStepSchedule, MAX_SIM_STEPS_PER_FRAME, schedule_fixed_steps, world_point_to_cell,
     };
     use crate::app_types::SIM_TICK_MS;
     use std::collections::BTreeMap;

@@ -77,7 +77,7 @@ pub fn parse_lat_config(ini_data: &[u8], lookup: &TilesetLookup) -> LatConfig {
         Err(_) => {
             return LatConfig {
                 grounds: Vec::new(),
-            }
+            };
         }
     };
 

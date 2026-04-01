@@ -277,13 +277,15 @@ mod tests {
     fn indestructible_bridge_ignores_damage() {
         let mut state =
             BridgeRuntimeState::from_resolved_terrain(&make_bridge_terrain(), false, 50);
-        assert!(state
-            .apply_damage(BridgeDamageEvent {
-                rx: 0,
-                ry: 0,
-                damage: 50,
-            })
-            .is_none());
+        assert!(
+            state
+                .apply_damage(BridgeDamageEvent {
+                    rx: 0,
+                    ry: 0,
+                    damage: 50,
+                })
+                .is_none()
+        );
         assert!(state.is_bridge_walkable(0, 0));
     }
 }

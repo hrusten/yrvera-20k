@@ -134,7 +134,6 @@ fn align_up(n: u32, align: u32) -> u32 {
     (n + align - 1) / align * align
 }
 
-
 impl ShroudBuffer {
     /// Create a new shroud buffer for the given screen and map dimensions.
     ///
@@ -207,8 +206,10 @@ impl ShroudBuffer {
         let virt_h = ((screen_h as f32 / zoom).ceil() as u32).min(4096);
 
         // Resize GPU texture if virtual dimensions changed.
-        if virt_w != self.width || virt_h != self.height
-            || screen_w != self.last_screen_w || screen_h != self.last_screen_h
+        if virt_w != self.width
+            || virt_h != self.height
+            || screen_w != self.last_screen_w
+            || screen_h != self.last_screen_h
         {
             self.width = virt_w;
             self.height = virt_h;
@@ -417,9 +418,7 @@ impl ShroudBuffer {
 ///
 /// Returns `(frame_pixels, canvas_w, canvas_h)` where each entry in
 /// `frame_pixels` is a `canvas_w × canvas_h` buffer of raw SHP pixel values.
-pub fn extract_shp_brightness(
-    shp: &crate::assets::shp_file::ShpFile,
-) -> (Vec<Vec<u8>>, u32, u32) {
+pub fn extract_shp_brightness(shp: &crate::assets::shp_file::ShpFile) -> (Vec<Vec<u8>>, u32, u32) {
     let canvas_w = shp.width as u32;
     let canvas_h = shp.height as u32;
     let canvas_size = (canvas_w * canvas_h) as usize;

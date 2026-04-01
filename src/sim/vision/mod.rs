@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::map::houses::{are_houses_friendly, HouseAllianceMap};
+use crate::map::houses::{HouseAllianceMap, are_houses_friendly};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::pathfinding::PathGrid;
@@ -247,7 +247,9 @@ impl FogState {
         }
         // Slow fallback: iterate all owners (used in tests or when merged not built).
         // Only valid if by_owner is empty or merged not yet built.
-        self.by_owner.get(&owner).is_some_and(|s| s.is_visible(rx, ry))
+        self.by_owner
+            .get(&owner)
+            .is_some_and(|s| s.is_visible(rx, ry))
     }
 
     /// Returns true if the owner (or a friendly ally) has revealed the cell.
@@ -255,7 +257,9 @@ impl FogState {
         if let Some(vis) = self.merged_vis(owner) {
             return vis.is_revealed(rx, ry);
         }
-        self.by_owner.get(&owner).is_some_and(|s| s.is_revealed(rx, ry))
+        self.by_owner
+            .get(&owner)
+            .is_some_and(|s| s.is_revealed(rx, ry))
     }
 
     /// Returns true if the cell is covered by an enemy gap generator for this owner.
@@ -263,7 +267,9 @@ impl FogState {
         if let Some(vis) = self.merged_vis(owner) {
             return vis.is_gap_covered(rx, ry);
         }
-        self.by_owner.get(&owner).is_some_and(|s| s.is_gap_covered(rx, ry))
+        self.by_owner
+            .get(&owner)
+            .is_some_and(|s| s.is_gap_covered(rx, ry))
     }
 
     /// Returns true if two owners should be treated as friendly.
@@ -432,7 +438,9 @@ pub fn recompute_owner_visibility(
     interner: &crate::sim::intern::StringInterner,
 ) -> FogState {
     let mut fog = FogState::default();
-    recompute_owner_visibility_in_place(&mut fog, entities, path_grid, alliances, config, None, interner);
+    recompute_owner_visibility_in_place(
+        &mut fog, entities, path_grid, alliances, config, None, interner,
+    );
     fog
 }
 
@@ -726,7 +734,13 @@ const REVEAL_MIRROR: [(i8, i8); 253] = [
 ];
 
 /// Public version of reveal_radius for use by external systems (e.g., RevealOnFire).
-pub fn reveal_radius(fog: &mut FogState, owner: InternedId, center_rx: u16, center_ry: u16, range: u16) {
+pub fn reveal_radius(
+    fog: &mut FogState,
+    owner: InternedId,
+    center_rx: u16,
+    center_ry: u16,
+    range: u16,
+) {
     let width = fog.width;
     let height = fog.height;
     if width == 0 || height == 0 {
@@ -737,7 +751,9 @@ pub fn reveal_radius(fog: &mut FogState, owner: InternedId, center_rx: u16, cent
         .entry(owner)
         .or_insert_with(|| OwnerVisibility::new(width, height));
     // Fire-reveal events don't use height-based LOS (matches gamemd).
-    reveal_radius_into(vis, center_rx, center_ry, range, 0, false, None, width, height);
+    reveal_radius_into(
+        vis, center_rx, center_ry, range, 0, false, None, width, height,
+    );
 }
 
 /// Apply SpySat full-map reveal: if any alive SpySat building exists for an owner,
@@ -745,7 +761,11 @@ pub fn reveal_radius(fog: &mut FogState, owner: InternedId, center_rx: u16, cent
 ///
 /// Takes a list of owner names for each powered SpySat building currently alive.
 /// Power state filtering is done by the caller (see `refresh_fog`).
-pub fn apply_spy_sat(fog: &mut FogState, spy_sat_owners: &[InternedId], _interner: &StringInterner) {
+pub fn apply_spy_sat(
+    fog: &mut FogState,
+    spy_sat_owners: &[InternedId],
+    _interner: &StringInterner,
+) {
     let width = fog.width;
     let height = fog.height;
     for &owner_id in spy_sat_owners {

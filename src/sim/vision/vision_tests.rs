@@ -539,7 +539,15 @@ fn test_in_place_preserves_revealed() {
 
     // First compute: reveals cells around (5,5).
     let mut fog = FogState::default();
-    recompute_owner_visibility_in_place(&mut fog, &store, Some(&grid), &alliances, &cfg, None, &ti());
+    recompute_owner_visibility_in_place(
+        &mut fog,
+        &store,
+        Some(&grid),
+        &alliances,
+        &cfg,
+        None,
+        &ti(),
+    );
     assert!(fog.is_cell_revealed(intern::test_intern("Americans"), 5, 5));
     assert!(fog.is_cell_visible(intern::test_intern("Americans"), 5, 5));
 
@@ -548,7 +556,15 @@ fn test_in_place_preserves_revealed() {
     spawn_with_vision(&mut store, 2, "Americans", 10, 10, 2);
 
     // Second compute in-place: (5,5) should still be revealed but not visible.
-    recompute_owner_visibility_in_place(&mut fog, &store, Some(&grid), &alliances, &cfg, None, &ti());
+    recompute_owner_visibility_in_place(
+        &mut fog,
+        &store,
+        Some(&grid),
+        &alliances,
+        &cfg,
+        None,
+        &ti(),
+    );
     assert!(fog.is_cell_revealed(intern::test_intern("Americans"), 5, 5));
     assert!(!fog.is_cell_visible(intern::test_intern("Americans"), 5, 5));
     assert!(fog.is_cell_visible(intern::test_intern("Americans"), 10, 10));
@@ -563,12 +579,28 @@ fn test_dead_owner_keeps_revealed() {
     let alliances = HouseAllianceMap::default();
 
     let mut fog = FogState::default();
-    recompute_owner_visibility_in_place(&mut fog, &store, Some(&grid), &alliances, &cfg, None, &ti());
+    recompute_owner_visibility_in_place(
+        &mut fog,
+        &store,
+        Some(&grid),
+        &alliances,
+        &cfg,
+        None,
+        &ti(),
+    );
     assert!(fog.is_cell_revealed(intern::test_intern("Soviet"), 5, 5));
 
     // Remove all Soviet entities.
     store.remove(1);
-    recompute_owner_visibility_in_place(&mut fog, &store, Some(&grid), &alliances, &cfg, None, &ti());
+    recompute_owner_visibility_in_place(
+        &mut fog,
+        &store,
+        Some(&grid),
+        &alliances,
+        &cfg,
+        None,
+        &ti(),
+    );
 
     // Soviet's revealed state persists, but nothing is visible.
     assert!(fog.is_cell_revealed(intern::test_intern("Soviet"), 5, 5));
@@ -589,7 +621,15 @@ fn test_in_place_matches_fresh() {
 
     // In-place path (from default).
     let mut in_place = FogState::default();
-    recompute_owner_visibility_in_place(&mut in_place, &store, Some(&grid), &alliances, &cfg, None, &ti());
+    recompute_owner_visibility_in_place(
+        &mut in_place,
+        &store,
+        Some(&grid),
+        &alliances,
+        &cfg,
+        None,
+        &ti(),
+    );
 
     // Both should have identical by_owner contents.
     assert_eq!(fresh.by_owner.len(), in_place.by_owner.len());

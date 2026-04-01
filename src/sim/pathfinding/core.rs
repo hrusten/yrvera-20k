@@ -46,14 +46,14 @@ const CLIFF_COST_MULTIPLIER: i32 = 4;
 /// diagonals, preventing path oscillation when multiple routes have equal cost.
 /// Index order matches NEIGHBORS: N, NE, E, SE, S, SW, W, NW.
 const DIR_TIEBREAK: [i32; 8] = [
-    1,  // N   (original ≈0.001)
-    5,  // NE  (original ≈0.005)
-    2,  // E   (original ≈0.002)
-    6,  // SE  (original ≈0.006)
-    3,  // S   (original ≈0.003)
-    7,  // SW  (original ≈0.007)
-    4,  // W   (original ≈0.004)
-    8,  // NW  (original ≈0.008)
+    1, // N   (original ≈0.001)
+    5, // NE  (original ≈0.005)
+    2, // E   (original ≈0.002)
+    6, // SE  (original ≈0.006)
+    3, // S   (original ≈0.003)
+    7, // SW  (original ≈0.007)
+    4, // W   (original ≈0.004)
+    8, // NW  (original ≈0.008)
 ];
 
 /// 8-directional neighbor offsets: (dx, dy, is_diagonal).
@@ -543,8 +543,7 @@ impl LayeredPathGrid {
                 // Only gate transition on runtime state for deck cells.
                 transition: bridge_state.map_or(cell.bridge_transition, |state| {
                     cell.bridge_transition
-                        && (!cell.has_bridge_deck
-                            || state.is_bridge_walkable(cell.rx, cell.ry))
+                        && (!cell.has_bridge_deck || state.is_bridge_walkable(cell.rx, cell.ry))
                 }),
                 ground_level: cell.level,
                 bridge_deck_level: bridge_state
@@ -1580,9 +1579,7 @@ pub fn find_layered_path(
             }
             // Reuse bounds-checked nx/ny: (cx+dx, cy) = (nx, cy), (cx, cy+dy) = (cx, ny).
             if is_diagonal {
-                if !grid.is_walkable(nx, cy, layer)
-                    || !grid.is_walkable(cx, ny, layer)
-                {
+                if !grid.is_walkable(nx, cy, layer) || !grid.is_walkable(cx, ny, layer) {
                     continue;
                 }
                 // Also check PathGrid for diagonal corner cells on ground layer.

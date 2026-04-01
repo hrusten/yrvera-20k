@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use crate::rules::flh::{parse_flh, Flh};
+use crate::rules::flh::{Flh, parse_flh};
 use crate::rules::ini_parser::{IniFile, IniSection};
 
 /// Per-object art configuration parsed from an art.ini section.

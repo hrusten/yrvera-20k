@@ -42,7 +42,9 @@ fn sell_refund_for_building(
 /// Uses HouseState.side_index (0=Allied, 1=Soviet, 2=Yuri) instead of
 /// the old string-matching classify_owner_side hack.
 fn survivor_divisor_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> i32 {
-    let side = sim.interner.get(owner)
+    let side = sim
+        .interner
+        .get(owner)
         .and_then(|id| sim.houses.get(&id))
         .map(|h| h.side_index)
         .unwrap_or(0);
@@ -77,7 +79,9 @@ fn sell_survivor_limit(
 }
 
 fn sell_survivor_type(sim: &Simulation, rules: &RuleSet, owner: &str) -> Option<String> {
-    let side = sim.interner.get(owner)
+    let side = sim
+        .interner
+        .get(owner)
         .and_then(|id| sim.houses.get(&id))
         .map(|h| h.side_index)
         .unwrap_or(0);
@@ -205,7 +209,15 @@ pub fn eject_destruction_survivors(
     let mut spawned = 0;
     for (spawn_rx, spawn_ry) in positions.into_iter().take(1) {
         if sim
-            .spawn_object_at_height(&infantry_type, &owner_owned, spawn_rx, spawn_ry, 64, z, rules)
+            .spawn_object_at_height(
+                &infantry_type,
+                &owner_owned,
+                spawn_rx,
+                spawn_ry,
+                64,
+                z,
+                rules,
+            )
             .is_some()
         {
             spawned += 1;

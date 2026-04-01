@@ -513,7 +513,7 @@ pub(crate) fn build_garrison_muzzle_flash_instances(
 
 #[cfg(test)]
 mod tests {
-    use super::{bridge_y_offset_for_name, classify_overlay_render_bucket, OverlayRenderBucket};
+    use super::{OverlayRenderBucket, bridge_y_offset_for_name, classify_overlay_render_bucket};
 
     #[test]
     fn high_bridge_body_uses_dedicated_bucket() {

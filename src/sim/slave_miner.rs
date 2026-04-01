@@ -19,8 +19,8 @@
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
-use crate::sim::miner::{extract_bale, player_has_purifier, search_local_ore};
 use crate::sim::miner::{CargoBale, MinerConfig};
+use crate::sim::miner::{extract_bale, player_has_purifier, search_local_ore};
 use crate::sim::production::credits_entry_for_owner;
 use crate::sim::world::Simulation;
 

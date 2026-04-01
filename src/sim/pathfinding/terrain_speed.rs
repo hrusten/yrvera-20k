@@ -13,7 +13,7 @@
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{LocomotorKind, SpeedType};
 use crate::sim::movement::bump_crush::OccupancyMap;
-use crate::util::fixed_math::{SimFixed, SIM_HALF, SIM_ONE};
+use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SimFixed};
 
 // --- Constants from the original engine ---
 

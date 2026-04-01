@@ -27,7 +27,7 @@ use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::facing_from_delta;
 use crate::util::fixed_math::{
-    dt_from_tick_ms, int_distance_to_sim, sim_to_f32, SimFixed, SIM_ONE, SIM_TWO, SIM_ZERO,
+    SIM_ONE, SIM_TWO, SIM_ZERO, SimFixed, dt_from_tick_ms, int_distance_to_sim, sim_to_f32,
 };
 
 /// Duration of the initial launch phase in seconds (vertical boost).
@@ -302,7 +302,7 @@ mod tests {
     use super::*;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
-    use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+    use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
     #[test]
     fn test_rocket_full_flight() {

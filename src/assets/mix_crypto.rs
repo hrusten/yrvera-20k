@@ -30,9 +30,9 @@
 //! - Part of assets/ — no dependencies on game modules.
 //! - Uses blowfish crate (RustCrypto) and num-bigint for RSA math.
 
+use blowfish::Blowfish;
 use blowfish::cipher::BlockDecrypt;
 use blowfish::cipher::KeyInit;
-use blowfish::Blowfish;
 use num_bigint::BigUint;
 
 use crate::assets::error::AssetError;

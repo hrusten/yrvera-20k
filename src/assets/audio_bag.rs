@@ -70,11 +70,7 @@ impl AudioBagEntry {
         self.flags & FLAG_IMA_ADPCM != 0
     }
     pub fn channels(&self) -> u16 {
-        if self.is_stereo() {
-            2
-        } else {
-            1
-        }
+        if self.is_stereo() { 2 } else { 1 }
     }
 }
 

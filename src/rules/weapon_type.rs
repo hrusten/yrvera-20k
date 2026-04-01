@@ -20,7 +20,7 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
-use crate::util::fixed_math::{sim_from_f32, SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_from_f32};
 
 /// A weapon definition parsed from a rules.ini section.
 ///

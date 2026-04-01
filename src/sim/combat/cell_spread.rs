@@ -57,7 +57,10 @@ fn compute_spread_offsets() -> Vec<(i16, i16)> {
     );
 
     cells.truncate(max_count);
-    cells.into_iter().map(|(_, _, _, dy, dx)| (dx, dy)).collect()
+    cells
+        .into_iter()
+        .map(|(_, _, _, dy, dx)| (dx, dy))
+        .collect()
 }
 
 /// Returns cell offsets for a given integer spread radius (0–11).
@@ -93,7 +96,11 @@ mod tests {
     fn center_cell_always_first() {
         for radius in 0..=11u32 {
             let offsets = cells_in_spread(radius);
-            assert_eq!(offsets[0], (0, 0), "radius {radius}: first offset must be (0,0)");
+            assert_eq!(
+                offsets[0],
+                (0, 0),
+                "radius {radius}: first offset must be (0,0)"
+            );
         }
     }
 

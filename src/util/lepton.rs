@@ -11,7 +11,7 @@
 //! ## Dependency rules
 //! - util/ has NO dependencies on other game modules.
 
-use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 // ---------------------------------------------------------------------------
 // Constants

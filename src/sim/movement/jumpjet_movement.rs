@@ -17,7 +17,7 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use crate::sim::movement::locomotor::{AirMovePhase, LocomotorState};
-use crate::util::fixed_math::{SimFixed, SIM_1_5, SIM_ZERO};
+use crate::util::fixed_math::{SIM_1_5, SIM_ZERO, SimFixed};
 
 /// Max cells for infantry walk fallback (TS-style jumpjet infantry).
 const INFANTRY_WALK_THRESHOLD_CELLS: u32 = 3;
@@ -156,7 +156,7 @@ pub fn tick_jumpjet_altitude(loco: &mut LocomotorState, dt: SimFixed) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::fixed_math::{sim_from_f32, SIM_ONE};
+    use crate::util::fixed_math::{SIM_ONE, sim_from_f32};
 
     #[test]
     fn test_acceleration_ramps_up() {

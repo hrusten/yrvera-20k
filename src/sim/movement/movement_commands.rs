@@ -16,12 +16,12 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_map::ZoneCategory;
 use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
-use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::movement_path::{
     find_move_path, merge_path_blocks, resolve_requested_move_goal, supports_layered_bridge_pathing,
 };
-use super::{facing_from_delta, PathfindingContext};
+use super::{PathfindingContext, facing_from_delta};
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::components::OrderIntent;
 use crate::sim::game_entity::GameEntity;

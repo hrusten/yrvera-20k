@@ -26,7 +26,7 @@ use crate::sim::movement::tunnel_movement;
 use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production;
-use crate::util::fixed_math::{ra2_speed_to_leptons_per_second, SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, ra2_speed_to_leptons_per_second};
 
 /// Read-only snapshot of entity + rules data needed for issuing movement commands.
 /// Captured once to avoid repeated entity lookups and type_ref clones.
@@ -278,7 +278,13 @@ impl Simulation {
                     e.order_intent = None;
                     Self::clear_aircraft_dock_phase(e);
                 }
-                combat::issue_attack_command(&mut self.entities, *attacker_id, *target_id, rules, &self.interner)
+                combat::issue_attack_command(
+                    &mut self.entities,
+                    *attacker_id,
+                    *target_id,
+                    rules,
+                    &self.interner,
+                )
             }
             Command::ForceAttack {
                 attacker_id,
@@ -295,7 +301,13 @@ impl Simulation {
                 if let Some(e) = self.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                 }
-                combat::issue_attack_command(&mut self.entities, *attacker_id, *target_id, rules, &self.interner)
+                combat::issue_attack_command(
+                    &mut self.entities,
+                    *attacker_id,
+                    *target_id,
+                    rules,
+                    &self.interner,
+                )
             }
             Command::AttackMove {
                 entity_id,
@@ -403,7 +415,9 @@ impl Simulation {
             Command::CycleProducerFocus { owner, category } => {
                 let Some(rules) = rules else { return false };
                 let owner_s = self.interner.resolve(*owner).to_string();
-                production::cycle_active_producer_for_owner_category(self, rules, &owner_s, *category)
+                production::cycle_active_producer_for_owner_category(
+                    self, rules, &owner_s, *category,
+                )
             }
             Command::PlaceReadyBuilding {
                 owner,
@@ -872,8 +886,13 @@ impl Simulation {
                 if !self.can_attack_target_by_id(entity_id, tid) {
                     return false;
                 }
-                let issued =
-                    combat::issue_attack_command(&mut self.entities, entity_id, tid, rules, &self.interner);
+                let issued = combat::issue_attack_command(
+                    &mut self.entities,
+                    entity_id,
+                    tid,
+                    rules,
+                    &self.interner,
+                );
                 if issued {
                     if let Some(e) = self.entities.get_mut(entity_id) {
                         e.order_intent = Some(OrderIntent::Guard {

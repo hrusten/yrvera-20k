@@ -2,10 +2,10 @@
 //!
 //! Tests that the full pipeline works: AssetManager → idx/bag → decode → playable samples.
 
-use vera20k::assets::asset_manager::AssetManager;
-use vera20k::assets::audio_bag::{decode_bag_audio, AudioIndex};
-use vera20k::assets::mix_archive::MixArchive;
 use std::path::Path;
+use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::audio_bag::{AudioIndex, decode_bag_audio};
+use vera20k::assets::mix_archive::MixArchive;
 
 fn ra2_dir() -> String {
     std::env::var("RA2_DIR").expect("Set RA2_DIR to your RA2/YR install directory")

@@ -118,7 +118,12 @@ fn test_minimap_entity_visible_for_allied_owner() {
     };
     let owner = Owner(test_intern("British"));
 
-    assert!(minimap_entity_visible(test_intern("Americans"), &fog, &pos, &owner));
+    assert!(minimap_entity_visible(
+        test_intern("Americans"),
+        &fog,
+        &pos,
+        &owner
+    ));
 }
 
 #[test]
@@ -160,7 +165,10 @@ fn test_cell_visibility_color_revealed_shows_full_color() {
 fn test_cell_visibility_color_shrouded_returns_none() {
     let fog = FogState::default();
     let pixel = make_pixel(9, 9, [40, 120, 40, 255]);
-    assert_eq!(cell_visibility_color(test_intern("Americans"), &fog, &pixel), None);
+    assert_eq!(
+        cell_visibility_color(test_intern("Americans"), &fog, &pixel),
+        None
+    );
 }
 
 #[test]
@@ -177,7 +185,7 @@ fn test_set_pixel_in_bounds() {
 #[test]
 fn test_set_pixel_out_of_bounds_does_nothing() {
     let mut rgba: Vec<u8> = vec![0u8; 16]; // 2x2 pixel buffer
-                                           // Writing to x=5 in a 2-wide buffer should be silently ignored.
+    // Writing to x=5 in a 2-wide buffer should be silently ignored.
     set_pixel(&mut rgba, 2, 5, 0, [255, 255, 255, 255]);
     assert!(rgba.iter().all(|&b| b == 0));
 }

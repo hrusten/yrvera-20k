@@ -11,14 +11,14 @@ use super::helpers::{
     is_under_bridge_render_state,
 };
 use crate::app::AppState;
+use crate::map::entities::EntityCategory;
 use crate::map::lighting;
 use crate::map::terrain::{TILE_HEIGHT, TILE_WIDTH};
 use crate::render::batch::SpriteInstance;
 use crate::render::sprite_atlas::ShpSpriteKey;
 use crate::render::unit_atlas::{
-    canonical_turret_facing, canonical_unit_facing, UnitSpriteKey, VxlLayer,
+    UnitSpriteKey, VxlLayer, canonical_turret_facing, canonical_unit_facing,
 };
-use crate::map::entities::EntityCategory;
 use crate::rules::house_colors::HouseColorIndex;
 use crate::sim::components::HarvestOverlay;
 

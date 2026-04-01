@@ -1,8 +1,8 @@
 //! Inspect BUILDNGZ.SHA to understand its contents for Z-buffer implementation.
 
+use std::path::Path;
 use vera20k::assets::asset_manager::AssetManager;
 use vera20k::assets::shp_file::ShpFile;
-use std::path::Path;
 
 fn ra2_dir() -> String {
     std::env::var("RA2_DIR").expect("Set RA2_DIR to your RA2/YR install directory")

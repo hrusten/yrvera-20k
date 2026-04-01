@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn test_house_color_ramp_valid() {
         let ramp: &[Color; 16] = house_color_ramp(HouseColorIndex(1)); // DarkBlue
-                                                                       // Blue should dominate in the DarkBlue scheme.
+        // Blue should dominate in the DarkBlue scheme.
         assert!(
             ramp[0].b > ramp[0].r,
             "DarkBlue shade 0 should have more blue than red"

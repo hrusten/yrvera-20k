@@ -1,8 +1,8 @@
 //! Debug test to diagnose why music doesn't play.
 
+use std::path::Path;
 use vera20k::assets::asset_manager::AssetManager;
 use vera20k::rules::ini_parser::IniFile;
-use std::path::Path;
 
 fn ra2_dir() -> String {
     std::env::var("RA2_DIR").expect("Set RA2_DIR to your RA2/YR install directory")

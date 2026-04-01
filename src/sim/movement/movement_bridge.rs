@@ -59,7 +59,8 @@ pub(super) fn resolve_cell_transition_bridge_state(
                 // Cell has a bridge deck. Use height comparison to decide layer.
                 //   abs(height_param - cell.height_level) < 2 -> ground level
                 //   else -> bridge level
-                let height_diff = (position.z as i16 - cell.ground_level as i16).unsigned_abs() as u8;
+                let height_diff =
+                    (position.z as i16 - cell.ground_level as i16).unsigned_abs() as u8;
                 if height_diff >= HEIGHT_THRESHOLD {
                     // Unit is at bridge level → stay on bridge deck.
                     position.z = deck_level;

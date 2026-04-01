@@ -143,13 +143,11 @@ pub(crate) fn sync_armed_building_placement(
     interner: Option<&crate::sim::intern::StringInterner>,
 ) {
     if armed_building_placement.as_ref().is_some_and(|armed| {
-        !ready_buildings
-            .iter()
-            .any(|ready| {
-                interner.map_or(false, |i| {
-                    i.resolve(ready.type_id).eq_ignore_ascii_case(armed)
-                })
+        !ready_buildings.iter().any(|ready| {
+            interner.map_or(false, |i| {
+                i.resolve(ready.type_id).eq_ignore_ascii_case(armed)
             })
+        })
     }) {
         *armed_building_placement = None;
         *building_placement_preview = None;

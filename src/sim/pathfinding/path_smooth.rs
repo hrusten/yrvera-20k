@@ -421,17 +421,9 @@ fn reroute_segment(
 
     // Determine the cardinal direction (along the longer axis).
     let card_dir = if abs_dx > abs_dy {
-        if dx > 0 {
-            2
-        } else {
-            6
-        } // E or W
+        if dx > 0 { 2 } else { 6 } // E or W
     } else {
-        if dy > 0 {
-            4
-        } else {
-            0
-        } // S or N
+        if dy > 0 { 4 } else { 0 } // S or N
     };
 
     // Build the rerouted path: interleave diagonal and cardinal steps
@@ -477,9 +469,7 @@ fn reroute_segment(
 
         // Diagonal corner-cutting check (i32 arithmetic avoids u16 overflow).
         if is_diagonal_dir(dir) {
-            if !walkable((cx + ddx) as u16, cy as u16)
-                || !walkable(cx as u16, (cy + ddy) as u16)
-            {
+            if !walkable((cx + ddx) as u16, cy as u16) || !walkable(cx as u16, (cy + ddy) as u16) {
                 return None;
             }
         }

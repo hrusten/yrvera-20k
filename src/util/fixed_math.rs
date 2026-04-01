@@ -141,21 +141,13 @@ pub fn fixed_lerp(a: SimFixed, b: SimFixed, t: SimFixed) -> SimFixed {
 /// Fixed-point `max(a, b)`.
 #[inline]
 pub fn fixed_max(a: SimFixed, b: SimFixed) -> SimFixed {
-    if a >= b {
-        a
-    } else {
-        b
-    }
+    if a >= b { a } else { b }
 }
 
 /// Fixed-point `min(a, b)`.
 #[inline]
 pub fn fixed_min(a: SimFixed, b: SimFixed) -> SimFixed {
-    if a <= b {
-        a
-    } else {
-        b
-    }
+    if a <= b { a } else { b }
 }
 
 /// Deterministic fixed-point square root via Newton's method.

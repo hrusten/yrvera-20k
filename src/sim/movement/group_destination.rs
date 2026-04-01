@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::sim::movement::bump_crush::MAX_INFANTRY_PER_CELL;
-use crate::sim::pathfinding::{is_any_layer_walkable, LayeredPathGrid, PathGrid};
+use crate::sim::pathfinding::{LayeredPathGrid, PathGrid, is_any_layer_walkable};
 
 /// Maximum radius (in cells) for spreading unit destinations around the click point.
 /// A radius of 12 covers a diamond of ~312 cells — enough for any realistic selection.

@@ -16,17 +16,17 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use crate::map::entities::EntityCategory;
+use crate::sim::aircraft::AircraftMission;
 use crate::sim::animation::Animation;
 use crate::sim::combat::AttackTarget;
-use crate::sim::intern::InternedId;
 use crate::sim::components::{
     BridgeOccupancy, BuildingAnimOverlays, BuildingDown, BuildingUp, DamageFireOverlays,
     HarvestOverlay, Health, MovementTarget, OrderIntent, Position, VoxelAnimation,
 };
 use crate::sim::debug_event_log::{DebugEventKind, DebugEventLog};
-use crate::sim::aircraft::AircraftMission;
 use crate::sim::docking::aircraft_dock::AircraftAmmo;
 use crate::sim::docking::building_dock::DockState;
+use crate::sim::intern::InternedId;
 use crate::sim::miner::Miner;
 use crate::sim::movement::drive_track::DriveTrackState;
 use crate::sim::movement::droppod_movement::DropPodState;

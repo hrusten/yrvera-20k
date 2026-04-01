@@ -130,7 +130,8 @@ fn capability_cursor_for_hover(
     use crate::map::entities::EntityCategory;
 
     let hovered_entity = sim.entities.get(hover.stable_id);
-    let hovered_obj = rules.and_then(|r| hovered_entity.and_then(|e| r.object(sim.interner.resolve(e.type_ref))));
+    let hovered_obj =
+        rules.and_then(|r| hovered_entity.and_then(|e| r.object(sim.interner.resolve(e.type_ref))));
 
     // 1. Deployer self-hover — the cursor is over the selected unit itself.
     //    Show the deploy cursor for units with Deployer=yes (e.g. GGI, Guardian GI)
@@ -138,7 +139,8 @@ fn capability_cursor_for_hover(
     //    both kinds show the deploy cursor when hovering over themselves.
     if selected.len() == 1 && selected[0] == hover.stable_id {
         let entity = sim.entities.get(selected[0]);
-        let obj = entity.and_then(|e| rules.and_then(|r| r.object(sim.interner.resolve(e.type_ref))));
+        let obj =
+            entity.and_then(|e| rules.and_then(|r| r.object(sim.interner.resolve(e.type_ref))));
         if let Some(obj) = obj {
             if obj.deployer || obj.deploys_into.is_some() {
                 return CursorFeedbackKind::Deploy;
@@ -149,10 +151,8 @@ fn capability_cursor_for_hover(
             if entity.category == EntityCategory::Structure {
                 if let Some(obj) = obj {
                     if obj.can_be_occupied {
-                        let has_occupants = entity
-                            .passenger_role
-                            .cargo()
-                            .is_some_and(|c| !c.is_empty());
+                        let has_occupants =
+                            entity.passenger_role.cargo().is_some_and(|c| !c.is_empty());
                         if has_occupants {
                             return CursorFeedbackKind::Deploy;
                         }
@@ -211,18 +211,14 @@ fn capability_cursor_for_hover(
             //    Original engine checks Occupier=yes via BuildingClass::CanDock.
             //    Neutral/civilian buildings are classified as EnemyStructure but still
             //    garrisonable — only show Enter for those, not actual enemy-player buildings.
-            if is_infantry
-                && sel_obj.occupier
-                && hovered_obj.map_or(false, |o| o.can_be_occupied)
-            {
+            if is_infantry && sel_obj.occupier && hovered_obj.map_or(false, |o| o.can_be_occupied) {
                 let is_garrisonable_target = match hover.kind {
                     HoverTargetKind::FriendlyStructure => true,
                     HoverTargetKind::EnemyStructure => {
                         // Only neutral/civilian buildings — not real enemy player buildings.
                         hovered_entity.map_or(false, |e| {
                             let ow = sim.interner.resolve(e.owner);
-                            ow.eq_ignore_ascii_case("neutral")
-                                || ow.eq_ignore_ascii_case("special")
+                            ow.eq_ignore_ascii_case("neutral") || ow.eq_ignore_ascii_case("special")
                         })
                     }
                     _ => false,
@@ -355,11 +351,7 @@ fn select_best_for_action(
                 .and_then(|o| o.primary.as_ref())
                 .and_then(|w| rules.and_then(|r| r.weapon(w)))
                 .is_some_and(|w| w.range > crate::util::fixed_math::SIM_ZERO);
-            if has_weapon {
-                5
-            } else {
-                4
-            }
+            if has_weapon { 5 } else { 4 }
         };
 
         // Distance to hover target (squared, in cells).

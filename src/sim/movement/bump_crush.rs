@@ -19,7 +19,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::{fixed_distance, SimFixed};
+use crate::util::fixed_math::{SimFixed, fixed_distance};
 
 /// Functional infantry sub-cell positions. The original engine uses sub-cells
 /// 2 (NE), 3 (SW), 4 (SE) — three corners of the isometric diamond. Sub-cells

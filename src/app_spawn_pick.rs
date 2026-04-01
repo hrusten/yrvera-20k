@@ -197,7 +197,8 @@ fn setup_ai_players_from_roster(
         if house.name.eq_ignore_ascii_case(local_owner) {
             continue;
         }
-        sim.ai_players.push(AiPlayerState::new(sim.interner.intern(&house.name)));
+        sim.ai_players
+            .push(AiPlayerState::new(sim.interner.intern(&house.name)));
         log::info!("AI player registered: {}", house.name);
     }
 }

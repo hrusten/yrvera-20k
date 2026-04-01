@@ -146,7 +146,10 @@ fn real_garefn_placement_spawns_cmin() {
         &height_map,
     ));
 
-    let americans_id = sim.interner.get("Americans").expect("Americans should be interned");
+    let americans_id = sim
+        .interner
+        .get("Americans")
+        .expect("Americans should be interned");
     let cmin_id = sim.interner.get("CMIN").expect("CMIN should be interned");
 
     let cmins: Vec<(u16, u16)> = sim

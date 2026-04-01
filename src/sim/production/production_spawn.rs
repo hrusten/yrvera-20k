@@ -25,10 +25,22 @@ pub fn find_spawn_cell_for_owner(
     let Some(queue_category) = producer_queue_category_for_object(produced_category) else {
         return None;
     };
-    let preferred_factories =
-        producer_candidates_for_owner_category(&sim.entities, rules, owner, queue_category, true, &sim.interner);
-    let fallback_structures =
-        producer_candidates_for_owner_category(&sim.entities, rules, owner, queue_category, false, &sim.interner);
+    let preferred_factories = producer_candidates_for_owner_category(
+        &sim.entities,
+        rules,
+        owner,
+        queue_category,
+        true,
+        &sim.interner,
+    );
+    let fallback_structures = producer_candidates_for_owner_category(
+        &sim.entities,
+        rules,
+        owner,
+        queue_category,
+        false,
+        &sim.interner,
+    );
     let mut ordered_bases = preferred_factories.clone();
     let owner_id = sim.interner.intern(owner);
     if let Some(active_sid) = sim

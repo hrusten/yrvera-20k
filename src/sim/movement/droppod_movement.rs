@@ -22,7 +22,7 @@
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::locomotor::OverrideKind;
-use crate::util::fixed_math::{dt_from_tick_ms, sim_to_f32, SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, dt_from_tick_ms, sim_to_f32};
 
 /// Initial drop altitude in leptons.
 const DROP_ALTITUDE: SimFixed = SimFixed::lit("1200");

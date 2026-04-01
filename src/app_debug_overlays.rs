@@ -99,7 +99,14 @@ pub(crate) fn build_terrain_cost_overlay_instances(
             .collect();
         log::info!(
             "Terrain cost overlay: {:?} grid {}x{}, cam=({:.0},{:.0}), screen=({:.0},{:.0}), sample costs={:?}",
-            speed_type, width, height, state.camera_x, state.camera_y, sw, sh, sample_costs,
+            speed_type,
+            width,
+            height,
+            state.camera_x,
+            state.camera_y,
+            sw,
+            sh,
+            sample_costs,
         );
     }
 
@@ -165,7 +172,9 @@ pub(crate) fn build_heightmap_overlay_instances(
         let sample: Vec<_> = state.bridge_height_map.iter().take(10).collect();
         log::info!(
             "HeightmapOverlay: bridge_height_map has {} entries, height_map has {} entries. Sample: {:?}",
-            bridge_count, state.height_map.len(), sample,
+            bridge_count,
+            state.height_map.len(),
+            sample,
         );
     }
 

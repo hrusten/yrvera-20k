@@ -9,7 +9,7 @@ use vera20k::assets::hva_file::HvaFile;
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::vpl_file::VplFile;
 use vera20k::assets::vxl_file::VxlFile;
-use vera20k::render::vxl_raster::{render_vxl, VxlRenderParams, VxlSprite};
+use vera20k::render::vxl_raster::{VxlRenderParams, VxlSprite, render_vxl};
 
 fn ra2_dir() -> String {
     std::env::var("RA2_DIR")

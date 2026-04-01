@@ -18,7 +18,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::warhead_type::WarheadType;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::StringInterner;
-use crate::util::fixed_math::{isqrt_i64, SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, isqrt_i64};
 use crate::util::lepton::CELL_CENTER_LEPTON;
 
 /// Apply area-of-effect damage from a warhead detonation at a specific cell.

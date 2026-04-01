@@ -15,7 +15,7 @@
 use crate::rules::radar_event_config::RadarEventConfig;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::{int_distance_to_sim, SimFixed};
+use crate::util::fixed_math::{SimFixed, int_distance_to_sim};
 use std::collections::VecDeque;
 
 /// Check if the given owner has at least one operational radar-providing building.
@@ -26,7 +26,13 @@ pub fn has_radar_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> bo
     let Some(owner_id) = sim.interner.get(owner) else {
         return false;
     };
-    crate::sim::power_system::has_active_radar(&sim.entities, &sim.power_states, rules, owner_id, &sim.interner)
+    crate::sim::power_system::has_active_radar(
+        &sim.entities,
+        &sim.power_states,
+        rules,
+        owner_id,
+        &sim.interner,
+    )
 }
 
 /// Classification of radar events — determines ping color and EVA announcement.
@@ -231,11 +237,21 @@ mod tests {
         let owner_id = sim.interner.intern(owner);
         let type_ref = sim.interner.intern(type_id);
         let mut e = GameEntity::new(
-            id, 0, 0, 0, 0, owner_id,
-            crate::sim::components::Health { current: 100, max: 100 },
+            id,
+            0,
+            0,
+            0,
+            0,
+            owner_id,
+            crate::sim::components::Health {
+                current: 100,
+                max: 100,
+            },
             type_ref,
             EntityCategory::Structure,
-            0, 5, false,
+            0,
+            5,
+            false,
         );
         sim.entities.insert(e);
     }

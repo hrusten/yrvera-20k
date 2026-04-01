@@ -28,7 +28,7 @@
 use crate::rules::ini_parser::IniSection;
 use crate::rules::jumpjet_params::JumpjetParams;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
-use crate::util::fixed_math::{sim_from_f32, SimFixed};
+use crate::util::fixed_math::{SimFixed, sim_from_f32};
 
 /// Which type registry an object belongs to.
 ///

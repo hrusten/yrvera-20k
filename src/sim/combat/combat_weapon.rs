@@ -173,9 +173,13 @@ pub(crate) fn select_garrison_weapon<'a>(
     };
 
     if let Some(wid) = occupy_weapon_id {
-        if let Some(sw) =
-            try_weapon(rules, wid, target_category, target_armor, WeaponSlot::Primary)
-        {
+        if let Some(sw) = try_weapon(
+            rules,
+            wid,
+            target_category,
+            target_armor,
+            WeaponSlot::Primary,
+        ) {
             return Some(sw);
         }
     }

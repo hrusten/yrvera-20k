@@ -16,7 +16,7 @@
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::miner::MinerState;
-use crate::util::fixed_math::{facing_from_delta_int_u16, SimFixed};
+use crate::util::fixed_math::{SimFixed, facing_from_delta_int_u16};
 
 /// 16-bit turret alignment threshold — same angular tolerance as the u8 version
 /// (8/256 ≈ 3.1% of full circle), scaled to 16-bit: 2048/65536 ≈ 3.1%.
@@ -127,7 +127,12 @@ pub fn body_facing_to_turret(body: u8) -> u16 {
 ///
 /// Uses 16-bit DirStruct precision (full FacingClass range), which eliminates
 /// the rotation-speed overshoot that occurred with 8-bit stepping.
-pub fn tick_turret_rotation(entities: &mut EntityStore, rules: &RuleSet, tick_ms: u32, interner: &crate::sim::intern::StringInterner) {
+pub fn tick_turret_rotation(
+    entities: &mut EntityStore,
+    rules: &RuleSet,
+    tick_ms: u32,
+    interner: &crate::sim::intern::StringInterner,
+) {
     if tick_ms == 0 {
         return;
     }
@@ -214,8 +219,7 @@ pub fn tick_turret_rotation(entities: &mut EntityStore, rules: &RuleSet, tick_ms
             rotation.max(-(update.max_delta as i32))
         };
 
-        let new_facing: u16 =
-            (update.current_turret as i32 + clamped).rem_euclid(65536) as u16;
+        let new_facing: u16 = (update.current_turret as i32 + clamped).rem_euclid(65536) as u16;
         if let Some(entity) = entities.get_mut(update.id) {
             entity.turret_facing = Some(new_facing);
         }
@@ -297,8 +301,12 @@ mod tests {
         // Error: (13653-13545)/13653 = 0.8% — acceptable.
         let per_sec: u64 = delta as u64 * 45;
         let gamemd_per_sec: u64 = 13653;
-        let error_pct: f64 = (gamemd_per_sec as f64 - per_sec as f64).abs() / gamemd_per_sec as f64 * 100.0;
-        assert!(error_pct < 1.5, "ROT=5 speed error {error_pct:.1}% exceeds 1.5%");
+        let error_pct: f64 =
+            (gamemd_per_sec as f64 - per_sec as f64).abs() / gamemd_per_sec as f64 * 100.0;
+        assert!(
+            error_pct < 1.5,
+            "ROT=5 speed error {error_pct:.1}% exceeds 1.5%"
+        );
     }
 
     #[test]
@@ -313,8 +321,12 @@ mod tests {
         // Per-second: 61 * 45 = 2,745. gamemd: 2,731. Error ~0.5%.
         let per_sec: u64 = delta as u64 * 45;
         let gamemd_per_sec: u64 = 2731;
-        let error_pct: f64 = (gamemd_per_sec as f64 - per_sec as f64).abs() / gamemd_per_sec as f64 * 100.0;
-        assert!(error_pct < 1.5, "ROT=1 speed error {error_pct:.1}% exceeds 1.5%");
+        let error_pct: f64 =
+            (gamemd_per_sec as f64 - per_sec as f64).abs() / gamemd_per_sec as f64 * 100.0;
+        assert!(
+            error_pct < 1.5,
+            "ROT=1 speed error {error_pct:.1}% exceeds 1.5%"
+        );
     }
 
     #[test]
@@ -351,8 +363,14 @@ mod tests {
         // Same cell, but target is at sub_x=200, sub_y=128 vs source at sub_x=50, sub_y=128.
         // Delta: dx_lep = +150, dy_lep = 0 → pure east → ~16384.
         let f = facing_toward_lepton(
-            10, 10, SimFixed::from_num(50), SimFixed::from_num(128),
-            10, 10, SimFixed::from_num(200), SimFixed::from_num(128),
+            10,
+            10,
+            SimFixed::from_num(50),
+            SimFixed::from_num(128),
+            10,
+            10,
+            SimFixed::from_num(200),
+            SimFixed::from_num(128),
         );
         assert!((f as i32 - 16384).abs() < 2, "sub-cell east facing={f}");
     }

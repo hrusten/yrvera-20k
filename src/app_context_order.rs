@@ -169,7 +169,9 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             {
                 // Set rally point for the structures.
                 {
-                    let struct_owner_id = state.simulation.as_ref()
+                    let struct_owner_id = state
+                        .simulation
+                        .as_ref()
                         .and_then(|s| s.interner.get(&struct_own))
                         .unwrap_or(owner_id);
                     queued.push(CommandEnvelope::new(
@@ -341,10 +343,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             let cmd = if entity.category == EntityCategory::Structure {
                                 // Garrisoned building → unload occupants.
                                 if obj.map_or(false, |o| o.can_be_occupied)
-                                    && entity
-                                        .passenger_role
-                                        .cargo()
-                                        .is_some_and(|c| !c.is_empty())
+                                    && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
                                 {
                                     Some(Command::UnloadPassengers {
                                         transport_id: target.stable_id,

@@ -318,9 +318,13 @@ pub(crate) fn handle_hotkey_pressed(state: &mut AppState, code: winit::keyboard:
         KeyCode::KeyN => {
             quickload(state);
         }
-        KeyCode::KeyQ => apply_sidebar_action(state, SidebarAction::SelectTab(SidebarTab::Building)),
+        KeyCode::KeyQ => {
+            apply_sidebar_action(state, SidebarAction::SelectTab(SidebarTab::Building))
+        }
         KeyCode::KeyW => apply_sidebar_action(state, SidebarAction::SelectTab(SidebarTab::Defense)),
-        KeyCode::KeyE => apply_sidebar_action(state, SidebarAction::SelectTab(SidebarTab::Infantry)),
+        KeyCode::KeyE => {
+            apply_sidebar_action(state, SidebarAction::SelectTab(SidebarTab::Infantry))
+        }
         KeyCode::KeyR => apply_sidebar_action(state, SidebarAction::SelectTab(SidebarTab::Vehicle)),
         KeyCode::KeyT => select_same_type(state, is_shift_held(state)),
         KeyCode::Delete => crate::app_commands::sell_selected_buildings(state),
@@ -650,10 +654,7 @@ fn queue_deploy_undeploy_for_selected(state: &mut AppState) {
                 crate::map::entities::EntityCategory::Structure => {
                     // Garrisoned building → evacuate occupants.
                     if obj.map_or(false, |o| o.can_be_occupied)
-                        && entity
-                            .passenger_role
-                            .cargo()
-                            .is_some_and(|c| !c.is_empty())
+                        && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
                     {
                         commands.push(Command::UnloadPassengers {
                             transport_id: entity_id,
@@ -747,10 +748,7 @@ fn select_same_type(state: &mut AppState, additive: bool) {
     let mut matching_ids: Vec<u64> = sim
         .entities
         .values()
-        .filter_map(|e| {
-            (e.type_ref == type_id && e.owner == owner_id)
-                .then_some(e.stable_id)
-        })
+        .filter_map(|e| (e.type_ref == type_id && e.owner == owner_id).then_some(e.stable_id))
         .collect();
     if additive {
         matching_ids.extend(selected_stable_ids_sorted(&sim.entities));
@@ -803,7 +801,9 @@ fn jump_camera_to_base(state: &mut AppState) {
         // First pass: look for a ConYard (structure with UndeploysInto=).
         let conyard = sim.entities.values().find(|e| {
             e.category == EntityCategory::Structure
-                && owner_name.map_or(true, |o| sim.interner.resolve(e.owner).eq_ignore_ascii_case(o))
+                && owner_name.map_or(true, |o| {
+                    sim.interner.resolve(e.owner).eq_ignore_ascii_case(o)
+                })
                 && rules
                     .and_then(|r| r.object(sim.interner.resolve(e.type_ref)))
                     .map_or(false, |o| o.undeploys_into.is_some())
@@ -820,7 +820,9 @@ fn jump_camera_to_base(state: &mut AppState) {
         // Second pass: look for an MCV (unit with DeploysInto=).
         let mcv = sim.entities.values().find(|e| {
             e.category != EntityCategory::Structure
-                && owner_name.map_or(true, |o| sim.interner.resolve(e.owner).eq_ignore_ascii_case(o))
+                && owner_name.map_or(true, |o| {
+                    sim.interner.resolve(e.owner).eq_ignore_ascii_case(o)
+                })
                 && rules
                     .and_then(|r| r.object(sim.interner.resolve(e.type_ref)))
                     .map_or(false, |o| o.deploys_into.is_some())

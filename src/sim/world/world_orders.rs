@@ -15,8 +15,8 @@ use crate::sim::movement;
 use crate::sim::movement::air_movement;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::PathGrid;
-use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
 use crate::util::fixed_math::SimFixed;
+use crate::util::fixed_math::ra2_speed_to_leptons_per_second;
 
 impl Simulation {
     /// Pre-combat: entities with an OrderIntent but no current AttackTarget
@@ -157,9 +157,10 @@ impl Simulation {
 
         for (engineer_id, building_id, engineer_owner) in captures {
             // Check building still exists and is capturable.
-            let building_ok = self.entities.get(building_id).is_some_and(|b| {
-                b.category == EntityCategory::Structure && !b.dying
-            });
+            let building_ok = self
+                .entities
+                .get(building_id)
+                .is_some_and(|b| b.category == EntityCategory::Structure && !b.dying);
             if !building_ok {
                 // Target lost — clear capture order.
                 if let Some(e) = self.entities.get_mut(engineer_id) {
@@ -184,10 +185,7 @@ impl Simulation {
 
             if dx <= 1 && dy <= 1 {
                 // CAPTURE: transfer building ownership.
-                let old_owner = self
-                    .entities
-                    .get(building_id)
-                    .map(|b| b.owner);
+                let old_owner = self.entities.get(building_id).map(|b| b.owner);
                 if let Some(b) = self.entities.get_mut(building_id) {
                     b.owner = engineer_owner;
                 }

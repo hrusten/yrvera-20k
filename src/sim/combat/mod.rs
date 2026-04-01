@@ -42,7 +42,7 @@ use crate::sim::passenger::PassengerRole;
 use crate::sim::power_system::PowerState;
 use crate::sim::vision::FogState;
 use crate::sim::world::{SimFireEvent, SimSoundEvent};
-use crate::util::fixed_math::{sim_to_i32, SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_to_i32};
 
 use super::game_entity::GameEntity;
 use super::production::foundation_dimensions;
@@ -130,7 +130,11 @@ impl AttackTarget {
 /// The vanilla game has bugs where some code paths use raw Location (NW corner)
 /// instead of foundation center — e.g. Destroyers mis-targeting Naval Yards
 /// from certain angles (Phobos bugfix at 0x70BCE6). We fix this from the start.
-fn target_coords(entity: &GameEntity, rules: Option<&RuleSet>, interner: &StringInterner) -> (u16, u16, SimFixed, SimFixed) {
+fn target_coords(
+    entity: &GameEntity,
+    rules: Option<&RuleSet>,
+    interner: &StringInterner,
+) -> (u16, u16, SimFixed, SimFixed) {
     let mut rx = entity.position.rx;
     let mut ry = entity.position.ry;
     let mut sub_x = entity.position.sub_x;
@@ -170,16 +174,24 @@ pub fn issue_attack_command(
 ) -> bool {
     // Read target position first (immutable borrow, lepton-precise).
     // Use foundation center for buildings (see target_coords doc comment).
-    let target_pos = entities.get(target_id).map(|t| target_coords(t, rules, interner));
+    let target_pos = entities
+        .get(target_id)
+        .map(|t| target_coords(t, rules, interner));
     let (trx, try_, tsx, tsy) = match target_pos {
         Some(p) => p,
         None => return false,
     };
 
     // Read attacker position before mutable borrow (needed for lepton facing).
-    let attacker_pos = entities
-        .get(attacker_id)
-        .map(|a| (a.position.rx, a.position.ry, a.position.sub_x, a.position.sub_y, a.turret_facing.is_some()));
+    let attacker_pos = entities.get(attacker_id).map(|a| {
+        (
+            a.position.rx,
+            a.position.ry,
+            a.position.sub_x,
+            a.position.sub_y,
+            a.turret_facing.is_some(),
+        )
+    });
     let (arx, ary, asx, asy, has_turret) = match attacker_pos {
         Some(p) => p,
         None => return false,
@@ -220,11 +232,26 @@ pub(crate) fn cell_distance(ax: u16, ay: u16, bx: u16, by: u16) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
-use self::combat_targeting::{acquire_best_target, AttackerSnapshot, GarrisonSnapshot};
+use self::combat_targeting::{AttackerSnapshot, GarrisonSnapshot, acquire_best_target};
 
 /// Advance combat for all entities with AttackTarget components.
-pub fn tick_combat(entities: &mut EntityStore, rules: &RuleSet, interner: &mut StringInterner, resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>, tick_ms: u32) -> CombatTickResult {
-    tick_combat_with_fog(entities, rules, interner, None, &BTreeMap::new(), None, resource_nodes, tick_ms)
+pub fn tick_combat(
+    entities: &mut EntityStore,
+    rules: &RuleSet,
+    interner: &mut StringInterner,
+    resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
+    tick_ms: u32,
+) -> CombatTickResult {
+    tick_combat_with_fog(
+        entities,
+        rules,
+        interner,
+        None,
+        &BTreeMap::new(),
+        None,
+        resource_nodes,
+        tick_ms,
+    )
 }
 
 /// Destroyed crewed building — survivor ejection is deferred to the caller
@@ -267,7 +294,11 @@ pub struct CombatTickResult {
 /// Look up death weapon AoE data from an ObjectType.
 /// Returns (damage, warhead_id) if the entity should deal AoE damage on death.
 /// Checks DeathWeapon first, then falls back to primary weapon if Explodes=yes.
-fn death_weapon_aoe(rules: &RuleSet, obj: &ObjectType, interner: &mut StringInterner) -> Option<(i32, InternedId)> {
+fn death_weapon_aoe(
+    rules: &RuleSet,
+    obj: &ObjectType,
+    interner: &mut StringInterner,
+) -> Option<(i32, InternedId)> {
     if let Some(ref dw_id) = obj.death_weapon {
         let dw = rules.weapon(dw_id)?;
         let wh_id = dw.warhead.as_ref()?;
@@ -375,7 +406,9 @@ fn handle_entity_deaths(
             let killing_warhead = damage_events
                 .iter()
                 .rfind(|(tid, _, _, _)| *tid == dead_id)
-                .and_then(|(_, dmg, _, wh_id)| rules.warhead(interner.resolve(*wh_id)).map(|wh| (wh, *dmg)));
+                .and_then(|(_, dmg, _, wh_id)| {
+                    rules.warhead(interner.resolve(*wh_id)).map(|wh| (wh, *dmg))
+                });
 
             // Spawn explosion animation from the warhead's AnimList.
             if let Some((wh, dmg)) = &killing_warhead {
@@ -435,7 +468,14 @@ fn handle_entity_deaths(
                 });
             }
             let aoe_hits = self::combat_aoe::apply_aoe_damage(
-                entities, *rx, *ry, *dmg, warhead, rules, interner, interner.resolve(*owner_id),
+                entities,
+                *rx,
+                *ry,
+                *dmg,
+                warhead,
+                rules,
+                interner,
+                interner.resolve(*owner_id),
             );
             for (target_id, aoe_dmg) in aoe_hits {
                 if let Some(target) = entities.get_mut(target_id) {
@@ -463,7 +503,11 @@ fn clear_targets_on_dead_entity(entities: &mut EntityStore, dead_id: u64) {
     let keys: Vec<u64> = entities.keys_sorted();
     for &eid in &keys {
         if let Some(entity) = entities.get_mut(eid) {
-            if entity.attack_target.as_ref().is_some_and(|a| a.target == dead_id) {
+            if entity
+                .attack_target
+                .as_ref()
+                .is_some_and(|a| a.target == dead_id)
+            {
                 entity.attack_target = None;
             }
         }
@@ -524,8 +568,12 @@ pub fn tick_combat_with_fog(
         };
     }
     // Pre-scan: collect entities blocked from firing by locomotor or power state.
-    let fire_blocked =
-        combat_fire_gate::collect_fire_blocked_entities(entities, power_states, Some(rules), interner);
+    let fire_blocked = combat_fire_gate::collect_fire_blocked_entities(
+        entities,
+        power_states,
+        Some(rules),
+        interner,
+    );
 
     let keys: Vec<u64> = entities.keys_sorted();
 
@@ -615,8 +663,7 @@ pub fn tick_combat_with_fog(
                 if fog_state.is_friendly(owner_str, candidate_owner_str) {
                     continue;
                 }
-                if !fog_state.is_cell_visible(owner, candidate.position.rx, candidate.position.ry)
-                {
+                if !fog_state.is_cell_visible(owner, candidate.position.rx, candidate.position.ry) {
                     continue;
                 }
             }
@@ -628,7 +675,11 @@ pub fn tick_combat_with_fog(
             // Use garrison weapon (OccupyWeapon) for target compatibility check.
             let occ_type_str = interner.resolve(occ_type);
             let selected = match combat_weapon::select_garrison_weapon(
-                rules, occ_type_str, occ_vet, target_cat, target_armor,
+                rules,
+                occ_type_str,
+                occ_vet,
+                target_cat,
+                target_armor,
             ) {
                 Some(s) => s,
                 None => continue,
@@ -639,9 +690,14 @@ pub fn tick_combat_with_fog(
                 continue;
             }
             let dist_sq = lepton_distance_sq_raw(
-                pos_rx, pos_ry, sub_x, sub_y,
-                candidate.position.rx, candidate.position.ry,
-                candidate.position.sub_x, candidate.position.sub_y,
+                pos_rx,
+                pos_ry,
+                sub_x,
+                sub_y,
+                candidate.position.rx,
+                candidate.position.ry,
+                candidate.position.sub_x,
+                candidate.position.sub_y,
             );
             if !is_within_range_leptons(dist_sq, scan_range) {
                 continue;
@@ -790,8 +846,7 @@ pub fn tick_combat_with_fog(
     for snap in &snapshots {
         // Pre-compute garrison scan range for retargeting (includes +1 buffer).
         let garrison_retarget_range: Option<SimFixed> = snap.garrison.as_ref().map(|gs| {
-            let cells =
-                gs.half_foundation as i32 + 1 + rules.garrison_rules.occupy_weapon_range;
+            let cells = gs.half_foundation as i32 + 1 + rules.garrison_rules.occupy_weapon_range;
             SimFixed::from_num(cells.max(1))
         });
         let obj = match rules.object(interner.resolve(snap.type_id)) {
@@ -833,7 +888,15 @@ pub fn tick_combat_with_fog(
                 (rx, ry, sx, sy, hp, cat, tr, own)
             }
             _ => {
-                if let Some(new_target) = acquire_best_target(entities, rules, interner, snap, obj, fog, garrison_retarget_range) {
+                if let Some(new_target) = acquire_best_target(
+                    entities,
+                    rules,
+                    interner,
+                    snap,
+                    obj,
+                    fog,
+                    garrison_retarget_range,
+                ) {
                     retarget_events.push((snap.stable_id, new_target));
                 } else {
                     remove_attack.push(snap.stable_id);
@@ -883,7 +946,15 @@ pub fn tick_combat_with_fog(
             let snap_owner_str = interner.resolve(snap.owner);
             let target_owner_str = interner.resolve(target_owner);
             if fog_state.is_friendly(snap_owner_str, target_owner_str) {
-                if let Some(new_target) = acquire_best_target(entities, rules, interner, snap, obj, fog, garrison_retarget_range) {
+                if let Some(new_target) = acquire_best_target(
+                    entities,
+                    rules,
+                    interner,
+                    snap,
+                    obj,
+                    fog,
+                    garrison_retarget_range,
+                ) {
                     retarget_events.push((snap.stable_id, new_target));
                 } else {
                     remove_attack.push(snap.stable_id);
@@ -891,7 +962,15 @@ pub fn tick_combat_with_fog(
                 continue;
             }
             if !fog_state.is_cell_visible(snap.owner, target_rx, target_ry) {
-                if let Some(new_target) = acquire_best_target(entities, rules, interner, snap, obj, fog, garrison_retarget_range) {
+                if let Some(new_target) = acquire_best_target(
+                    entities,
+                    rules,
+                    interner,
+                    snap,
+                    obj,
+                    fog,
+                    garrison_retarget_range,
+                ) {
                     retarget_events.push((snap.stable_id, new_target));
                 } else {
                     remove_attack.push(snap.stable_id);
@@ -919,7 +998,15 @@ pub fn tick_combat_with_fog(
             weapon.range
         };
         if !is_within_range_leptons(dist_sq, effective_range) {
-            if let Some(new_target) = acquire_best_target(entities, rules, interner, snap, obj, fog, garrison_retarget_range) {
+            if let Some(new_target) = acquire_best_target(
+                entities,
+                rules,
+                interner,
+                snap,
+                obj,
+                fog,
+                garrison_retarget_range,
+            ) {
                 retarget_events.push((snap.stable_id, new_target));
             } else {
                 remove_attack.push(snap.stable_id);
@@ -955,7 +1042,9 @@ pub fn tick_combat_with_fog(
         // single-target paths. Matches gamemd Fire_At which modifies damage before bullet
         // creation, so AoE splash uses the modified value.
         let base_damage = if is_garrison {
-            sim_to_i32(SimFixed::from_num(weapon.damage) * rules.garrison_rules.occupy_damage_multiplier)
+            sim_to_i32(
+                SimFixed::from_num(weapon.damage) * rules.garrison_rules.occupy_damage_multiplier,
+            )
         } else {
             weapon.damage
         };
@@ -988,12 +1077,7 @@ pub fn tick_combat_with_fog(
             let actual_damage: u16 = raw_damage.max(0) as u16;
             if actual_damage > 0 {
                 let wh_iid = interner.intern(&warhead.id);
-                damage_events.push((
-                    snap.target,
-                    actual_damage,
-                    snap.stable_id,
-                    wh_iid,
-                ));
+                damage_events.push((snap.target, actual_damage, snap.stable_id, wh_iid));
             }
             if warhead.wall && weapon.damage > 0 {
                 bridge_damage_events.push(BridgeDamageEvent {
@@ -1006,7 +1090,13 @@ pub fn tick_combat_with_fog(
 
         // Ore destruction: all warheads unconditionally destroy ore at impact cells.
         // CellSpreadTable[0] = 1, so even CellSpread=0 weapons check the center cell.
-        destroy_ore_at_impact(resource_nodes, target_rx, target_ry, base_damage, warhead.cell_spread);
+        destroy_ore_at_impact(
+            resource_nodes,
+            target_rx,
+            target_ry,
+            base_damage,
+            warhead.cell_spread,
+        );
 
         if let Some(ref report_id) = weapon.report {
             fire_sounds.push((interner.intern(report_id), snap.pos_rx, snap.pos_ry));
@@ -1016,7 +1106,11 @@ pub fn tick_combat_with_fog(
             weapon_slot: selected.slot,
             target_id: snap.target,
             garrison_muzzle_index: snap.garrison.as_ref().map(|gs| gs.fire_index),
-            occupant_anim: if is_garrison { weapon.occupant_anim.as_ref().map(|s| interner.intern(s)) } else { None },
+            occupant_anim: if is_garrison {
+                weapon.occupant_anim.as_ref().map(|s| interner.intern(s))
+            } else {
+                None
+            },
         });
         if weapon.reveal_on_fire {
             reveal_events.push(RevealEvent {
@@ -1125,7 +1219,14 @@ pub fn tick_combat_with_fog(
     }
 
     // Phase 6: handle death effects — death weapons, passengers, explosions, despawn.
-    let death = handle_entity_deaths(entities, rules, interner, &dead_entities, &damage_events, resource_nodes);
+    let death = handle_entity_deaths(
+        entities,
+        rules,
+        interner,
+        &dead_entities,
+        &damage_events,
+        resource_nodes,
+    );
     bridge_damage_events.extend(death.bridge_damage_events);
 
     // Phase 7: push sound events to the sink.

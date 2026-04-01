@@ -17,7 +17,7 @@
 use crate::map::entities::EntityCategory;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// World position in isometric cell coordinates plus sub-cell lepton offset.
 ///
@@ -324,7 +324,9 @@ pub enum OrderIntent {
 /// Non-turret units use `Composite` (body+turret+barrel baked together).
 /// Turret units store Body/Turret/Barrel separately so the turret can
 /// be drawn at a different facing than the body at render time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum VxlLayer {
     /// All parts composited into one sprite (for units without independent turret).
     Composite,

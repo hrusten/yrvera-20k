@@ -25,7 +25,7 @@ use crate::rules::ruleset::GeneralRules;
 use crate::sim::miner::{ResourceNode, ResourceType};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::{SimFixed, SIM_TICK_HZ};
+use crate::util::fixed_math::{SIM_TICK_HZ, SimFixed};
 
 /// Base ore stock per richness level — matches seed_resource_nodes_from_overlays().
 const ORE_BASE_PER_LEVEL: u16 = 120;
@@ -84,9 +84,8 @@ impl OreGrowthConfig {
         // Convert f32 minutes → integer seconds at the INI boundary via
         // fixed-point to avoid platform-dependent f32 multiplication rounding.
         let rate_fixed = SimFixed::saturating_from_num(growth_rate_minutes);
-        let growth_rate_seconds = (rate_fixed * SimFixed::from_num(60))
-            .to_num::<i32>()
-            .max(1) as u32;
+        let growth_rate_seconds =
+            (rate_fixed * SimFixed::from_num(60)).to_num::<i32>().max(1) as u32;
 
         log::info!(
             "OreGrowthConfig: grows={}, spreads={}, rate={}s",

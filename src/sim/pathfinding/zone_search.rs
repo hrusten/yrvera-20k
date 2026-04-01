@@ -17,10 +17,10 @@ use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
 
 use super::terrain_cost::TerrainCostGrid;
-use super::zone_map::{ZoneAdjacency, ZoneCategory, ZoneGrid, ZoneId, ZoneMap, ZONE_INVALID};
+use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneCategory, ZoneGrid, ZoneId, ZoneMap};
 use super::{
-    find_layered_path, find_path_with_costs, find_path_with_costs_corridor, LayeredPathGrid,
-    LayeredPathStep, PathGrid,
+    LayeredPathGrid, LayeredPathStep, PathGrid, find_layered_path, find_path_with_costs,
+    find_path_with_costs_corridor,
 };
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::MovementZone;

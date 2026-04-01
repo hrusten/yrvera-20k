@@ -164,8 +164,13 @@ pub fn classify_occupied_cell(
     interner: &crate::sim::intern::StringInterner,
 ) -> CellEntryResult {
     // --- Crush check ---
-    let victims =
-        bump_crush::collect_crush_victims(target, occ_map, mover_zone, mover_omni_crusher, entities);
+    let victims = bump_crush::collect_crush_victims(
+        target,
+        occ_map,
+        mover_zone,
+        mover_omni_crusher,
+        entities,
+    );
     if !victims.is_empty()
         && bump_crush::cell_passable_after_crush(
             target,
@@ -216,7 +221,8 @@ fn classify_blocker(
     let Some(blocker) = entities.get(blocker_id) else {
         return CellEntryResult::Impassable;
     };
-    let is_friendly = houses::are_houses_friendly(alliances, mover_owner, interner.resolve(blocker.owner));
+    let is_friendly =
+        houses::are_houses_friendly(alliances, mover_owner, interner.resolve(blocker.owner));
     if !is_friendly {
         return CellEntryResult::OccupiedEnemy { blocker_id };
     }

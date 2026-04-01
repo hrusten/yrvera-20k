@@ -17,7 +17,7 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::MovementTarget;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::PathGrid;
-use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 fn make_test_entity(type_id: &str, category: EntityCategory) -> MapEntity {
     MapEntity {
@@ -39,8 +39,16 @@ fn empty_heights() -> BTreeMap<(u16, u16), u8> {
 }
 
 /// Create a CommandEnvelope with a string owner, interning it via the sim's interner.
-fn cmd_envelope(sim: &Simulation, owner: &str, execute_tick: u64, payload: Command) -> CommandEnvelope {
-    let owner_id = sim.interner.get(owner).unwrap_or_else(|| panic!("owner '{}' not interned", owner));
+fn cmd_envelope(
+    sim: &Simulation,
+    owner: &str,
+    execute_tick: u64,
+    payload: Command,
+) -> CommandEnvelope {
+    let owner_id = sim
+        .interner
+        .get(owner)
+        .unwrap_or_else(|| panic!("owner '{}' not interned", owner));
     CommandEnvelope::new(owner_id, execute_tick, payload)
 }
 
@@ -389,10 +397,11 @@ fn test_bridge_damage_rebuilds_layered_grid() {
         &resolved, true, 20,
     ));
     sim.refresh_terrain_views();
-    assert!(sim
-        .layered_path_grid
-        .as_ref()
-        .is_some_and(|grid| grid.is_walkable(2, 0, MovementLayer::Bridge)));
+    assert!(
+        sim.layered_path_grid
+            .as_ref()
+            .is_some_and(|grid| grid.is_walkable(2, 0, MovementLayer::Bridge))
+    );
 
     let changes = sim.apply_bridge_damage_events(&[BridgeDamageEvent {
         rx: 2,
@@ -401,10 +410,11 @@ fn test_bridge_damage_rebuilds_layered_grid() {
     }]);
     assert_eq!(changes.len(), 1);
     let _ = sim.resolve_bridge_state_changes(&changes);
-    assert!(sim
-        .layered_path_grid
-        .as_ref()
-        .is_some_and(|grid| !grid.is_walkable(2, 0, MovementLayer::Bridge)));
+    assert!(
+        sim.layered_path_grid
+            .as_ref()
+            .is_some_and(|grid| !grid.is_walkable(2, 0, MovementLayer::Bridge))
+    );
 }
 
 #[test]
@@ -639,7 +649,8 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
     let ship_id = sim
         .spawn_object("DEST", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
         .expect("spawn destroyer");
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Move {
@@ -651,7 +662,13 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &BTreeMap::new(), Some(&path_grid), 100);
+    let _ = sim.advance_tick(
+        &[cmd],
+        Some(&rules),
+        &BTreeMap::new(),
+        Some(&path_grid),
+        100,
+    );
     for _ in 0..80 {
         let _ = sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&path_grid), 100);
     }
@@ -689,7 +706,8 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
     let ship_id = sim
         .spawn_object("DEST", "Americans", 0, 0, 64, &rules, &BTreeMap::new())
         .expect("spawn destroyer");
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Move {
@@ -701,7 +719,13 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &BTreeMap::new(), Some(&path_grid), 100);
+    let _ = sim.advance_tick(
+        &[cmd],
+        Some(&rules),
+        &BTreeMap::new(),
+        Some(&path_grid),
+        100,
+    );
     for _ in 0..80 {
         let _ = sim.advance_tick(&[], Some(&rules), &BTreeMap::new(), Some(&path_grid), 100);
     }
@@ -741,7 +765,8 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
     let ship_id = sim
         .spawn_object("DEST", "Americans", 0, 1, 64, &rules, &BTreeMap::new())
         .expect("spawn destroyer");
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Move {
@@ -753,7 +778,13 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
         },
     );
 
-    let _ = sim.advance_tick(&[cmd], Some(&rules), &BTreeMap::new(), Some(&path_grid), 100);
+    let _ = sim.advance_tick(
+        &[cmd],
+        Some(&rules),
+        &BTreeMap::new(),
+        Some(&path_grid),
+        100,
+    );
     let initial_path = sim
         .entities
         .get(ship_id)
@@ -826,7 +857,8 @@ fn test_select_command_applies_snapshot_selection() {
         &empty_heights(),
     );
 
-    let select = cmd_envelope(&sim,
+    let select = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Select {
@@ -852,7 +884,8 @@ fn test_select_command_replaces_previous_selection() {
         &empty_heights(),
     );
 
-    let cmd1 = cmd_envelope(&sim,
+    let cmd1 = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Select {
@@ -862,7 +895,8 @@ fn test_select_command_replaces_previous_selection() {
     );
     let _ = sim.advance_tick(&[cmd1], None, &empty_heights(), None, 33);
 
-    let cmd2 = cmd_envelope(&sim,
+    let cmd2 = cmd_envelope(
+        &sim,
         "Americans",
         2,
         Command::Select {
@@ -888,7 +922,8 @@ fn test_select_command_deduplicates_and_sorts_ids() {
         &empty_heights(),
     );
 
-    let select = cmd_envelope(&sim,
+    let select = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Select {
@@ -918,7 +953,10 @@ fn test_deploy_mcv_replaces_vehicle_with_conyard() {
     let _ = sim.advance_tick(&[cmd], Some(&rules), &heights, None, 33);
 
     assert!(sim.entities.get(mcv).is_none(), "MCV should be removed");
-    let gacnst_id = sim.interner.get("GACNST").expect("GACNST should be interned");
+    let gacnst_id = sim
+        .interner
+        .get("GACNST")
+        .expect("GACNST should be interned");
     assert!(
         sim.entities
             .values()
@@ -947,7 +985,8 @@ fn test_execute_tick_delay_blocks_early_execution() {
         &empty_heights(),
     );
     let grid = PathGrid::new(32, 32);
-    let delayed = cmd_envelope(&sim,
+    let delayed = cmd_envelope(
+        &sim,
         "Americans",
         3,
         Command::Move {
@@ -961,25 +1000,28 @@ fn test_execute_tick_delay_blocks_early_execution() {
     );
 
     let _ = sim.advance_tick(&[delayed.clone()], None, &empty_heights(), Some(&grid), 33);
-    assert!(sim
-        .entities
-        .get(1)
-        .and_then(|e| e.movement_target.as_ref())
-        .is_none());
+    assert!(
+        sim.entities
+            .get(1)
+            .and_then(|e| e.movement_target.as_ref())
+            .is_none()
+    );
 
     let _ = sim.advance_tick(&[delayed.clone()], None, &empty_heights(), Some(&grid), 33);
-    assert!(sim
-        .entities
-        .get(1)
-        .and_then(|e| e.movement_target.as_ref())
-        .is_none());
+    assert!(
+        sim.entities
+            .get(1)
+            .and_then(|e| e.movement_target.as_ref())
+            .is_none()
+    );
 
     let _ = sim.advance_tick(&[delayed], None, &empty_heights(), Some(&grid), 33);
-    assert!(sim
-        .entities
-        .get(1)
-        .and_then(|e| e.movement_target.as_ref())
-        .is_some());
+    assert!(
+        sim.entities
+            .get(1)
+            .and_then(|e| e.movement_target.as_ref())
+            .is_some()
+    );
 }
 
 #[test]
@@ -1003,7 +1045,8 @@ fn test_move_queue_command_appends_waypoint() {
     );
     let grid = PathGrid::new(32, 32);
     let commands = vec![
-        cmd_envelope(&sim,
+        cmd_envelope(
+            &sim,
             "Americans",
             1,
             Command::Move {
@@ -1014,7 +1057,8 @@ fn test_move_queue_command_appends_waypoint() {
                 group_id: None,
             },
         ),
-        cmd_envelope(&sim,
+        cmd_envelope(
+            &sim,
             "Americans",
             1,
             Command::Move {
@@ -1106,7 +1150,8 @@ fn test_move_command_rejects_non_owned_entity() {
     );
     let grid = PathGrid::new(32, 32);
     sim.interner.intern("Russians"); // Ensure "Russians" is in sim's interner for cmd_envelope lookup.
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Russians",
         1,
         Command::Move {
@@ -1120,10 +1165,11 @@ fn test_move_command_rejects_non_owned_entity() {
     );
 
     let _ = sim.advance_tick(&[cmd], None, &empty_heights(), Some(&grid), 33);
-    assert!(sim
-        .entities
-        .get(1)
-        .is_some_and(|e| e.movement_target.is_none()));
+    assert!(
+        sim.entities
+            .get(1)
+            .is_some_and(|e| e.movement_target.is_none())
+    );
 }
 
 #[test]
@@ -1135,7 +1181,8 @@ fn test_move_command_chrono_miner_uses_ground_path() {
         .spawn_object("CMIN", "Americans", 2, 2, 64, &rules, &heights)
         .expect("spawn chrono miner");
     let grid = PathGrid::new(32, 32);
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Move {
@@ -1173,7 +1220,8 @@ fn test_move_command_non_harvester_teleporter_uses_teleport() {
         .spawn_object("CHRONO", "Americans", 2, 2, 64, &rules, &heights)
         .expect("spawn teleporter");
     let grid = PathGrid::new(32, 32);
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Move {
@@ -1210,7 +1258,8 @@ fn test_attack_move_command_chrono_miner_uses_ground_path() {
         .spawn_object("CMIN", "Americans", 2, 2, 64, &rules, &heights)
         .expect("spawn chrono miner");
     let grid = PathGrid::new(32, 32);
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::AttackMove {
@@ -1281,7 +1330,8 @@ fn test_attack_command_rejects_friendly_target() {
         None,
         &empty_heights(),
     );
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Attack {
@@ -1332,7 +1382,8 @@ fn test_attack_move_auto_acquires_enemy() {
         &empty_heights(),
     );
     let grid = PathGrid::new(32, 32);
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::AttackMove {
@@ -1394,7 +1445,8 @@ fn test_attack_move_resumes_after_kill() {
         e.health.max = 50;
     }
     let grid = PathGrid::new(32, 32);
-    let cmd = cmd_envelope(&sim,
+    let cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::AttackMove {
@@ -1438,7 +1490,8 @@ fn test_guard_returns_to_anchor_when_displaced() {
         None,
         &empty_heights(),
     );
-    let guard_cmd = cmd_envelope(&sim,
+    let guard_cmd = cmd_envelope(
+        &sim,
         "Americans",
         1,
         Command::Guard {
@@ -1551,7 +1604,8 @@ fn test_undeploy_conyard_spawns_mcv() {
     }
 
     // Undeploy the ConYard — starts a 30-tick reverse build-up animation.
-    let undeploy_cmd = cmd_envelope(&sim,
+    let undeploy_cmd = cmd_envelope(
+        &sim,
         "Americans",
         2,
         Command::UndeployBuilding { entity_id: yard_id },

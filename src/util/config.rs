@@ -71,12 +71,20 @@ impl Default for GraphicsConfig {
 impl GraphicsConfig {
     /// Render width: half of window width when upscaling, otherwise full window width.
     pub fn render_width(&self) -> u32 {
-        if self.upscale { self.width / 2 } else { self.width }
+        if self.upscale {
+            self.width / 2
+        } else {
+            self.width
+        }
     }
 
     /// Render height: half of window height when upscaling, otherwise full window height.
     pub fn render_height(&self) -> u32 {
-        if self.upscale { self.height / 2 } else { self.height }
+        if self.upscale {
+            self.height / 2
+        } else {
+            self.height
+        }
     }
 }
 
@@ -119,7 +127,6 @@ fn default_sim_tick_hz() -> u32 {
 fn default_input_delay_ticks() -> u32 {
     2
 }
-
 
 impl GameConfig {
     /// Load configuration from config.toml in the current working directory.

@@ -283,7 +283,7 @@ mod tests {
         data.extend_from_slice(&[100, 120, 80]); // radar_left
         data.extend_from_slice(&[90, 110, 70]); // radar_right
         data.extend_from_slice(&[0u8; 3]); // padding
-                                           // Diamond pixel data: distinct values 1..=N.
+        // Diamond pixel data: distinct values 1..=N.
         for i in 0..dpixels {
             data.push((i as u8) + 1);
         }
@@ -311,7 +311,7 @@ mod tests {
         let tmp: TmpFile = TmpFile::from_bytes(&make_test_tmp()).expect("Should parse");
         let tile: &TmpTile = tmp.tiles[0].as_ref().unwrap();
         assert_eq!(tile.pixels.len(), 32); // 8×4
-                                           // Row 0: 4 pixels centered → positions 2..6, values 1..4.
+        // Row 0: 4 pixels centered → positions 2..6, values 1..4.
         assert_eq!(tile.pixels[2], 1);
         assert_eq!(tile.pixels[5], 4);
         // Row 1: 8 pixels full width, values 5..12.

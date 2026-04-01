@@ -25,7 +25,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::facing_from_delta;
 use crate::sim::movement::jumpjet_movement;
 use crate::sim::movement::locomotor::{AirMovePhase, LocomotorState, MovementLayer};
-use crate::util::fixed_math::{fixed_distance, sim_to_f32, SimFixed, SIM_HALF, SIM_ONE, SIM_ZERO};
+use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, fixed_distance, sim_to_f32};
 
 /// Visual height offset per lepton of altitude.
 /// Calibrated so that cruise altitude (600 leptons) produces ~36px vertical

@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 
 use super::passability;
 use super::terrain_cost::TerrainCostGrid;
-use super::zone_map::{ZoneAdjacency, ZoneCategory, ZoneId, ZoneInfo, ZoneMap, ZONE_INVALID};
+use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneCategory, ZoneId, ZoneInfo, ZoneMap};
 use super::{LayeredPathGrid, PathGrid};
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::movement::locomotor::MovementLayer;

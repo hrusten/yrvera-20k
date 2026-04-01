@@ -17,7 +17,7 @@ use crate::map::lighting;
 use crate::map::terrain::TILE_HEIGHT;
 use crate::render::batch::SpriteInstance;
 use crate::render::sprite_atlas::ShpSpriteKey;
-use crate::render::unit_atlas::{canonical_turret_facing, UnitSpriteKey, VxlLayer};
+use crate::render::unit_atlas::{UnitSpriteKey, VxlLayer, canonical_turret_facing};
 use crate::rules::house_colors::HouseColorIndex;
 use crate::sim::animation;
 use crate::sim::components::BuildingUp;
@@ -149,10 +149,7 @@ pub(crate) fn build_shp_instances(
             }
         };
         let key: ShpSpriteKey = ShpSpriteKey {
-            type_id: make_type_id
-                .as_deref()
-                .unwrap_or(type_str)
-                .to_string(),
+            type_id: make_type_id.as_deref().unwrap_or(type_str).to_string(),
             facing: 0,
             frame: shp_frame,
             house_color: hc,
@@ -236,12 +233,8 @@ pub(crate) fn build_shp_instances(
                 // can sort together via depth. Anims use the building's entity depth
                 // so they render at the same depth as the body — visible where the
                 // body has transparent pixels, covered where it's opaque.
-                let is_garrisoned = entity
-                    .passenger_role
-                    .cargo()
-                    .is_some_and(|c| !c.is_empty());
-                let is_player_owned =
-                    !crate::rules::house_colors::is_non_player_house(owner_str);
+                let is_garrisoned = entity.passenger_role.cargo().is_some_and(|c| !c.is_empty());
+                let is_player_owned = !crate::rules::house_colors::is_non_player_house(owner_str);
                 emit_building_anims(
                     paged,
                     atlas,
@@ -262,11 +255,7 @@ pub(crate) fn build_shp_instances(
                 );
             }
             // Emit VXL turret on top of building (e.g., SAM site, Prism Tower).
-            if let Some(rules_obj) = state
-                .rules
-                .as_ref()
-                .and_then(|r| r.object(type_str))
-            {
+            if let Some(rules_obj) = state.rules.as_ref().and_then(|r| r.object(type_str)) {
                 if rules_obj.turret_anim_is_voxel {
                     if let Some(turret_id) = &rules_obj.turret_anim {
                         emit_building_turret_vxl(
@@ -468,7 +457,8 @@ fn emit_building_anims(
         // Infinite-loop anims (LoopCount=-1 or IdleAnim): driven by global elapsed timer.
         // Special/Super: event-triggered one-shot — skip entirely if not in overlays.
         let anim_upper: String = anim.anim_type.to_uppercase();
-        let anim_upper_id: Option<crate::sim::intern::InternedId> = interner.and_then(|i| i.get(&anim_upper));
+        let anim_upper_id: Option<crate::sim::intern::InternedId> =
+            interner.and_then(|i| i.get(&anim_upper));
         let frame: u16 = if matches!(
             anim.kind,
             crate::rules::art_data::BuildingAnimKind::ActiveGarrisoned
@@ -518,7 +508,8 @@ fn emit_building_anims(
             // Special/Super are one-shot event-triggered animations (e.g., GAREFNOR ore
             // conveyor). Only render if actively playing in the BuildingAnimOverlays state.
             // When not triggered, skip this anim entirely — don't show frame 0.
-            match overlays.and_then(|o| o.anims.iter().find(|a| anim_upper_id == Some(a.anim_type))) {
+            match overlays.and_then(|o| o.anims.iter().find(|a| anim_upper_id == Some(a.anim_type)))
+            {
                 Some(s) if !s.finished => s.frame,
                 _ => continue,
             }

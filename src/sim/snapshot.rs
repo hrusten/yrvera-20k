@@ -78,12 +78,7 @@ impl GameSnapshot {
     ///
     /// The caller provides hashes of the current map and rules, the current
     /// tick, and the map name for header metadata.
-    pub fn save(
-        sim: &Simulation,
-        map_hash: u64,
-        rules_hash: u64,
-        map_name: &str,
-    ) -> Vec<u8> {
+    pub fn save(sim: &Simulation, map_hash: u64, rules_hash: u64, map_name: &str) -> Vec<u8> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())

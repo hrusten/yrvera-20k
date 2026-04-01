@@ -42,9 +42,7 @@ pub fn enter_idle_mode(input: &IdleModeInput) -> IdleModeResult {
     // Ammo depleted and has weapons → need to RTB.
     if input.has_weapon && input.ammo_current <= 0 && input.ammo_max > 0 {
         if let Some((af_id, _, _)) = input.nearest_airfield {
-            return IdleModeResult::Mission(AircraftMission::ReturnToBase {
-                airfield_id: af_id,
-            });
+            return IdleModeResult::Mission(AircraftMission::ReturnToBase { airfield_id: af_id });
         }
         // No airfield available.
         if input.airport_bound {
@@ -66,9 +64,7 @@ pub fn enter_idle_mode(input: &IdleModeInput) -> IdleModeResult {
     // AirportBound in flight with no target → RTB.
     if input.airport_bound && input.is_airborne {
         if let Some((af_id, _, _)) = input.nearest_airfield {
-            return IdleModeResult::Mission(AircraftMission::ReturnToBase {
-                airfield_id: af_id,
-            });
+            return IdleModeResult::Mission(AircraftMission::ReturnToBase { airfield_id: af_id });
         }
         // AirportBound, no airfield, but has ammo → guard until airfield built.
         if input.ammo_current > 0 {
@@ -134,10 +130,7 @@ mod tests {
         };
         assert!(matches!(
             enter_idle_mode(&input),
-            IdleModeResult::Mission(AircraftMission::Attack {
-                sub_state: 0,
-                ..
-            })
+            IdleModeResult::Mission(AircraftMission::Attack { sub_state: 0, .. })
         ));
     }
 

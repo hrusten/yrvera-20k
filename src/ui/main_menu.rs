@@ -229,7 +229,9 @@ fn controls_panel(
             ui.add_space(8.0);
             ui.checkbox(
                 &mut settings.zoom_enabled,
-                egui::RichText::new("Allow Zoom").size(16.0).color(palette.text),
+                egui::RichText::new("Allow Zoom")
+                    .size(16.0)
+                    .color(palette.text),
             );
 
             ui.add_space(18.0);

@@ -22,7 +22,7 @@ use super::zone_build::{
     compute_zone_info, extract_adjacency, flood_fill, flood_fill_bridge, is_passable,
 };
 use super::zone_hierarchy::SuperZoneMap;
-use super::zone_map::{ZoneCategory, ZoneGrid, ZoneId, ZONE_INVALID};
+use super::zone_map::{ZONE_INVALID, ZoneCategory, ZoneGrid, ZoneId};
 use super::{LayeredPathGrid, PathGrid};
 use crate::rules::locomotor_type::SpeedType;
 use crate::sim::movement::locomotor::MovementLayer;

@@ -321,7 +321,7 @@ mod tests {
         assert_eq!(rgba[0], 255); // R
         assert_eq!(rgba[1], 0); // G
         assert_eq!(rgba[3], 255); // A (opaque)
-                                  // Pixel 3 (index 0): transparent
+        // Pixel 3 (index 0): transparent
         assert_eq!(rgba[15], 0); // A (transparent)
     }
 

@@ -132,9 +132,11 @@ fn time_trigger_can_center_camera_at_waypoint() {
     );
     let mut runtime = TriggerRuntime::from_map(&triggers, &HashMap::new());
 
-    assert!(runtime
-        .advance(89, &graph, &triggers, &events, &actions, None)
-        .is_empty());
+    assert!(
+        runtime
+            .advance(89, &graph, &triggers, &events, &actions, None)
+            .is_empty()
+    );
     assert_eq!(
         runtime.advance(1, &graph, &triggers, &events, &actions, None),
         vec![TriggerEffect::CenterCameraAtWaypoint {
@@ -142,9 +144,11 @@ fn time_trigger_can_center_camera_at_waypoint() {
             immediate: true,
         }]
     );
-    assert!(runtime
-        .advance(30, &graph, &triggers, &events, &actions, None)
-        .is_empty());
+    assert!(
+        runtime
+            .advance(30, &graph, &triggers, &events, &actions, None)
+            .is_empty()
+    );
 }
 
 #[test]

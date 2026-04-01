@@ -483,7 +483,10 @@ pub fn build_visible_instances(
     screen_width: f32,
     screen_height: f32,
     uv_fn: UvLookupFn<'_>,
-    fog: Option<(crate::sim::intern::InternedId, &crate::sim::vision::FogState)>,
+    fog: Option<(
+        crate::sim::intern::InternedId,
+        &crate::sim::vision::FogState,
+    )>,
 ) -> TerrainInstances {
     let view_left: f32 = camera_x - CULL_MARGIN;
     let view_right: f32 = camera_x + screen_width + CULL_MARGIN;

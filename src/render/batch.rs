@@ -713,8 +713,11 @@ impl BatchRenderer {
             zoom: 1.0,
             _pad: 0.0,
         };
-        gpu.queue
-            .write_buffer(&self.ui_camera_buffer, 0, bytemuck::cast_slice(&[ui_uniform]));
+        gpu.queue.write_buffer(
+            &self.ui_camera_buffer,
+            0,
+            bytemuck::cast_slice(&[ui_uniform]),
+        );
     }
 
     /// Upload instance data for this frame.

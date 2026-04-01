@@ -13,7 +13,7 @@ mod sidebar_view;
 
 use crate::sim::production::ProductionCategory;
 
-pub use layout_spec::{SidebarChromeLayoutSpec, SIDEBAR_LAYOUT_FILE_NAME};
+pub use layout_spec::{SIDEBAR_LAYOUT_FILE_NAME, SidebarChromeLayoutSpec};
 pub use power_bar_anim::PowerBarAnimState;
 pub use sidebar_view::{build_sidebar_view, build_sidebar_view_with_spec};
 
@@ -350,7 +350,7 @@ pub fn hit_test(view: &SidebarView, x: f32, y: f32, right_click: bool) -> Sideba
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_layout_with_spec, SidebarChromeLayoutSpec, SIDEBAR_WIDTH};
+    use super::{SIDEBAR_WIDTH, SidebarChromeLayoutSpec, compute_layout_with_spec};
 
     #[test]
     fn stock_spec_matches_legacy_layout_geometry() {

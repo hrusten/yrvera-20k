@@ -14,7 +14,7 @@
 //! - Part of rules/ — no dependencies on sim/, render/, ui/, etc.
 
 use crate::rules::ini_parser::IniSection;
-use crate::util::fixed_math::{sim_from_f32, SimFixed};
+use crate::util::fixed_math::{SimFixed, sim_from_f32};
 
 /// Jumpjet locomotor parameters parsed from rules.ini per-unit keys.
 ///

@@ -69,8 +69,7 @@ fn recalculate_power_for_owner(
     let mut theoretical: i32 = 0;
 
     for entity in entities.values() {
-        if entity.category != EntityCategory::Structure || entity.owner != owner_id
-        {
+        if entity.category != EntityCategory::Structure || entity.owner != owner_id {
             continue;
         }
         let power = rules
@@ -122,9 +121,7 @@ pub fn tick_power_states(
     // Collect unique owners who have structures.
     let mut owners: Vec<InternedId> = Vec::new();
     for entity in entities.values() {
-        if entity.category == EntityCategory::Structure
-            && !owners.contains(&entity.owner)
-        {
+        if entity.category == EntityCategory::Structure && !owners.contains(&entity.owner) {
             owners.push(entity.owner);
         }
     }
@@ -148,13 +145,9 @@ pub fn tick_power_states(
 
         // Detect transitions.
         if state.is_low_power && !state.was_low_power {
-            events.push(PowerEvent::EnteredLowPower {
-                owner: owner_id,
-            });
+            events.push(PowerEvent::EnteredLowPower { owner: owner_id });
         } else if !state.is_low_power && state.was_low_power {
-            events.push(PowerEvent::PowerRestored {
-                owner: owner_id,
-            });
+            events.push(PowerEvent::PowerRestored { owner: owner_id });
         }
 
         // Degradation damage: Powered=yes buildings take 1 HP damage periodically
@@ -167,9 +160,8 @@ pub fn tick_power_states(
     // Apply degradation damage in a second pass to avoid borrow conflicts.
     // Convert f32 minutes → integer ms via fixed-point to avoid
     // platform-dependent float multiplication rounding.
-    let rate_fixed = crate::util::fixed_math::SimFixed::saturating_from_num(
-        rules.general.damage_delay_minutes,
-    );
+    let rate_fixed =
+        crate::util::fixed_math::SimFixed::saturating_from_num(rules.general.damage_delay_minutes);
     let delay_seconds = (rate_fixed * crate::util::fixed_math::SimFixed::from_num(60))
         .to_num::<i32>()
         .max(0);
@@ -203,7 +195,12 @@ pub fn tick_power_states(
 
 /// Apply 1 HP degradation damage to all Powered=yes buildings with Power= <= 0
 /// owned by the given player.
-fn apply_degradation_damage(entities: &mut EntityStore, rules: &RuleSet, owner_id: InternedId, interner: &crate::sim::intern::StringInterner) {
+fn apply_degradation_damage(
+    entities: &mut EntityStore,
+    rules: &RuleSet,
+    owner_id: InternedId,
+    interner: &crate::sim::intern::StringInterner,
+) {
     let ids: Vec<u64> = entities
         .values()
         .filter(|e| {
@@ -397,7 +394,7 @@ BuildSpeed=0.02
         let mut store = EntityStore::new();
         // Small power plant at low health.
         store.insert(make_building(1, "NAPOWR", "Soviet", 40, 400)); // 150 * 40/400 = 15
-                                                                     // Tesla Coil drains 75.
+        // Tesla Coil drains 75.
         store.insert(make_building(2, "TESLA", "Soviet", 400, 400));
 
         let mut state = PowerState::default();
@@ -480,9 +477,7 @@ BuildSpeed=0.02
 
         let events = tick_power_states(&mut states, &mut store, &rules, 16, &interner);
         assert!(
-            events.contains(&PowerEvent::EnteredLowPower {
-                owner: soviet
-            }),
+            events.contains(&PowerEvent::EnteredLowPower { owner: soviet }),
             "should detect entering low power"
         );
 
@@ -490,9 +485,7 @@ BuildSpeed=0.02
         store.insert(make_building(2, "NAPOWR", "Soviet", 400, 400));
         let events = tick_power_states(&mut states, &mut store, &rules, 16, &interner);
         assert!(
-            events.contains(&PowerEvent::PowerRestored {
-                owner: soviet
-            }),
+            events.contains(&PowerEvent::PowerRestored { owner: soviet }),
             "should detect power restored"
         );
     }

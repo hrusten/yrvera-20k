@@ -116,7 +116,9 @@ pub(crate) fn record_command_lines(
         };
         if let Some(e) = entry {
             // Deduplicate: one line per entity, latest command wins.
-            state.entries.retain(|existing| existing.entity_id != e.entity_id);
+            state
+                .entries
+                .retain(|existing| existing.entity_id != e.entity_id);
             state.entries.push(e);
             any = true;
         }
@@ -186,7 +188,16 @@ pub(crate) fn build_target_line_instances(
             LineKind::Move => MOVE_COLOR,
         };
 
-        emit_colored_line(&mut instances, src_x, src_y, dst_x, dst_y, cam_x, cam_y, color);
+        emit_colored_line(
+            &mut instances,
+            src_x,
+            src_y,
+            dst_x,
+            dst_y,
+            cam_x,
+            cam_y,
+            color,
+        );
     }
 
     instances

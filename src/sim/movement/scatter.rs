@@ -33,7 +33,7 @@ use crate::sim::movement::bump_crush::{self, OccupancyMap};
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::{ra2_speed_to_leptons_per_second, SimFixed};
+use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
 
 /// Maximum number of spiral directions to try per scatter operation.
 /// The original engine uses `0x15F` (351).
@@ -155,8 +155,10 @@ pub fn tick_idle_scatter(
                     "IDLE_SCATTER entity={} {:?} at ({},{}) → ({},{}) blockers={:?} infantry={:?}",
                     id,
                     entity.category,
-                    pos.0, pos.1,
-                    target.0, target.1,
+                    pos.0,
+                    pos.1,
+                    target.0,
+                    target.1,
                     occ.blockers,
                     occ.infantry,
                 );

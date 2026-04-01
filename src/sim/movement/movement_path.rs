@@ -15,8 +15,8 @@ use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_map::ZoneCategory;
 use crate::sim::pathfinding::zone_search;
 use crate::sim::pathfinding::{
-    is_any_layer_walkable, nearest_walkable_layered, truncate_layered_path, LayeredPathGrid,
-    PathGrid, MAX_PATH_SEGMENT_STEPS,
+    LayeredPathGrid, MAX_PATH_SEGMENT_STEPS, PathGrid, is_any_layer_walkable,
+    nearest_walkable_layered, truncate_layered_path,
 };
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::facing_from_delta_int as facing_from_delta;
@@ -239,7 +239,9 @@ pub(super) fn find_move_path(
             } else {
                 log::info!(
                     "find_move_path: layered A* FAILED ({:?} layer={:?} → {:?}), falling back to flat A*",
-                    start, start_layer, goal,
+                    start,
+                    start_layer,
+                    goal,
                 );
             }
         }

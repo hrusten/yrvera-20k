@@ -44,10 +44,7 @@ pub(crate) fn render_game(
     encoder: &mut wgpu::CommandEncoder,
     view: &wgpu::TextureView,
 ) -> Result<Option<SidebarView>> {
-    let (sw, sh) = (
-        state.render_width() as f32,
-        state.render_height() as f32,
-    );
+    let (sw, sh) = (state.render_width() as f32, state.render_height() as f32);
 
     let local_owner = preferred_local_owner_name(state);
     // Effective viewport in world pixels — zoom shrinks what's visible.

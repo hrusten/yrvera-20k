@@ -88,7 +88,10 @@ pub enum Command {
     /// Cancel the last queued production item for owner.
     CancelLastProduction { owner: InternedId },
     /// Cancel one queued item of a specific type (right-click cameo).
-    CancelProductionByType { owner: InternedId, type_id: InternedId },
+    CancelProductionByType {
+        owner: InternedId,
+        type_id: InternedId,
+    },
     /// Sell a building, refunding a percentage of its cost and despawning it.
     SellBuilding { entity_id: u64 },
     /// Toggle repair mode on a building (spend credits to heal over time).

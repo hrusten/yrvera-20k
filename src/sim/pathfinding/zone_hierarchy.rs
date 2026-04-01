@@ -9,7 +9,7 @@
 //! - Part of sim/ — depends only on sim/zone_map types.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
-use super::zone_map::{ZoneAdjacency, ZoneId, ZONE_INVALID};
+use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneId};
 
 /// Connected-component labels for zones, computed via union-find.
 /// Two zones with the same label are transitively reachable.

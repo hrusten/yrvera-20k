@@ -217,10 +217,10 @@ mod tests {
     use super::*;
     use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
     use crate::rules::object_type::{ObjectCategory, ObjectType, PipScale};
-    use crate::util::fixed_math::SimFixed;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+    use crate::util::fixed_math::SimFixed;
 
     fn make_drive_obj() -> ObjectType {
         ObjectType {
@@ -394,7 +394,11 @@ mod tests {
         assert_eq!(entity.position.rx, 20, "Should have relocated to target");
         assert_eq!(entity.position.ry, 20);
         let ts = entity.teleport_state.as_ref().expect("still warping");
-        assert_eq!(ts.phase, TeleportPhase::ChronoDelay, "should be in chrono delay");
+        assert_eq!(
+            ts.phase,
+            TeleportPhase::ChronoDelay,
+            "should be in chrono delay"
+        );
 
         // Tick through ChronoDelay (being_warped_ticks countdown).
         let delay = ts.being_warped_ticks;

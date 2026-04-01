@@ -208,19 +208,11 @@ fn classify_terrain_cost(
         }
         SpeedType::Float | SpeedType::FloatBeach | SpeedType::Hover => {
             // Hover/float units can cross water.
-            if is_cliff {
-                COST_BLOCKED
-            } else {
-                COST_NORMAL
-            }
+            if is_cliff { COST_BLOCKED } else { COST_NORMAL }
         }
         SpeedType::Amphibious => {
             // Amphibious units cross both land and water.
-            if is_cliff {
-                COST_BLOCKED
-            } else {
-                COST_NORMAL
-            }
+            if is_cliff { COST_BLOCKED } else { COST_NORMAL }
         }
         SpeedType::Winged => {
             // Aircraft ignore all terrain.

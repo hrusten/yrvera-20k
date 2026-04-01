@@ -8,10 +8,10 @@
 //!
 //! Run with: cargo test --test overlay_compression_verify -- --nocapture
 
+use std::path::Path;
 use vera20k::util::base64;
 use vera20k::util::lcw;
 use vera20k::util::lzo;
-use std::path::Path;
 
 fn ra2_dir() -> String {
     std::env::var("RA2_DIR")

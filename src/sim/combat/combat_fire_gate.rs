@@ -115,10 +115,7 @@ pub fn collect_fire_blocked_entities(
             if let Some(rules) = rules {
                 if let Some(obj) = rules.object(interner.resolve(entity.type_ref)) {
                     if obj.can_be_occupied
-                        && entity
-                            .passenger_role
-                            .cargo()
-                            .map_or(true, |c| c.is_empty())
+                        && entity.passenger_role.cargo().map_or(true, |c| c.is_empty())
                     {
                         blocked.insert(entity.stable_id);
                     }
@@ -138,7 +135,7 @@ mod tests {
     use crate::sim::movement::droppod_movement::{DropPodPhase, DropPodState};
     use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
     use crate::sim::movement::tunnel_movement::{TunnelPhase, TunnelState};
-    use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+    use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
     fn make_entity(id: u64) -> GameEntity {
         GameEntity::test_default(id, "MTNK", "Americans", 5, 5)

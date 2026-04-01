@@ -72,11 +72,7 @@ fn waypoint_coord_factor(ini: &IniFile) -> u32 {
         .and_then(|section| section.get("NewINIFormat"))
         .and_then(|value| value.trim().parse::<u32>().ok())
         .unwrap_or(5);
-    if new_ini_format >= 4 {
-        1000
-    } else {
-        128
-    }
+    if new_ini_format >= 4 { 1000 } else { 128 }
 }
 
 #[cfg(test)]

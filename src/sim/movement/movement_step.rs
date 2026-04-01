@@ -18,7 +18,7 @@ use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementL
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
 use crate::sim::movement::movement_bridge::resolve_cell_transition_bridge_state;
 use crate::sim::movement::movement_occupancy::{
-    detect_deferred_cell_check, naval_terrain_diag, DeferredCellCheck,
+    DeferredCellCheck, detect_deferred_cell_check, naval_terrain_diag,
 };
 use crate::sim::movement::movement_reservation::reserve_destination_after_transition;
 use crate::sim::movement::turret::{rot_to_facing_delta, shortest_rotation};
@@ -26,14 +26,14 @@ use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{
-    facing_from_delta_int as facing_from_delta, fixed_distance, SimFixed, SIM_HALF, SIM_ONE,
-    SIM_ZERO,
+    SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, facing_from_delta_int as facing_from_delta,
+    fixed_distance,
 };
 use crate::util::lepton::CELL_CENTER_LEPTON;
 
 use super::{
-    MovementConfig, MovementTickStats, MoverSnapshot, PathfindingContext, CLIFF_HEIGHT_THRESHOLD,
-    PATH_STUCK_INIT,
+    CLIFF_HEIGHT_THRESHOLD, MovementConfig, MovementTickStats, MoverSnapshot, PATH_STUCK_INIT,
+    PathfindingContext,
 };
 
 pub(super) fn apply_cell_transition_remainder(
@@ -83,12 +83,8 @@ pub(super) fn configure_motion_after_transition(
             .is_some_and(|l| matches!(l.kind, LocomotorKind::Drive));
         let track_initiated = if uses_drive_tracks && new_face != *facing {
             if let Some(sel) = drive_track::select_drive_track(*facing, new_face, false) {
-                *drive_track = drive_track::begin_drive_track(
-                    sel.raw_track_index,
-                    sel.flags,
-                    ndx,
-                    ndy,
-                );
+                *drive_track =
+                    drive_track::begin_drive_track(sel.raw_track_index, sel.flags, ndx, ndy);
                 drive_track.is_some()
             } else {
                 false
@@ -309,10 +305,7 @@ pub(super) fn advance_lepton_position(
                 // For cell-to-cell movement, frac > 1.0 is normal — it means
                 // the entity crossed a cell boundary, handled by the crossing loop.
                 if target.next_index < target.path.len()
-                    || locomotor
-                        .as_ref()
-                        .and_then(|l| l.subcell_dest)
-                        .is_none()
+                    || locomotor.as_ref().and_then(|l| l.subcell_dest).is_none()
                 {
                     position.sub_x += target.move_dir_x * frac;
                     position.sub_y += target.move_dir_y * frac;
@@ -332,8 +325,7 @@ pub(super) fn advance_lepton_position(
                 // don't bob in sync — each starts at a different phase.
                 if loco.infantry_wobble_phase == 0.0 {
                     loco.infantry_wobble_phase =
-                        (entity_id.wrapping_mul(2654435761) & 0xFFFF) as f32
-                            / 0xFFFF as f32
+                        (entity_id.wrapping_mul(2654435761) & 0xFFFF) as f32 / 0xFFFF as f32
                             * std::f32::consts::TAU;
                 }
                 let dt_f32: f32 = dt.to_num::<f32>();
@@ -436,15 +428,13 @@ pub(super) fn process_cell_crossings(
                 let is_water_mover = snap.movement_zone.is_water_mover();
                 let grid_ok: bool = if is_water_mover {
                     match (path_grid, resolved_terrain) {
-                        (Some(grid), rt) => {
-                            crate::sim::pathfinding::is_cell_passable_for_mover(
-                                grid,
-                                nx,
-                                ny,
-                                Some(snap.movement_zone),
-                                rt,
-                            )
-                        }
+                        (Some(grid), rt) => crate::sim::pathfinding::is_cell_passable_for_mover(
+                            grid,
+                            nx,
+                            ny,
+                            Some(snap.movement_zone),
+                            rt,
+                        ),
                         _ => true,
                     }
                 } else {
@@ -529,8 +519,8 @@ pub(super) fn process_cell_crossings(
             if let Some(next_cell) = lg.cell(nx, ny) {
                 let next_level = next_cell.effective_cell_z_for_layer(next_layer);
                 let diff = (position.z as i16 - next_level as i16).unsigned_abs();
-                let is_bridge_ramp = next_cell.is_bridge_transition_cell()
-                    || next_cell.is_elevated_bridge_cell();
+                let is_bridge_ramp =
+                    next_cell.is_bridge_transition_cell() || next_cell.is_elevated_bridge_cell();
                 if diff >= CLIFF_HEIGHT_THRESHOLD && !is_bridge_ramp {
                     position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
                     position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
@@ -594,11 +584,8 @@ pub(super) fn process_cell_crossings(
         }
 
         // --- Occupancy check (entity-aware: sub-cell, crush, bump) ---
-        let occ_map: &OccupancyMap = bump_crush::occupancy_map_for_layer(
-            next_layer,
-            occupied_ground,
-            occupied_bridge,
-        );
+        let occ_map: &OccupancyMap =
+            bump_crush::occupancy_map_for_layer(next_layer, occupied_ground, occupied_bridge);
         // Occupancy check: vehicles defer to crush/bump/attack handler,
         // infantry defer to sub-cell/attack handler. Both break out of the
         // loop to release the mutable entity borrow for blocker lookups.
@@ -620,14 +607,7 @@ pub(super) fn process_cell_crossings(
         // Do NOT snap the perpendicular axis to center — that causes
         // a visible position jump when transitioning from diagonal
         // to cardinal movement (e.g., sub_x=51 → 128 = ~9px snap).
-        apply_cell_transition_remainder(
-            target,
-            position,
-            dx_cell,
-            dy_cell,
-            nx,
-            ny,
-        );
+        apply_cell_transition_remainder(target, position, dx_cell, dy_cell, nx, ny);
         // Bridge/layer resolution stays in one helper so cell transitions
         // don't duplicate deck/ground height rules across the tick loop.
         let (resolved_layer, bridge_update) = resolve_cell_transition_bridge_state(
@@ -682,13 +662,11 @@ pub(super) fn process_cell_crossings(
         // cell's occupancy rather than carrying the current cell's.
         if category == EntityCategory::Infantry && target.next_index < target.path.len() {
             let next_cell = target.path[target.next_index];
-            let next_occ = bump_crush::occupancy_map_for_layer(
-                active_layer,
-                occupied_ground,
-                occupied_bridge,
-            );
-            let next_reserved =
-                reserved_infantry_sub_cells.get(&(active_layer, next_cell.0, next_cell.1)).map(Vec::as_slice);
+            let next_occ =
+                bump_crush::occupancy_map_for_layer(active_layer, occupied_ground, occupied_bridge);
+            let next_reserved = reserved_infantry_sub_cells
+                .get(&(active_layer, next_cell.0, next_cell.1))
+                .map(Vec::as_slice);
             if let Some(pre_sub) = bump_crush::allocate_sub_cell_with_preference(
                 next_occ.get(&(next_cell.0, next_cell.1)),
                 next_reserved,
@@ -696,8 +674,7 @@ pub(super) fn process_cell_crossings(
                 position.sub_y,
                 rng,
             ) {
-                let (sc_x, sc_y) =
-                    crate::util::lepton::subcell_lepton_offset(Some(pre_sub));
+                let (sc_x, sc_y) = crate::util::lepton::subcell_lepton_offset(Some(pre_sub));
                 if let Some(loco) = locomotor {
                     loco.subcell_dest = Some((sc_x, sc_y));
                 }

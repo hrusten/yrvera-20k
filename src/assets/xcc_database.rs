@@ -224,12 +224,14 @@ mod tests {
         let dict = db.build_hash_dictionary();
         assert_eq!(dict.len(), 2);
         // Verify hashes match our mix_hash function.
-        assert!(dict
-            .iter()
-            .any(|(name, hash)| name == "rules.ini" && *hash == mix_hash("rules.ini")));
-        assert!(dict
-            .iter()
-            .any(|(name, hash)| name == "art.ini" && *hash == mix_hash("art.ini")));
+        assert!(
+            dict.iter()
+                .any(|(name, hash)| name == "rules.ini" && *hash == mix_hash("rules.ini"))
+        );
+        assert!(
+            dict.iter()
+                .any(|(name, hash)| name == "art.ini" && *hash == mix_hash("art.ini"))
+        );
     }
 
     #[test]

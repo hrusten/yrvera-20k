@@ -39,7 +39,7 @@ use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::{facing_from_delta_int, SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed, facing_from_delta_int};
 
 // --- Internal submodules ---
 mod movement_blocked;
@@ -181,7 +181,11 @@ pub fn facing_from_delta(dx: i32, dy: i32) -> u8 {
 ///
 /// Called once per simulation tick with `tick_ms` milliseconds elapsed.
 /// Entities that reach their destination have MovementTarget removed automatically.
-pub fn tick_movement(entities: &mut EntityStore, tick_ms: u32, interner: &crate::sim::intern::StringInterner) {
+pub fn tick_movement(
+    entities: &mut EntityStore,
+    tick_ms: u32,
+    interner: &crate::sim::intern::StringInterner,
+) {
     let empty_costs: BTreeMap<SpeedType, TerrainCostGrid> = BTreeMap::new();
     let empty_alliances: HouseAllianceMap = HouseAllianceMap::new();
     let mut rng: SimRng = SimRng::new(0);

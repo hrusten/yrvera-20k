@@ -44,10 +44,7 @@ pub(crate) fn build_sidebar_chrome_instances(
         view,
         &view.tabs,
         &state.power_bar_anim,
-        [
-            state.render_width() as f32,
-            state.render_height() as f32,
-        ],
+        [state.render_width() as f32, state.render_height() as f32],
         [state.camera_x, state.camera_y],
         state.ui_scale,
     )

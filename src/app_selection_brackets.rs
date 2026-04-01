@@ -57,8 +57,7 @@ fn is_visible(
     if owner == entity_owner {
         return true;
     }
-    fog.is_cell_revealed(owner, pos.rx, pos.ry)
-        && !fog.is_cell_gap_covered(owner, pos.rx, pos.ry)
+    fog.is_cell_revealed(owner, pos.rx, pos.ry) && !fog.is_cell_gap_covered(owner, pos.rx, pos.ry)
 }
 
 /// Compute the 8 corners of a building's isometric bounding box in screen space.
@@ -238,11 +237,7 @@ pub(crate) fn build_selection_bracket_instances(
         let art_key: &str = obj
             .map(|o| {
                 let img = o.image.as_str();
-                if img.is_empty() {
-                    o.id.as_str()
-                } else {
-                    img
-                }
+                if img.is_empty() { o.id.as_str() } else { img }
             })
             .unwrap_or(type_str);
         let art_height: f32 = state

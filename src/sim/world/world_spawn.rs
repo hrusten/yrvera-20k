@@ -18,7 +18,7 @@ use crate::sim::components::{
     BridgeOccupancy, BuildingDown, BuildingUp, HarvestOverlay, Health, VoxelAnimation,
 };
 use crate::sim::game_entity::GameEntity;
-use crate::sim::miner::{miner_kind_for_object, Miner, MinerConfig};
+use crate::sim::miner::{Miner, MinerConfig, miner_kind_for_object};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::production::foundation_dimensions;
 use crate::sim::vision::MAX_SIGHT_RANGE;
@@ -137,7 +137,9 @@ impl Simulation {
                 .map(|obj| obj.has_turret)
                 .unwrap_or(false);
             if has_turret {
-                ge.turret_facing = Some(crate::sim::movement::turret::body_facing_to_turret(map_ent.facing));
+                ge.turret_facing = Some(crate::sim::movement::turret::body_facing_to_turret(
+                    map_ent.facing,
+                ));
             }
             // VoxelAnimation default for voxel entities.
             if uses_voxel {
@@ -401,7 +403,9 @@ impl Simulation {
                 VxlLayer::Barrel,
             ]
             .iter()
-            .filter_map(|layer| frame_counts.get(&(self.interner.resolve(entity.type_ref).to_string(), *layer)))
+            .filter_map(|layer| {
+                frame_counts.get(&(self.interner.resolve(entity.type_ref).to_string(), *layer))
+            })
             .copied()
             .max()
             .unwrap_or(1);
@@ -448,9 +452,7 @@ impl Simulation {
                 yard_obj.foundation.clone(),
             ))
         });
-        let Some((owner_id, rx, ry, z, yard_type, was_selected, foundation)) =
-            deploy_data
-        else {
+        let Some((owner_id, rx, ry, z, yard_type, was_selected, foundation)) = deploy_data else {
             return false;
         };
 

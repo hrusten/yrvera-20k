@@ -11,7 +11,7 @@ use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::movement_path::{supports_layered_bridge_pathing, try_repath_after_block};
 use super::{MovementConfig, MovementTickStats, PathfindingContext};

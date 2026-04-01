@@ -9,7 +9,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::test_interner;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::rng::SimRng;
-use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 // --- Facing calculation tests ---
 // Cell deltas map directly to screen-relative RA2 DirStruct values:
@@ -746,7 +746,8 @@ fn test_friendly_passable_moving_unit_not_blocked() {
     entities.insert(b);
 
     let alliances = HouseAllianceMap::new();
-    let blocks = bump_crush::build_entity_block_set(&entities, "Americans", &alliances, &test_interner());
+    let blocks =
+        bump_crush::build_entity_block_set(&entities, "Americans", &alliances, &test_interner());
 
     // Stationary friendly at (3,0) should be blocked.
     assert!(blocks.contains(&(3, 0)), "Stationary friendly should block");
@@ -779,7 +780,8 @@ fn test_enemy_unit_always_blocks_even_when_moving() {
     entities.insert(enemy);
 
     let alliances = HouseAllianceMap::new();
-    let blocks = bump_crush::build_entity_block_set(&entities, "Americans", &alliances, &test_interner());
+    let blocks =
+        bump_crush::build_entity_block_set(&entities, "Americans", &alliances, &test_interner());
 
     // Enemy at (3,0) should block even though it's moving.
     assert!(blocks.contains(&(3, 0)), "Moving enemy should still block");

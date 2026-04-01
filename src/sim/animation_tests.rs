@@ -12,7 +12,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::util::fixed_math::{SimFixed, SIM_ZERO};
+use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// Helper: create a SequenceDef for tests.
 fn test_def(

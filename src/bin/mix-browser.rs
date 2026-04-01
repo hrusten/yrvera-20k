@@ -13,7 +13,7 @@ mod mix_browser_renderers;
 mod mix_browser_ui;
 
 use eframe::egui;
-use mix_browser_data::{build_best_dictionary, load_mix_contents, ShpIndex};
+use mix_browser_data::{ShpIndex, build_best_dictionary, load_mix_contents};
 use mix_browser_preview::PreviewState;
 use vera20k::assets::asset_manager::AssetManager;
 use vera20k::assets::pal_file::Palette;

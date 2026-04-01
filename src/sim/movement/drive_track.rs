@@ -3619,12 +3619,7 @@ pub fn advance_drive_track(
         // check if the resulting sub-cell position is outside [0, 256).
         // Every step checks whether the world position lands in a different cell.
         if let Some(pt) = points.get(state.point_index as usize) {
-            let (tx, ty, _) = transform_track_point(
-                pt.x,
-                pt.y,
-                pt.facing,
-                state.transform_flags,
-            );
+            let (tx, ty, _) = transform_track_point(pt.x, pt.y, pt.facing, state.transform_flags);
             let sx = state.head_offset_x + tx as i32 + state.cell_offset_x;
             let sy = state.head_offset_y + ty as i32 + state.cell_offset_y;
             let cell_x = floor_div(sx, 256);
@@ -3661,19 +3656,10 @@ pub fn advance_drive_track(
     let idx = state.point_index as usize;
     if idx < points.len() {
         let pt = &points[idx];
-        let (tx, ty, tf) = transform_track_point(
-            pt.x,
-            pt.y,
-            pt.facing,
-            state.transform_flags,
-        );
+        let (tx, ty, tf) = transform_track_point(pt.x, pt.y, pt.facing, state.transform_flags);
         DriveTrackAdvance {
-            sub_x: SimFixed::from_num(
-                state.head_offset_x + tx as i32 + state.cell_offset_x,
-            ),
-            sub_y: SimFixed::from_num(
-                state.head_offset_y + ty as i32 + state.cell_offset_y,
-            ),
+            sub_x: SimFixed::from_num(state.head_offset_x + tx as i32 + state.cell_offset_x),
+            sub_y: SimFixed::from_num(state.head_offset_y + ty as i32 + state.cell_offset_y),
             facing: tf,
             cell_jump,
             chain_ready,

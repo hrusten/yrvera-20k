@@ -287,7 +287,7 @@ mod tests {
         data.extend_from_slice(&(span_end_pos as u32).to_le_bytes());
         data.extend_from_slice(&(data_span_pos as u32).to_le_bytes());
         data.extend_from_slice(&1.0f32.to_le_bytes()); // scale
-                                                       // Identity transform (12 floats).
+        // Identity transform (12 floats).
         for k in 0..12 {
             let v: f32 = if k == 0 || k == 4 || k == 8 { 1.0 } else { 0.0 };
             data.extend_from_slice(&v.to_le_bytes());

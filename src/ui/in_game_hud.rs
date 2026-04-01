@@ -3,9 +3,8 @@
 //! Temporary bridge until the custom RA2 sidebar is implemented.
 
 use crate::sim::production::{
-    disabled_reason_text, BuildDisabledReason, BuildOption, BuildQueueState,
-    BuildingPlacementPreview, ProducerFocusView, ProductionCategory, QueueItemView,
-    ReadyBuildingView,
+    BuildDisabledReason, BuildOption, BuildQueueState, BuildingPlacementPreview, ProducerFocusView,
+    ProductionCategory, QueueItemView, ReadyBuildingView, disabled_reason_text,
 };
 
 /// Actions produced by the in-game HUD.

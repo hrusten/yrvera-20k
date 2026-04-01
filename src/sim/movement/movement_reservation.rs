@@ -28,7 +28,9 @@ pub(super) fn reserve_destination_after_transition(
     rng: &mut SimRng,
 ) -> bool {
     if category == EntityCategory::Infantry {
-        let reserved = reserved_infantry_sub_cells.get(&(next_layer, nx, ny)).map(Vec::as_slice);
+        let reserved = reserved_infantry_sub_cells
+            .get(&(next_layer, nx, ny))
+            .map(Vec::as_slice);
         let Some(sub) = bump_crush::allocate_sub_cell_with_preference(
             occ_map.get(&(nx, ny)),
             reserved,

@@ -280,7 +280,8 @@ fn test_pick_enemy_target_ignores_hidden_entities() {
     visible.position.screen_x = vx;
     visible.position.screen_y = vy;
     sim.entities.insert(visible);
-    sim.fog.mark_visible_for_owner(crate::sim::intern::test_intern("Americans"), 11, 10);
+    sim.fog
+        .mark_visible_for_owner(crate::sim::intern::test_intern("Americans"), 11, 10);
 
     let picked_visible =
         pick_enemy_target_stable_id(&sim, vx, vy, "Americans", false, None, &empty_heights, None);
@@ -347,7 +348,8 @@ fn test_hover_target_distinguishes_friendly_and_enemy_categories() {
     enemy.position.screen_x = enemy_sx;
     enemy.position.screen_y = enemy_sy;
     sim.entities.insert(enemy);
-    sim.fog.mark_visible_for_owner(crate::sim::intern::test_intern("Americans"), 20, 5);
+    sim.fog
+        .mark_visible_for_owner(crate::sim::intern::test_intern("Americans"), 20, 5);
 
     // Provide empty height maps — structure picking now uses foundation-based hit testing.
     let empty_heights: BTreeMap<(u16, u16), u8> = BTreeMap::new();

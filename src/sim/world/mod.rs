@@ -17,15 +17,16 @@ mod world_spawn;
 
 use std::collections::BTreeMap;
 
+use crate::map::actions::ActionMap;
 use crate::map::entities::EntityCategory;
-use crate::sim::intern::InternedId;
+use crate::map::events::EventMap;
 use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::map::trigger_graph::TriggerGraph;
+use crate::map::triggers::TriggerMap;
 use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai::{self, AiPlayerState};
-use crate::sim::game_options::GameOptions;
-use crate::sim::house_state::HouseState;
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState, BridgeStateChange};
 use crate::sim::combat;
 use crate::sim::combat::combat_weapon::WeaponSlot;
@@ -34,6 +35,9 @@ use crate::sim::components::WorldEffect;
 use crate::sim::docking::aircraft_dock;
 use crate::sim::docking::building_dock;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::game_options::GameOptions;
+use crate::sim::house_state::HouseState;
+use crate::sim::intern::InternedId;
 use crate::sim::movement;
 use crate::sim::movement::air_movement;
 use crate::sim::movement::droppod_movement;
@@ -51,13 +55,9 @@ use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
 use crate::sim::power_system::{self, PowerState};
 use crate::sim::production::{self, ProductionState};
 use crate::sim::radar::{RadarEventQueue, RadarEventType};
-use crate::map::actions::ActionMap;
-use crate::map::events::EventMap;
-use crate::map::trigger_graph::TriggerGraph;
-use crate::sim::trigger_runtime::{TriggerEffect, TriggerRuntime};
-use crate::map::triggers::TriggerMap;
 use crate::sim::replay::ReplayLog;
 use crate::sim::rng::SimRng;
+use crate::sim::trigger_runtime::{TriggerEffect, TriggerRuntime};
 use crate::sim::vision::{self, FogState};
 use crate::util::fixed_math::SimFixed;
 
@@ -351,9 +351,11 @@ impl Simulation {
 
     /// Increment owned count for the given owner when an entity spawns.
     pub(crate) fn increment_owned_count(&mut self, owner: &str, category: EntityCategory) {
-        if let Some(house) =
-            crate::sim::house_state::house_state_for_owner_mut(&mut self.houses, owner, &self.interner)
-        {
+        if let Some(house) = crate::sim::house_state::house_state_for_owner_mut(
+            &mut self.houses,
+            owner,
+            &self.interner,
+        ) {
             match category {
                 EntityCategory::Structure => house.owned_building_count += 1,
                 _ => house.owned_unit_count += 1,
@@ -363,9 +365,11 @@ impl Simulation {
 
     /// Decrement owned count for the given owner when an entity dies or is despawned.
     pub(crate) fn decrement_owned_count(&mut self, owner: &str, category: EntityCategory) {
-        if let Some(house) =
-            crate::sim::house_state::house_state_for_owner_mut(&mut self.houses, owner, &self.interner)
-        {
+        if let Some(house) = crate::sim::house_state::house_state_for_owner_mut(
+            &mut self.houses,
+            owner,
+            &self.interner,
+        ) {
             match category {
                 EntityCategory::Structure => {
                     house.owned_building_count = house.owned_building_count.saturating_sub(1)
@@ -709,7 +713,10 @@ impl Simulation {
     /// Per the original engine's `BlowUpBridge()`:
     /// - ~95% of cells get at least one explosion from `BridgeExplosions=`
     /// - 50% chance for a second explosion with a random delay (1-5 frames)
-    fn spawn_bridge_explosions(&mut self, destroyed_cells: &std::collections::BTreeSet<(u16, u16)>) {
+    fn spawn_bridge_explosions(
+        &mut self,
+        destroyed_cells: &std::collections::BTreeSet<(u16, u16)>,
+    ) {
         if self.bridge_explosions.is_empty() {
             return;
         }
@@ -815,18 +822,17 @@ impl Simulation {
                     continue;
                 }
                 if let Some(obj) = rules.object(self.interner.resolve(entity.type_ref)) {
-                    let active =
-                        power_system::is_building_powered(&self.power_states, rules, entity, &self.interner)
-                            && entity.building_up.is_none();
+                    let active = power_system::is_building_powered(
+                        &self.power_states,
+                        rules,
+                        entity,
+                        &self.interner,
+                    ) && entity.building_up.is_none();
                     if obj.spy_sat && active {
                         spy_sat_owners.push(entity.owner);
                     }
                     if obj.gap_generator && active {
-                        gap_generators.push((
-                            entity.owner,
-                            entity.position.rx,
-                            entity.position.ry,
-                        ));
+                        gap_generators.push((entity.owner, entity.position.rx, entity.position.ry));
                     }
                 }
             }
@@ -869,13 +875,9 @@ impl Simulation {
             use std::collections::BTreeMap as DiagMap;
             let mut entity_stats: DiagMap<String, (u32, u16, u16, u16, u16)> = DiagMap::new();
             for entity in self.entities.values() {
-                let entry = entity_stats.entry(self.interner.resolve(entity.owner).to_string()).or_insert((
-                    0,
-                    u16::MAX,
-                    u16::MAX,
-                    0,
-                    0,
-                ));
+                let entry = entity_stats
+                    .entry(self.interner.resolve(entity.owner).to_string())
+                    .or_insert((0, u16::MAX, u16::MAX, 0, 0));
                 entry.0 += 1;
                 entry.1 = entry.1.min(entity.position.rx);
                 entry.2 = entry.2.min(entity.position.ry);

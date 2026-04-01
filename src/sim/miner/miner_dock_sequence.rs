@@ -16,9 +16,9 @@ use crate::sim::movement;
 use crate::sim::movement::turret;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::world::{SimSoundEvent, Simulation};
-use crate::util::fixed_math::{facing_from_delta_int, SimFixed};
+use crate::util::fixed_math::{SimFixed, facing_from_delta_int};
 
-use super::miner_system::{player_has_purifier, MinerSnapshot};
+use super::miner_system::{MinerSnapshot, player_has_purifier};
 use crate::sim::production::{credits_entry_for_owner, foundation_dimensions};
 
 /// Helper: record a dock phase transition to the snapshot's debug buffer.

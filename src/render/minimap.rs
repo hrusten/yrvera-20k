@@ -29,12 +29,12 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::vision::FogState;
 
 use super::minimap_helpers::{
+    COLOR_BUILDING, COLOR_SHROUD, DOT_SIZE, MINIMAP_DEPTH, MINIMAP_SIZE, VIEWPORT_LINE_THICKNESS,
     cell_visibility_color, compute_aspect_fit, dim_color, draw_line, owner_dot_color,
     parse_foundation_size, radar_color_for_cell, set_pixel, terrain_brightness_for_theater,
-    world_to_minimap_pixel, world_to_minimap_pixel_from_cell, COLOR_BUILDING, COLOR_SHROUD,
-    DOT_SIZE, MINIMAP_DEPTH, MINIMAP_SIZE, VIEWPORT_LINE_THICKNESS,
+    world_to_minimap_pixel, world_to_minimap_pixel_from_cell,
 };
-pub use super::minimap_helpers::{default_minimap_rect, OverlayClassification};
+pub use super::minimap_helpers::{OverlayClassification, default_minimap_rect};
 use super::minimap_helpers::{OverlayPixel, TerrainPixel};
 
 /// Minimap renderer — manages terrain image, unit overlay, and viewport rectangle.
@@ -257,7 +257,8 @@ impl MinimapRenderer {
             let radar_visible: bool = obj.is_some_and(|o| o.radar_visible);
 
             if let Some((local_owner, fog)) = visibility {
-                let friendly = interner.map_or(false, |i| fog.is_friendly_id(local_owner, entity.owner, i));
+                let friendly =
+                    interner.map_or(false, |i| fog.is_friendly_id(local_owner, entity.owner, i));
                 if radar_visible {
                     // Always show — RadarVisible overrides fog.
                 } else if radar_invisible && !friendly {

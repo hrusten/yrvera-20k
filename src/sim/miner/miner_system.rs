@@ -22,7 +22,7 @@ use crate::sim::movement::teleport_movement::issue_teleport_command;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production::pick_best_resource_node;
 use crate::sim::world::{SimSoundEvent, Simulation};
-use crate::util::fixed_math::{ra2_speed_to_leptons_per_second, SimFixed};
+use crate::util::fixed_math::{SimFixed, ra2_speed_to_leptons_per_second};
 
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::intern::InternedId;
@@ -450,9 +450,13 @@ fn handle_return(
 
     let Some(ref_sid) = snap.miner.reserved_refinery else {
         // Lost reservation — find a new refinery.
-        if let Some((rsid, dock)) =
-            find_nearest_refinery(sim, rules, sim.interner.resolve(snap.owner), sim.interner.resolve(snap.type_id), (snap.rx, snap.ry))
-        {
+        if let Some((rsid, dock)) = find_nearest_refinery(
+            sim,
+            rules,
+            sim.interner.resolve(snap.owner),
+            sim.interner.resolve(snap.type_id),
+            (snap.rx, snap.ry),
+        ) {
             snap.miner.reserved_refinery = Some(rsid);
             if snap.miner.kind == MinerKind::Chrono {
                 let threshold = config.too_far_threshold_chrono as u32;
@@ -466,12 +470,7 @@ fn handle_return(
                         (snap.rx, snap.ry, snap.z),
                         (dock.0, dock.1, snap.z),
                     );
-                    issue_teleport_command(
-                        &mut sim.entities,
-                        snap.entity_id,
-                        dock,
-                        &rules.general,
-                    );
+                    issue_teleport_command(&mut sim.entities, snap.entity_id, dock, &rules.general);
                     // Stay in ReturnToRefinery — the teleport guard above
                     // will wait for chrono delay, then adjacency check below
                     // transitions to Dock/WaitForDock.
@@ -580,9 +579,13 @@ fn handle_forced_return(
     // Same as ReturnToRefinery, but player-triggered.
     // If no refinery reserved yet, find one.
     if snap.miner.reserved_refinery.is_none() {
-        if let Some((rsid, dock)) =
-            find_nearest_refinery(sim, rules, sim.interner.resolve(snap.owner), sim.interner.resolve(snap.type_id), (snap.rx, snap.ry))
-        {
+        if let Some((rsid, dock)) = find_nearest_refinery(
+            sim,
+            rules,
+            sim.interner.resolve(snap.owner),
+            sim.interner.resolve(snap.type_id),
+            (snap.rx, snap.ry),
+        ) {
             snap.miner.reserved_refinery = Some(rsid);
             // Chrono Miners teleport on forced return — but only if far enough.
             if snap.miner.kind == MinerKind::Chrono {
@@ -595,12 +598,7 @@ fn handle_forced_return(
                         (snap.rx, snap.ry, snap.z),
                         (dock.0, dock.1, snap.z),
                     );
-                    issue_teleport_command(
-                        &mut sim.entities,
-                        snap.entity_id,
-                        dock,
-                        &rules.general,
-                    );
+                    issue_teleport_command(&mut sim.entities, snap.entity_id, dock, &rules.general);
                     // Stay in ForcedReturn — teleport guard above waits for
                     // chrono delay, then delegate to handle_return below.
                     return;
@@ -666,9 +664,13 @@ fn begin_return(
     _path_grid: Option<&PathGrid>,
     snap: &mut MinerSnapshot,
 ) {
-    if let Some((rsid, dock)) =
-        find_nearest_refinery(sim, rules, sim.interner.resolve(snap.owner), sim.interner.resolve(snap.type_id), (snap.rx, snap.ry))
-    {
+    if let Some((rsid, dock)) = find_nearest_refinery(
+        sim,
+        rules,
+        sim.interner.resolve(snap.owner),
+        sim.interner.resolve(snap.type_id),
+        (snap.rx, snap.ry),
+    ) {
         snap.miner.reserved_refinery = Some(rsid);
         if snap.miner.kind == MinerKind::Chrono {
             // Original engine (0x0073EE51): chrono miners only teleport if
@@ -687,12 +689,7 @@ fn begin_return(
                     (snap.rx, snap.ry, snap.z),
                     (dock.0, dock.1, snap.z),
                 );
-                issue_teleport_command(
-                    &mut sim.entities,
-                    snap.entity_id,
-                    dock,
-                    &rules.general,
-                );
+                issue_teleport_command(&mut sim.entities, snap.entity_id, dock, &rules.general);
             }
             // Both far (teleporting) and close (driving) → ReturnToRefinery.
             snap.miner.state = MinerState::ReturnToRefinery;
@@ -768,10 +765,14 @@ fn spawn_warp_effects(
     // It may be used by the Chronosphere superweapon path (not yet implemented).
 
     // Chrono teleport sounds at both departure and arrival.
-    sim.sound_events
-        .push(SimSoundEvent::ChronoTeleport { rx: depart.0, ry: depart.1 });
-    sim.sound_events
-        .push(SimSoundEvent::ChronoTeleport { rx: arrive.0, ry: arrive.1 });
+    sim.sound_events.push(SimSoundEvent::ChronoTeleport {
+        rx: depart.0,
+        ry: depart.1,
+    });
+    sim.sound_events.push(SimSoundEvent::ChronoTeleport {
+        rx: arrive.0,
+        ry: arrive.1,
+    });
 }
 
 /// Find the nearest friendly refinery. Returns (stable_id, dock_cell).

@@ -79,7 +79,9 @@ pub enum MinerState {
 /// Active when `MinerState::Dock` is the current top-level state. Drives the
 /// approach → rotate → enter pad → turn → unload → exit choreography that
 /// the original game's `BuildingClass::DockingSequence_Update` performs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum RefineryDockPhase {
     /// Moving toward the queue cell (QueueingCell from art.ini).
     #[default]
@@ -471,7 +473,13 @@ mod tests {
     fn reduce_tiberium_partial_ore() {
         let mut nodes = BTreeMap::new();
         // 6 density levels of ore: remaining = 6 * 120 = 720.
-        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 720 });
+        nodes.insert(
+            (5, 5),
+            ResourceNode {
+                resource_type: ResourceType::Ore,
+                remaining: 720,
+            },
+        );
         let removed = reduce_tiberium(&mut nodes, (5, 5), 2);
         assert_eq!(removed, 2);
         assert_eq!(nodes.get(&(5, 5)).unwrap().remaining, 720 - 2 * 120);
@@ -481,7 +489,13 @@ mod tests {
     fn reduce_tiberium_full_removal_ore() {
         let mut nodes = BTreeMap::new();
         // 3 density levels: remaining = 360.
-        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 360 });
+        nodes.insert(
+            (5, 5),
+            ResourceNode {
+                resource_type: ResourceType::Ore,
+                remaining: 360,
+            },
+        );
         let removed = reduce_tiberium(&mut nodes, (5, 5), 12);
         assert_eq!(removed, 3, "should return old density_levels");
         assert!(nodes.get(&(5, 5)).is_none(), "node should be removed");
@@ -491,7 +505,13 @@ mod tests {
     fn reduce_tiberium_exact_density_is_full_removal() {
         let mut nodes = BTreeMap::new();
         // 5 density levels: remaining = 600.
-        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 600 });
+        nodes.insert(
+            (5, 5),
+            ResourceNode {
+                resource_type: ResourceType::Ore,
+                remaining: 600,
+            },
+        );
         // amount(5) >= density_levels(5) → full removal (amount < density is false).
         let removed = reduce_tiberium(&mut nodes, (5, 5), 5);
         assert_eq!(removed, 5);
@@ -508,7 +528,13 @@ mod tests {
     #[test]
     fn reduce_tiberium_zero_amount() {
         let mut nodes = BTreeMap::new();
-        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Ore, remaining: 720 });
+        nodes.insert(
+            (5, 5),
+            ResourceNode {
+                resource_type: ResourceType::Ore,
+                remaining: 720,
+            },
+        );
         let removed = reduce_tiberium(&mut nodes, (5, 5), 0);
         assert_eq!(removed, 0);
         assert_eq!(nodes.get(&(5, 5)).unwrap().remaining, 720, "unchanged");
@@ -518,7 +544,13 @@ mod tests {
     fn reduce_tiberium_gem_base_rate() {
         let mut nodes = BTreeMap::new();
         // 4 density levels of gems: remaining = 4 * 180 = 720.
-        nodes.insert((5, 5), ResourceNode { resource_type: ResourceType::Gem, remaining: 720 });
+        nodes.insert(
+            (5, 5),
+            ResourceNode {
+                resource_type: ResourceType::Gem,
+                remaining: 720,
+            },
+        );
         let removed = reduce_tiberium(&mut nodes, (5, 5), 2);
         assert_eq!(removed, 2);
         assert_eq!(nodes.get(&(5, 5)).unwrap().remaining, 720 - 2 * 180);

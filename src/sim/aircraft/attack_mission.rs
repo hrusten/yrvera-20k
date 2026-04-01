@@ -47,10 +47,7 @@ pub fn tick_attack_state(
 
     // Read target stable_id from attack_target.
     let target_id = entity.attack_target.as_ref().map(|at| at.target);
-    let ammo_current = entity
-        .aircraft_ammo
-        .as_ref()
-        .map_or(-1, |a| a.current);
+    let ammo_current = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current);
     let entity_rx = entity.position.rx;
     let entity_ry = entity.position.ry;
     let entity_facing = entity.facing;
@@ -77,9 +74,7 @@ pub fn tick_attack_state(
         // → State 3 (has target) or State 10 (no target, RTB)
         // ---------------------------------------------------------------
         0 => {
-            if target_id.is_none()
-                || target_id.and_then(|tid| entities.get(tid)).is_none()
-            {
+            if target_id.is_none() || target_id.and_then(|tid| entities.get(tid)).is_none() {
                 return AttackTickResult::transition(AircraftMission::Attack {
                     sub_state: 10,
                     has_fired: false,
@@ -170,8 +165,7 @@ pub fn tick_attack_state(
             // Firing arc check: ±11.25° (0x800 in 16-bit facing).
             let target_dx = target.position.rx as i32 - entity_rx as i32;
             let target_dy = target.position.ry as i32 - entity_ry as i32;
-            let target_facing_u8 =
-                crate::sim::movement::facing_from_delta(target_dx, target_dy);
+            let target_facing_u8 = crate::sim::movement::facing_from_delta(target_dx, target_dy);
             // Convert both to 16-bit for arc comparison.
             let entity_facing_16: u16 = (entity_facing as u16) << 8;
             let target_facing_16: u16 = (target_facing_u8 as u16) << 8;
@@ -463,7 +457,13 @@ mod tests {
         let target = GameEntity::test_default(2, "RHINO", "Soviet", 15, 15);
         store.insert(target);
         // Deplete ammo.
-        store.get_mut(1).unwrap().aircraft_ammo.as_mut().unwrap().current = 0;
+        store
+            .get_mut(1)
+            .unwrap()
+            .aircraft_ammo
+            .as_mut()
+            .unwrap()
+            .current = 0;
         let interner = test_interner();
         let rules = test_rules();
 

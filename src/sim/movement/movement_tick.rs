@@ -29,20 +29,20 @@ use crate::sim::pathfinding::zone_map::{ZoneCategory, ZoneGrid};
 use crate::sim::pathfinding::{LayeredPathGrid, PathGrid};
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{
-    dt_from_tick_ms, fixed_distance, SimFixed, SIM_HALF, SIM_ONE, SIM_ZERO,
+    SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, dt_from_tick_ms, fixed_distance,
 };
 
 use super::bump_crush::{self, OccupancyMap};
 use super::locomotor::{GroundMovePhase, MovementLayer};
 use super::movement_bridge::{
-    apply_bridge_lookahead_if_needed, apply_pending_bridge_render_state, BRIDGE_Z_OFFSET,
+    BRIDGE_Z_OFFSET, apply_bridge_lookahead_if_needed, apply_pending_bridge_render_state,
 };
-use super::movement_occupancy::{handle_deferred_occupancy, DeferredCellCheck};
+use super::movement_occupancy::{DeferredCellCheck, handle_deferred_occupancy};
 use super::movement_path::{find_move_path, supports_layered_bridge_pathing};
 use super::movement_step;
 use super::{
-    facing_from_delta, walking_to_subcell_dest, MovementConfig, MovementTickStats, MoverSnapshot,
-    PathfindingContext, INFANTRY_WOBBLE_AMPLITUDE, MIN_BRAKE_FRACTION, PATH_STUCK_INIT,
+    INFANTRY_WOBBLE_AMPLITUDE, MIN_BRAKE_FRACTION, MovementConfig, MovementTickStats,
+    MoverSnapshot, PATH_STUCK_INIT, PathfindingContext, facing_from_delta, walking_to_subcell_dest,
 };
 
 // Naval diagnostic functions moved to movement_occupancy.rs
@@ -129,9 +129,12 @@ fn handle_path_exhaustion(
                 "BRIDGE_DIAG entity={}: path segment exhausted ON BRIDGE at ({},{}) z={} \
                  layered_pathing={} goal=({},{})",
                 _entity_id,
-                cur.0, cur.1, position.z,
+                cur.0,
+                cur.1,
+                position.z,
                 layered_pathing_for_seg,
-                fg.0, fg.1,
+                fg.0,
+                fg.1,
             );
         }
         let seg_zone_cat = snap
@@ -157,7 +160,8 @@ fn handle_path_exhaustion(
                 if new_path.len() >= 2 {
                     // DIAGNOSTIC: detect layer mismatch after repath
                     if active_layer == MovementLayer::Bridge {
-                        let has_bridge_step = new_layers.iter().any(|l| *l == MovementLayer::Bridge);
+                        let has_bridge_step =
+                            new_layers.iter().any(|l| *l == MovementLayer::Bridge);
                         if !has_bridge_step {
                             log::warn!(
                                 "BRIDGE_DIAG entity={}: segment repath produced ALL-GROUND path \
@@ -166,7 +170,8 @@ fn handle_path_exhaustion(
                                 new_path.len(),
                             );
                         } else {
-                            let first_layer = new_layers.get(1).copied().unwrap_or(MovementLayer::Ground);
+                            let first_layer =
+                                new_layers.get(1).copied().unwrap_or(MovementLayer::Ground);
                             log::info!(
                                 "BRIDGE_DIAG entity={}: segment repath OK, first_layer={:?} path_len={}",
                                 _entity_id,
@@ -180,8 +185,7 @@ fn handle_path_exhaustion(
                     let next = new_path[1];
                     let dx = next.0 as i32 - cur.0 as i32;
                     let dy = next.1 as i32 - cur.1 as i32;
-                    let (d_x, d_y, d_len) =
-                        crate::util::lepton::cell_delta_to_lepton_dir(dx, dy);
+                    let (d_x, d_y, d_len) = crate::util::lepton::cell_delta_to_lepton_dir(dx, dy);
                     // Preserve speed ramping state across segment repath —
                     // the unit is already moving, don't reset to zero.
                     let saved_current = target.current_speed;
@@ -343,14 +347,16 @@ pub fn tick_movement_with_grids(
     // Pre-build entity block sets per owner for friendly-passable pathfinding during repath.
     // RA2 optimization: moving friendly units are passable; only stationary/enemy units block.
     // InternedId is Copy, so keys are trivially cheap.
-    let entity_block_sets: BTreeMap<crate::sim::intern::InternedId, BTreeSet<(u16, u16)>> = mover_owners
-        .iter()
-        .map(|&owner_id| {
-            let owner_str = interner.resolve(owner_id);
-            let blocks = bump_crush::build_entity_block_set(entities, owner_str, alliances, interner);
-            (owner_id, blocks)
-        })
-        .collect();
+    let entity_block_sets: BTreeMap<crate::sim::intern::InternedId, BTreeSet<(u16, u16)>> =
+        mover_owners
+            .iter()
+            .map(|&owner_id| {
+                let owner_str = interner.resolve(owner_id);
+                let blocks =
+                    bump_crush::build_entity_block_set(entities, owner_str, alliances, interner);
+                (owner_id, blocks)
+            })
+            .collect();
 
     for entity_id in movers {
         stats.movers_total = stats.movers_total.saturating_add(1);
@@ -362,8 +368,7 @@ pub fn tick_movement_with_grids(
         };
         let entity_cost_grid: Option<&TerrainCostGrid> =
             snap.speed_type.and_then(|st| terrain_costs.get(&st));
-        let mover_entity_blocks: Option<&BTreeSet<(u16, u16)>> =
-            entity_block_sets.get(&snap.owner);
+        let mover_entity_blocks: Option<&BTreeSet<(u16, u16)>> = entity_block_sets.get(&snap.owner);
 
         let aborted_for_stuck: bool;
         let mut active_layer: MovementLayer;
@@ -471,9 +476,13 @@ pub fn tick_movement_with_grids(
             // Speed ramping: acceleration toward max speed, deceleration near goal.
             // Matches original engine's Process_Drive_Track speed computation.
             if target.accel_factor > SIM_ZERO || target.decel_factor > SIM_ZERO {
-                let goal = target
-                    .final_goal
-                    .unwrap_or_else(|| target.path.last().copied().unwrap_or((entity.position.rx, entity.position.ry)));
+                let goal = target.final_goal.unwrap_or_else(|| {
+                    target
+                        .path
+                        .last()
+                        .copied()
+                        .unwrap_or((entity.position.rx, entity.position.ry))
+                });
                 let dx = (goal.0 as i32 - entity.position.rx as i32).abs();
                 let dy = (goal.1 as i32 - entity.position.ry as i32).abs();
                 // Chebyshev distance in leptons; bridge Z offset added below for water movers.
@@ -546,7 +555,8 @@ pub fn tick_movement_with_grids(
                                  cell=({},{}) path_layer={:?} active_layer={:?} z={} \
                                  next_index={}/{}",
                                 entity_id,
-                                nx, ny,
+                                nx,
+                                ny,
                                 next_layer,
                                 active_layer,
                                 entity.position.z,
@@ -646,10 +656,13 @@ pub fn tick_movement_with_grids(
                             if next_face != cur_face {
                                 // Check if the next cell is walkable (simplified
                                 // Can_Enter_Cell — terrain + not reserved).
-                                let next_walkable = path_grid
-                                    .map_or(true, |g| g.is_walkable(after.0, after.1));
-                                let not_reserved = !reserved_destinations
-                                    .contains(&(active_layer, after.0, after.1));
+                                let next_walkable =
+                                    path_grid.map_or(true, |g| g.is_walkable(after.0, after.1));
+                                let not_reserved = !reserved_destinations.contains(&(
+                                    active_layer,
+                                    after.0,
+                                    after.1,
+                                ));
                                 if next_walkable && not_reserved {
                                     if let Some(sel) = super::drive_track::select_drive_track(
                                         cur_face, next_face, false,
@@ -965,8 +978,7 @@ fn update_locomotor_phases(entities: &mut EntityStore, sim_tick: u64) {
             // Compute new phase and capture old phase in a scoped block to release
             // borrows before calling push_debug_event.
             let phase_change: Option<(GroundMovePhase, GroundMovePhase, &'static str)> = {
-                if let (Some(target), Some(loco)) =
-                    (&entity.movement_target, &mut entity.locomotor)
+                if let (Some(target), Some(loco)) = (&entity.movement_target, &mut entity.locomotor)
                 {
                     let old_phase = loco.phase;
                     let (new_phase, reason) = if target.path_blocked {

@@ -324,7 +324,11 @@ fn parse_trigger_id_param(fields: &[String], index: usize) -> Option<String> {
 fn count_techtype(sim: &Simulation, type_id: &str) -> usize {
     sim.entities
         .values()
-        .filter(|e| sim.interner.resolve(e.type_ref).eq_ignore_ascii_case(type_id))
+        .filter(|e| {
+            sim.interner
+                .resolve(e.type_ref)
+                .eq_ignore_ascii_case(type_id)
+        })
         .count()
 }
 

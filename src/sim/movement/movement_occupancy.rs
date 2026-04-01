@@ -19,14 +19,13 @@ use crate::sim::movement::bump_crush::{self, OccupancyMap};
 use crate::sim::movement::drive_track::DriveTrackState;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
+use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::cell_entry::{self, CellEntryResult};
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
-use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 
 use super::{
-    MovementConfig, MovementTickStats, MoverSnapshot, PathfindingContext,
-    PATH_STUCK_INIT,
+    MovementConfig, MovementTickStats, MoverSnapshot, PATH_STUCK_INIT, PathfindingContext,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +51,9 @@ pub(super) fn detect_deferred_cell_check(
 
     let cell_occ = occ_map.get(&next_cell);
     if mover_category == EntityCategory::Infantry {
-        let reserved = reserved_infantry_sub_cells.get(&(next_layer, next_cell.0, next_cell.1)).map(Vec::as_slice);
+        let reserved = reserved_infantry_sub_cells
+            .get(&(next_layer, next_cell.0, next_cell.1))
+            .map(Vec::as_slice);
         if bump_crush::allocate_sub_cell_with_reserved(cell_occ, reserved).is_none() {
             return Some(DeferredCellCheck::Infantry(next_cell, next_layer));
         }
@@ -329,8 +330,7 @@ pub(super) fn handle_deferred_occupancy(
                             );
                             if scattered {
                                 already_scattered.insert(blocker_id);
-                                stats.scatter_successes =
-                                    stats.scatter_successes.saturating_add(1);
+                                stats.scatter_successes = stats.scatter_successes.saturating_add(1);
                             }
                         }
                         // Whether scatter succeeded or not, repath the mover.

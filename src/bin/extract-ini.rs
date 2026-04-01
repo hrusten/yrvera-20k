@@ -71,5 +71,8 @@ fn main() {
         }
     }
 
-    println!("\nExtracted {found} files to {}/  ({not_found} not found in archives)", out_dir.display());
+    println!(
+        "\nExtracted {found} files to {}/  ({not_found} not found in archives)",
+        out_dir.display()
+    );
 }
