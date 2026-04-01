@@ -194,6 +194,7 @@ impl MusicPlayer {
         let base = load_theme_ini(assets, "theme.ini");
         let md = load_theme_ini(assets, "thememd.ini");
 
+        // Build aliases from both INIs (md values override base on conflict).
         if let Some(ref ini) = base {
             merge_theme_aliases(&mut self.aliases, ini);
         }
@@ -201,20 +202,24 @@ impl MusicPlayer {
             merge_theme_aliases(&mut self.aliases, ini);
         }
 
+        // Merge playlists from both INIs — the original game plays RA2 and YR
+        // tracks together. thememd.ini comments out RA2 entries, so we need
+        // theme.ini to provide those tracks.
+        let mut playlist = Vec::new();
+        if let Some(ref ini) = base {
+            playlist = playlist_from_theme_ini(ini, &self.aliases);
+        }
         if let Some(ref ini) = md {
-            let playlist = playlist_from_theme_ini(ini, &self.aliases);
-            if !playlist.is_empty() {
-                self.playlist = playlist;
-                self.playlist_index = 0;
-                return;
+            for track in playlist_from_theme_ini(ini, &self.aliases) {
+                if !playlist.iter().any(|t| t.eq_ignore_ascii_case(&track)) {
+                    playlist.push(track);
+                }
             }
         }
-        if let Some(ref ini) = base {
-            let playlist = playlist_from_theme_ini(ini, &self.aliases);
-            if !playlist.is_empty() {
-                self.playlist = playlist;
-                self.playlist_index = 0;
-            }
+
+        if !playlist.is_empty() {
+            self.playlist = playlist;
+            self.playlist_index = 0;
         }
     }
 }
@@ -303,6 +308,20 @@ fn playlist_from_theme_ini(ini: &IniFile, aliases: &HashMap<String, String>) -> 
         .get_values()
         .into_iter()
         .filter(|value| !value.is_empty())
-        .filter_map(|theme_name| aliases.get(&theme_name.to_ascii_uppercase()).cloned())
+        .filter_map(|theme_name| {
+            let sound = aliases.get(&theme_name.to_ascii_uppercase())?;
+            // Skip non-Normal tracks (INTRO, SCORE, LOADING, CREDITS) —
+            // they're menu/loading music, not gameplay playlist entries.
+            // Normal defaults to yes if absent.
+            if let Some(section) = ini.section(theme_name) {
+                if section
+                    .get("Normal")
+                    .is_some_and(|v| v.eq_ignore_ascii_case("no"))
+                {
+                    return None;
+                }
+            }
+            Some(sound.clone())
+        })
         .collect()
 }
