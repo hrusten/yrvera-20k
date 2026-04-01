@@ -82,6 +82,16 @@ pub fn collect_fire_blocked_entities(
             }
         }
 
+        // Aircraft with an active Attack mission fire through the mission system,
+        // not through generic combat. Block them here to prevent double-firing.
+        // Docked-idle aircraft are parked on helipad — don't fire.
+        if let Some(ref mission) = entity.aircraft_mission {
+            if mission.is_attacking() || mission.is_docked_idle() {
+                blocked.insert(entity.stable_id);
+                continue;
+            }
+        }
+
         // Buildings still deploying cannot fire.
         if entity.building_up.is_some() {
             blocked.insert(entity.stable_id);

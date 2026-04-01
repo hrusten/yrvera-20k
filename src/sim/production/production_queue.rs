@@ -11,7 +11,7 @@ use crate::sim::miner::{ResourceNode, ResourceType};
 use crate::sim::world::Simulation;
 
 use super::production_economy::tick_resource_economy;
-use super::production_spawn::find_spawn_cell_for_owner;
+use super::production_spawn::{find_helipad_for_aircraft, find_spawn_cell_for_owner};
 use super::production_tech::{
     build_option_for_owner, build_time_base_frames, effective_progress_rate_ppm_for_type,
     effective_time_to_build_frames_for_type, estimated_real_time_ms,
@@ -481,54 +481,101 @@ pub fn tick_production(
                 .push(crate::sim::world::SimSoundEvent::BuildingComplete { owner: done.owner });
             continue;
         }
-        let is_naval: bool = rules.object(&done_type_str).map_or(false, |o| o.naval);
-        let spawn_cell: Option<(u16, u16)> = produced_category.and_then(|cat| {
-            find_spawn_cell_for_owner(sim, rules, &owner_str, cat, path_grid, is_naval)
-        });
-        let Some((rx, ry)) = spawn_cell else {
-            if let Some(obj) = rules.object(&done_type_str) {
-                *credits_entry_for_owner(sim, &owner_str) += obj.cost.max(0);
+        // Aircraft use helipad spawn path; other units use exit cell path.
+        let is_aircraft = produced_category
+            == Some(crate::rules::object_type::ObjectCategory::Aircraft);
+        let spawn_cell: Option<(u16, u16)>;
+        let helipad_airfield: Option<u64>;
+
+        if is_aircraft {
+            if let Some((af_id, rx, ry)) =
+                find_helipad_for_aircraft(sim, rules, &owner_str)
+            {
+                spawn_cell = Some((rx, ry));
+                helipad_airfield = Some(af_id);
+            } else {
+                // No free helipad — refund.
+                if let Some(obj) = rules.object(&done_type_str) {
+                    *credits_entry_for_owner(sim, &owner_str) += obj.cost.max(0);
+                }
+                continue;
             }
-            continue;
-        };
+        } else {
+            let is_naval: bool = rules.object(&done_type_str).map_or(false, |o| o.naval);
+            spawn_cell = produced_category.and_then(|cat| {
+                find_spawn_cell_for_owner(sim, rules, &owner_str, cat, path_grid, is_naval)
+            });
+            helipad_airfield = None;
+            if spawn_cell.is_none() {
+                if let Some(obj) = rules.object(&done_type_str) {
+                    *credits_entry_for_owner(sim, &owner_str) += obj.cost.max(0);
+                }
+                continue;
+            }
+        }
+        let (rx, ry) = spawn_cell.unwrap();
 
         let spawned = sim.spawn_object(&done_type_str, &owner_str, rx, ry, 64, rules, height_map);
         if let Some(stable_id) = spawned {
+            // Aircraft spawned on helipad: set DockedIdle and reserve dock slot.
+            if let Some(af_id) = helipad_airfield {
+                if let Some(entity) = sim.entities.get_mut(stable_id) {
+                    entity.aircraft_mission =
+                        Some(crate::sim::aircraft::AircraftMission::DockedIdle {
+                            airfield_id: af_id,
+                        });
+                }
+                let max_slots = sim
+                    .entities
+                    .get(af_id)
+                    .and_then(|af| {
+                        let af_type = sim.interner.resolve(af.type_ref);
+                        let af_obj = rules.object(af_type)?;
+                        Some(af_obj.number_of_docks.max(1))
+                    })
+                    .unwrap_or(1);
+                sim.production
+                    .airfield_docks
+                    .try_reserve(af_id, stable_id, max_slots);
+            }
             sim.sound_events
                 .push(crate::sim::world::SimSoundEvent::UnitComplete { owner: done.owner });
             // Auto-move newly produced unit to rally point (if set).
-            if let (Some(grid), Some((tx, ty))) =
-                (path_grid, rally_point_for_owner(sim, &owner_str))
-            {
-                let obj = rules.object(&done_type_str);
-                let loco_mult = sim
-                    .entities
-                    .get(stable_id)
-                    .and_then(|e| e.locomotor.as_ref())
-                    .map(|l| l.speed_multiplier)
-                    .unwrap_or(crate::util::fixed_math::SIM_ONE);
-                let speed = obj
-                    .map(|o| crate::util::fixed_math::ra2_speed_to_leptons_per_second(o.speed))
-                    .unwrap_or(crate::util::fixed_math::ra2_speed_to_leptons_per_second(4));
-                let speed = (speed * loco_mult).max(crate::util::fixed_math::SimFixed::lit("25"));
-                let speed_type = sim
-                    .entities
-                    .get(stable_id)
-                    .and_then(|e| e.locomotor.as_ref())
-                    .map(|l| l.speed_type);
-                let cost_grid = speed_type.and_then(|st| sim.terrain_costs.get(&st));
-                let _ = crate::sim::movement::issue_move_command_with_layered(
-                    &mut sim.entities,
-                    grid,
-                    sim.layered_path_grid.as_ref(),
-                    stable_id,
-                    (tx, ty),
-                    speed,
-                    false,
-                    cost_grid,
-                    None,
-                    sim.resolved_terrain.as_ref(),
-                );
+            // Skip for aircraft docked on helipad — they wait for orders.
+            if helipad_airfield.is_none() {
+                if let (Some(grid), Some((tx, ty))) =
+                    (path_grid, rally_point_for_owner(sim, &owner_str))
+                {
+                    let obj = rules.object(&done_type_str);
+                    let loco_mult = sim
+                        .entities
+                        .get(stable_id)
+                        .and_then(|e| e.locomotor.as_ref())
+                        .map(|l| l.speed_multiplier)
+                        .unwrap_or(crate::util::fixed_math::SIM_ONE);
+                    let speed = obj
+                        .map(|o| crate::util::fixed_math::ra2_speed_to_leptons_per_second(o.speed))
+                        .unwrap_or(crate::util::fixed_math::ra2_speed_to_leptons_per_second(4));
+                    let speed = (speed * loco_mult).max(crate::util::fixed_math::SimFixed::lit("25"));
+                    let speed_type = sim
+                        .entities
+                        .get(stable_id)
+                        .and_then(|e| e.locomotor.as_ref())
+                        .map(|l| l.speed_type);
+                    let cost_grid = speed_type.and_then(|st| sim.terrain_costs.get(&st));
+                    let _ = crate::sim::movement::issue_move_command_with_layered(
+                        &mut sim.entities,
+                        grid,
+                        sim.layered_path_grid.as_ref(),
+                        stable_id,
+                        (tx, ty),
+                        speed,
+                        false,
+                        cost_grid,
+                        None,
+                        sim.resolved_terrain.as_ref(),
+                    );
+                }
             }
             spawned_any = true;
         } else {

@@ -339,6 +339,14 @@ impl Simulation {
                 obj.ammo,
             ));
         }
+        // Initialize aircraft mission for Fly-locomotor aircraft.
+        if ge
+            .locomotor
+            .as_ref()
+            .is_some_and(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Fly)
+        {
+            ge.aircraft_mission = Some(crate::sim::aircraft::AircraftMission::Idle);
+        }
 
         if let Some(kind) = miner_kind_for_object(obj) {
             let mcfg: MinerConfig = MinerConfig::from_general_rules(&rules.general);

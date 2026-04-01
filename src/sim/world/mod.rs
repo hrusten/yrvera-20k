@@ -1048,6 +1048,12 @@ impl Simulation {
             rocket_movement::tick_rocket_movement(&mut self.entities, tick_ms, self.tick);
         droppod_movement::tick_droppod_movement(&mut self.entities, tick_ms, self.tick);
 
+        // Aircraft mission state machines — between movement and combat.
+        // Reads updated positions, controls firing and RTB decisions.
+        if let Some(rules) = rules {
+            crate::sim::aircraft::tick_aircraft_missions(self, rules);
+        }
+
         // Spawn wake effects behind moving ships on water (every 8 ticks).
         if self.tick & 7 == 0 {
             if let Some(rules) = rules {

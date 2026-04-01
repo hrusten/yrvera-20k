@@ -287,6 +287,7 @@ mod tests {
             phase: GroundMovePhase::Idle,
             air_phase: AirMovePhase::Landed,
             speed_multiplier: SIM_ONE,
+            speed_fraction: SIM_ONE,
             altitude: SIM_ZERO,
             target_altitude: SimFixed::from_num(500),
             climb_rate: sim_from_f32(75.0),

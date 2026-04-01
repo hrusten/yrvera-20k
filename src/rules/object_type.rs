@@ -331,6 +331,16 @@ pub struct ObjectType {
     pub hover_attack: bool,
     /// Whether this unit stays airborne by default / doesn't land (BalloonHover=).
     pub balloon_hover: bool,
+    /// AirportBound=yes — aircraft must dock at helipad; crashes if none available.
+    pub airport_bound: bool,
+    /// Fighter=yes — fighter aircraft classification (affects targeting).
+    pub fighter: bool,
+    /// FlyBy=yes — strafing fly-by attack pattern (continue forward after firing).
+    pub fly_by: bool,
+    /// FlyBack=yes — after fly-by, reverse course back over target.
+    pub fly_back: bool,
+    /// Landable=yes — aircraft can land on the ground.
+    pub landable: bool,
     /// Whether this unit uses jumpjet controls (JumpJet= in rules.ini).
     pub jumpjet: bool,
     /// Jumpjet-specific tuning parameters. Only populated when `jumpjet` is true.
@@ -718,6 +728,11 @@ impl ObjectType {
             teleporter: section.get_bool("Teleporter").unwrap_or(false),
             hover_attack: section.get_bool("HoverAttack").unwrap_or(false),
             balloon_hover: section.get_bool("BalloonHover").unwrap_or(false),
+            airport_bound: section.get_bool("AirportBound").unwrap_or(false),
+            fighter: section.get_bool("Fighter").unwrap_or(false),
+            fly_by: section.get_bool("FlyBy").unwrap_or(false),
+            fly_back: section.get_bool("FlyBack").unwrap_or(false),
+            landable: section.get_bool("Landable").unwrap_or(false),
             jumpjet: section.get_bool("JumpJet").unwrap_or(false),
             jumpjet_params: if section.get_bool("JumpJet").unwrap_or(false) {
                 Some(JumpjetParams::from_ini_section(section))

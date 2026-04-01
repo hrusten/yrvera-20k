@@ -147,6 +147,15 @@ impl AirfieldDocks {
         None
     }
 
+    /// Check if an airfield has at least one free dock slot.
+    /// Does not modify state — read-only probe.
+    pub fn has_free_slot(&self, airfield_sid: u64, max_slots: u8) -> bool {
+        match self.slots.get(&airfield_sid) {
+            Some((occupied, max)) => *occupied < *max,
+            None => max_slots > 0, // Not yet registered = all slots free.
+        }
+    }
+
     /// Cancel an aircraft's reservation or queue position.
     pub fn cancel(&mut self, aircraft_sid: u64) {
         if let Some(airfield_sid) = self.aircraft_to_airfield.remove(&aircraft_sid) {
@@ -308,6 +317,10 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
         .values()
         .filter_map(|e| {
             let ammo = e.aircraft_ammo.as_ref()?;
+            // Skip aircraft managed by the mission system.
+            if e.aircraft_mission.is_some() {
+                return None;
+            }
             let air_phase = e.locomotor.as_ref().map(|l| l.air_phase);
             Some(AircraftSnap {
                 id: e.stable_id,

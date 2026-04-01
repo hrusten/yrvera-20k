@@ -191,7 +191,13 @@ pub fn tick_air_movement(
 
                         // Air uses cell-based progress: speed is in leptons/sec,
                         // divide by 256 to get cells/sec for the progress model.
-                        let cell_speed: SimFixed = target.speed / SimFixed::from_num(256);
+                        // Apply mission-controlled speed fraction (dive bombing, speed tiers).
+                        let speed_frac: SimFixed = entity
+                            .locomotor
+                            .as_ref()
+                            .map_or(SIM_ONE, |l| l.speed_fraction);
+                        let cell_speed: SimFixed =
+                            target.speed * speed_frac / SimFixed::from_num(256);
                         air_prog += cell_speed * dt;
 
                         while air_prog >= SIM_ONE && target.next_index < target.path.len() {
@@ -383,15 +389,39 @@ fn tick_altitude(loco: &mut LocomotorState, dt: SimFixed) {
             }
         }
         AirMovePhase::Descending => {
+            let before = loco.altitude;
             loco.altitude -= loco.climb_rate * dt;
-            if loco.altitude <= SIM_ZERO {
+            // Partial descent (dive bombing): if we crossed target_altitude from above,
+            // stop there instead of going to ground.
+            if loco.target_altitude > SIM_ZERO
+                && before > loco.target_altitude
+                && loco.altitude <= loco.target_altitude
+            {
+                loco.altitude = loco.target_altitude;
+                loco.air_phase = AirMovePhase::Cruising;
+            } else if loco.altitude <= SIM_ZERO {
                 loco.altitude = SIM_ZERO;
                 loco.air_phase = AirMovePhase::Landed;
             }
         }
         AirMovePhase::Cruising | AirMovePhase::Hovering => {
-            // Maintain altitude — already at target.
-            loco.altitude = loco.target_altitude;
+            // If target altitude changed (dive bombing or recovery), adjust.
+            let tolerance = SimFixed::from_num(10);
+            if loco.altitude > loco.target_altitude + tolerance {
+                // Descend toward new lower target.
+                loco.altitude -= loco.climb_rate * dt;
+                if loco.altitude <= loco.target_altitude {
+                    loco.altitude = loco.target_altitude;
+                }
+            } else if loco.altitude < loco.target_altitude - tolerance {
+                // Ascend toward new higher target (restoring from dive).
+                loco.altitude += loco.climb_rate * dt;
+                if loco.altitude >= loco.target_altitude {
+                    loco.altitude = loco.target_altitude;
+                }
+            } else {
+                loco.altitude = loco.target_altitude;
+            }
         }
         AirMovePhase::Landed => {
             // On the ground — nothing to do.
@@ -494,6 +524,7 @@ mod tests {
             phase: crate::sim::movement::locomotor::GroundMovePhase::Idle,
             air_phase: AirMovePhase::Landed,
             speed_multiplier: SIM_ONE,
+            speed_fraction: SIM_ONE,
             altitude: SIM_ZERO,
             target_altitude: SimFixed::from_num(600),
             climb_rate: SimFixed::from_num(300),
@@ -523,6 +554,7 @@ mod tests {
             phase: crate::sim::movement::locomotor::GroundMovePhase::Idle,
             air_phase: AirMovePhase::Landed,
             speed_multiplier: SIM_ONE,
+            speed_fraction: SIM_ONE,
             altitude: SIM_ZERO,
             target_altitude: SimFixed::from_num(500),
             climb_rate: sim_from_f32(75.0),

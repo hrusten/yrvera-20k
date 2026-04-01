@@ -113,6 +113,7 @@ impl Simulation {
                 // Cancel any dock state when given a new move order.
                 self.cancel_depot_dock(*entity_id);
                 self.cancel_aircraft_dock(*entity_id);
+                self.release_docked_idle(*entity_id);
                 // Clear attack and order intent.
                 if let Some(e) = self.entities.get_mut(*entity_id) {
                     e.attack_target = None;
@@ -272,6 +273,7 @@ impl Simulation {
                 }
                 // Cancel aircraft RTB if interruptible.
                 self.cancel_aircraft_dock(*attacker_id);
+                self.release_docked_idle(*attacker_id);
                 if let Some(e) = self.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                     Self::clear_aircraft_dock_phase(e);
@@ -289,6 +291,7 @@ impl Simulation {
                     return false;
                 }
                 // Force-attack bypasses friendship check (Ctrl+click).
+                self.release_docked_idle(*attacker_id);
                 if let Some(e) = self.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                 }
@@ -303,6 +306,7 @@ impl Simulation {
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
                 }
+                self.release_docked_idle(*entity_id);
                 if let Some(e) = self.entities.get_mut(*entity_id) {
                     e.attack_target = None;
                 }
@@ -775,6 +779,28 @@ impl Simulation {
             ) {
                 ammo.dock_phase = None;
                 ammo.target_airfield = None;
+            }
+        }
+    }
+
+    /// Release a DockedIdle aircraft from its helipad and trigger takeoff.
+    /// Called when a docked aircraft receives a Move or Attack command.
+    fn release_docked_idle(&mut self, entity_id: u64) {
+        let Some(entity) = self.entities.get_mut(entity_id) else {
+            return;
+        };
+        if let Some(crate::sim::aircraft::AircraftMission::DockedIdle { .. }) =
+            entity.aircraft_mission
+        {
+            // Release dock slot.
+            self.production.airfield_docks.release(entity_id);
+            // Clear to Idle — the command handler will set the appropriate mission.
+            entity.aircraft_mission = Some(crate::sim::aircraft::AircraftMission::Idle);
+            // Trigger takeoff.
+            if let Some(ref mut loco) = entity.locomotor {
+                if loco.air_phase == crate::sim::movement::locomotor::AirMovePhase::Landed {
+                    loco.air_phase = crate::sim::movement::locomotor::AirMovePhase::Ascending;
+                }
             }
         }
     }

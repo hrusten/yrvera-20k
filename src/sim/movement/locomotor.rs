@@ -124,6 +124,10 @@ pub struct LocomotorState {
     /// Speed multiplier applied on top of ObjectType.speed.
     /// 1.0 for most units, 0.65 for Hover, etc.
     pub speed_multiplier: SimFixed,
+    /// Mission-controlled speed fraction (0.0–1.0). Set by aircraft missions
+    /// for dive bombing deceleration and speed tiers. air_movement multiplies
+    /// the base speed by this fraction. Default 1.0 (full speed).
+    pub speed_fraction: SimFixed,
     /// Current altitude in leptons (0 = on the ground).
     /// Fly units cruise at FLY_CRUISE_ALTITUDE; Jumpjets hover at JumpjetHeight.
     pub altitude: SimFixed,
@@ -228,6 +232,7 @@ impl LocomotorState {
             phase: GroundMovePhase::Idle,
             air_phase: AirMovePhase::Landed,
             speed_multiplier,
+            speed_fraction: sim_one,
             altitude: SIM_ZERO,
             target_altitude: target_alt,
             climb_rate: climb,

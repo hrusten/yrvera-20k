@@ -363,3 +363,49 @@ fn add_cell_offset(base_rx: u16, base_ry: u16, ox: i16, oy: i16) -> Option<(u16,
     }
     Some((rx as u16, ry as u16))
 }
+
+/// Find an airfield with a free dock slot for a newly produced aircraft.
+///
+/// Returns `(airfield_stable_id, spawn_rx, spawn_ry)` — the airfield's
+/// foundation center cell where the aircraft entity will be placed.
+/// Returns `None` if no airfield has a free dock slot.
+pub fn find_helipad_for_aircraft(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: &str,
+) -> Option<(u64, u16, u16)> {
+    let owner_id = sim.interner.get(owner)?;
+
+    for entity in sim.entities.values() {
+        if entity.category != crate::map::entities::EntityCategory::Structure {
+            continue;
+        }
+        if entity.health.current == 0 || entity.dying {
+            continue;
+        }
+        if entity.owner != owner_id {
+            continue;
+        }
+        let type_str = sim.interner.resolve(entity.type_ref);
+        let Some(obj) = rules.object(type_str) else {
+            continue;
+        };
+        if !obj.helipad && !obj.unit_reload {
+            continue;
+        }
+        let max_slots = obj.number_of_docks.max(1);
+        if !sim
+            .production
+            .airfield_docks
+            .has_free_slot(entity.stable_id, max_slots)
+        {
+            continue;
+        }
+        let (fw, fh) = crate::sim::production::foundation_dimensions(&obj.foundation);
+        let cx = entity.position.rx + fw / 2;
+        let cy = entity.position.ry + fh / 2;
+        return Some((entity.stable_id, cx, cy));
+    }
+
+    None
+}

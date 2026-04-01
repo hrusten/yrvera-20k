@@ -42,6 +42,9 @@ pub mod pathfinding; // A* search, zone connectivity, terrain costs, path smooth
 // --- Docking: repair depots and airfield landing pads ---
 pub mod docking;
 
+// --- Aircraft mission state machines (attack runs, guard, RTB, idle) ---
+pub mod aircraft;
+
 // --- Vision, fog of war, power ---
 pub mod power_system;
 pub mod vision;

@@ -301,7 +301,11 @@ fn collect_build_entries(
     // instead of spawning a duplicate entry.
     let mut entries: Vec<BuildEntry> = build_options
         .iter()
-        .filter(|opt| opt.queue_category == category)
+        .filter(|opt| {
+            opt.queue_category == category
+                || (category == ProductionCategory::Vehicle
+                    && opt.queue_category == ProductionCategory::Aircraft)
+        })
         .map(|opt| {
             // Check if this type has a completed building waiting for placement.
             let is_ready = ready_buildings
