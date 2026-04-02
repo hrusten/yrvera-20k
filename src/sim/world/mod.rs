@@ -383,16 +383,55 @@ impl Simulation {
         }
     }
 
+    /// Remove an entity from the occupancy grid. For structures, removes all
+    /// foundation cells using the provided foundation string (e.g. "2x2").
+    /// Call before removing the entity from EntityStore.
+    pub(crate) fn remove_entity_occupancy(
+        &mut self,
+        stable_id: u64,
+        foundation: Option<&str>,
+    ) {
+        if let Some(entity) = self.entities.get(stable_id) {
+            let rx = entity.position.rx;
+            let ry = entity.position.ry;
+            if let Some(f) = foundation {
+                let (fw, fh) = crate::sim::production::foundation_dimensions(f);
+                for dy in 0..fh {
+                    for dx in 0..fw {
+                        self.occupancy.remove(rx + dx, ry + dy, stable_id);
+                    }
+                }
+            } else {
+                self.occupancy.remove(rx, ry, stable_id);
+            }
+        }
+    }
+
     /// Despawn an entity by stable_id, removing it from EntityStore.
     /// Decrements owned count if the entity was not already dying (combat deaths
     /// are decremented when dying is first set, not at physical removal).
+    /// Also removes the entity from the occupancy grid (single-cell only —
+    /// callers with foundation info should call `remove_entity_occupancy` first
+    /// for structures).
     pub(crate) fn despawn_entity(&mut self, stable_id: u64) {
-        if let Some(entity) = self.entities.get(stable_id) {
-            if !entity.dying {
-                let owner_str = self.interner.resolve(entity.owner).to_string();
-                let category = entity.category;
+        // Gather entity data before any mutable borrows.
+        let entity_info = self.entities.get(stable_id).map(|e| {
+            (
+                e.dying,
+                self.interner.resolve(e.owner).to_string(),
+                e.category,
+                e.position.rx,
+                e.position.ry,
+            )
+        });
+        if let Some((dying, owner_str, category, rx, ry)) = entity_info {
+            if !dying {
                 self.decrement_owned_count(&owner_str, category);
             }
+            // Remove from occupancy grid (origin cell only; multi-cell structures
+            // should have their foundation cells removed by the caller via
+            // remove_entity_occupancy before calling despawn_entity).
+            self.occupancy.remove(rx, ry, stable_id);
         }
         self.entities.remove(stable_id);
     }
