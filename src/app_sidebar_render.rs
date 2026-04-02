@@ -358,6 +358,10 @@ pub(crate) fn current_sidebar_chrome_texture(state: &AppState) -> Option<&BatchT
     current_sidebar_chrome(state).map(|atlas| &atlas.texture)
 }
 
+pub(crate) fn current_sidebar_gclock_texture(state: &AppState) -> Option<&BatchTexture> {
+    current_sidebar_chrome(state).and_then(|atlas| atlas.gclock_texture.as_ref())
+}
+
 pub(crate) fn current_sidebar_theme(
     state: &AppState,
 ) -> crate::render::sidebar_chrome::SidebarTheme {

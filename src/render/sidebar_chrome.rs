@@ -90,6 +90,10 @@ pub struct SidebarChromeAtlas {
     /// [0]=dark/bg, [1]=green, [2]=yellow, [3]=red, [4]=dark/off.
     pub powerp_frames: [Option<SidebarChromeEntry>; 5],
     pub extra_entries: Vec<SidebarChromeExtraEntry>,
+    /// GCLOCK2.SHP progress clock overlay — all frames packed into a grid texture.
+    /// Each entry maps a frame index to UV coordinates in gclock_texture.
+    pub gclock_texture: Option<BatchTexture>,
+    pub gclock_frames: Vec<SidebarChromeEntry>,
 }
 
 pub struct SidebarChromeSet {
@@ -154,6 +158,82 @@ pub fn build_sidebar_chrome_set(
         soviet,
         yuri,
     })
+}
+
+/// Load all GCLOCK2.SHP frames from the side MIX, render with the sidebar palette,
+/// and pack into a grid texture with alpha=128 for non-transparent pixels (replicating
+/// gamemd.exe's 0x004 = 50% translucent draw flag).
+fn build_gclock_texture(
+    gpu: &GpuContext,
+    batch: &BatchRenderer,
+    mix: &MixArchive,
+    palette: &Palette,
+    mix_name: &str,
+) -> Option<(BatchTexture, Vec<SidebarChromeEntry>)> {
+    let shp_bytes = mix.get_by_name("GCLOCK2.SHP")?;
+    let shp = ShpFile::from_bytes(shp_bytes).ok()?;
+    let frame_count = shp.frames.len();
+    if frame_count == 0 {
+        return None;
+    }
+
+    let frame_w = shp.width as u32;
+    let frame_h = shp.height as u32;
+    let mut rendered_frames: Vec<Vec<u8>> = Vec::with_capacity(frame_count);
+    for i in 0..frame_count {
+        // Use render_shp() to composite onto the full canvas, handling frame_x/frame_y
+        // offsets and sub-canvas frame sizes correctly.
+        let mut entry = match render_shp(&shp, palette, i) {
+            Some(e) => e,
+            None => continue,
+        };
+        // Set alpha = 128 for non-transparent pixels (gamemd flag 0x004 = 50% translucent).
+        for pixel in entry.rgba.chunks_exact_mut(4) {
+            if pixel[3] > 0 {
+                pixel[3] = 128;
+            }
+        }
+        rendered_frames.push(entry.rgba);
+    }
+
+    // Pack into a grid texture. 8 columns keeps it roughly square for typical 54-frame SHPs.
+    let cols = 8u32.min(frame_count as u32);
+    let rows = (frame_count as u32 + cols - 1) / cols;
+    let tex_w = cols * frame_w;
+    let tex_h = rows * frame_h;
+    let mut atlas_rgba = vec![0u8; (tex_w * tex_h * 4) as usize];
+
+    let mut entries = Vec::with_capacity(frame_count);
+    for (i, frame_rgba) in rendered_frames.iter().enumerate() {
+        let col = (i as u32) % cols;
+        let row = (i as u32) / cols;
+        let dst_x = col * frame_w;
+        let dst_y = row * frame_h;
+
+        for y in 0..frame_h {
+            let src_start = (y * frame_w * 4) as usize;
+            let dst_start = (((dst_y + y) * tex_w + dst_x) * 4) as usize;
+            let len = (frame_w * 4) as usize;
+            if src_start + len <= frame_rgba.len() && dst_start + len <= atlas_rgba.len() {
+                atlas_rgba[dst_start..dst_start + len]
+                    .copy_from_slice(&frame_rgba[src_start..src_start + len]);
+            }
+        }
+
+        entries.push(SidebarChromeEntry {
+            uv_origin: [dst_x as f32 / tex_w as f32, dst_y as f32 / tex_h as f32],
+            uv_size: [frame_w as f32 / tex_w as f32, frame_h as f32 / tex_h as f32],
+            pixel_size: [frame_w as f32, frame_h as f32],
+        });
+    }
+
+    log::info!(
+        "GCLOCK2 atlas for {}: {}x{} px, {} frames ({}x{} grid)",
+        mix_name, tex_w, tex_h, frame_count, cols, rows,
+    );
+
+    let texture = batch.create_texture(gpu, &atlas_rgba, tex_w, tex_h);
+    Some((texture, entries))
 }
 
 fn build_theme_atlas(
@@ -244,6 +324,16 @@ fn build_theme_atlas(
         background_names,
         &excluded_extra_ids,
     );
+
+    // GCLOCK2.SHP — production progress clock overlay (separate texture).
+    let (gclock_texture, gclock_frames) =
+        match build_gclock_texture(gpu, batch, &mix, &palette, mix_name) {
+            Some((tex, entries)) => (Some(tex), entries),
+            None => {
+                log::warn!("GCLOCK2.SHP not found in {}, progress overlay disabled", mix_name);
+                (None, Vec::new())
+            }
+        };
 
     // Collect all pieces to pack into the atlas.
     let mut all_entries: Vec<&RenderedChromeEntry> = vec![&radar, &side1, &side2, &side3];
@@ -462,6 +552,8 @@ fn build_theme_atlas(
         power: power_uv,
         powerp_frames: powerp_uvs,
         extra_entries,
+        gclock_texture,
+        gclock_frames,
     })
 }
 

@@ -183,6 +183,7 @@ fn upload_to_gpu(
     pool.upload(&state.gpu, "sidebar_chrome", &sidebar.chrome);
     pool.upload(&state.gpu, "radar_anim", &sidebar.radar_anim);
     pool.upload(&state.gpu, "sidebar_cameo", &sidebar.cameo);
+    pool.upload(&state.gpu, "sidebar_gclock", &sidebar.gclock);
     pool.upload(&state.gpu, "sidebar_cameo_overlay", &sidebar.cameo_overlay);
     pool.upload(&state.gpu, "sidebar_text", &sidebar.text);
 }

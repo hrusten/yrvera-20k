@@ -7,7 +7,9 @@
 //! - Internal to app_render — only called from mod.rs via `dispatch_draw_passes()`.
 
 use crate::app::AppState;
-use crate::app_sidebar_render::{begin_main_pass, current_sidebar_chrome_texture};
+use crate::app_sidebar_render::{
+    begin_main_pass, current_sidebar_chrome_texture, current_sidebar_gclock_texture,
+};
 use crate::app_ui_overlays::current_software_cursor_texture;
 use crate::render::batch::{BatchRenderer, BatchTexture, InstanceBufferPool, SpriteInstance};
 use crate::render::bridge_atlas::BridgeAtlas;
@@ -365,6 +367,13 @@ pub(super) fn dispatch_draw_passes(
             .as_ref()
             .map(|atlas| &atlas.texture),
         "sidebar_cameo",
+    );
+    draw_pooled_ui(
+        &mut pass,
+        &state.batch_renderer,
+        pool,
+        current_sidebar_gclock_texture(state),
+        "sidebar_gclock",
     );
     let cameo_overlay_tex = state
         .sidebar_text

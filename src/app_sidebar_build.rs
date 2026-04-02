@@ -392,80 +392,6 @@ fn push_chrome_sized(
 // Cameo icon instances
 // ---------------------------------------------------------------------------
 
-/// Tint applied to the "unbuilt" portion of a cameo during construction.
-/// Light blue to match RA2's semi-transparent blue overlay.
-const WIPE_BLUE_TINT: [f32; 3] = [0.35, 0.50, 0.72];
-
-/// Normal tint for the "built" (revealed) portion.
-const WIPE_CLEAR_TINT: [f32; 3] = [1.0, 1.0, 1.0];
-
-/// Number of horizontal scanlines for the radial clock-wipe.
-/// 48 = 1:1 with cameo pixel rows for perfectly smooth sweep edges.
-/// Each scanline emits 1-3 quads (built/unbuilt regions), so total is ~96-144
-/// quads per building cameo — much cheaper than a full pixel grid.
-const WIPE_SCANLINES: u32 = 48;
-
-/// Compute the x-coordinate where the sweep edge at `angle` (clockwise from
-/// 12 o'clock) intersects a horizontal scanline at `dy` pixels from center.
-/// Returns None if the edge doesn't cross this scanline row.
-fn sweep_edge_x(angle: f32, dy: f32, half_w: f32) -> Option<f32> {
-    // The sweep edge is a ray from center at the given angle.
-    // Ray direction: (sin(angle), -cos(angle)) in screen coords
-    // (positive x = right, positive y = down, angle 0 = up).
-    let ray_dx: f32 = angle.sin();
-    let ray_dy: f32 = -angle.cos();
-
-    // The scanline is at y = dy. Find t where ray_dy * t = dy.
-    if ray_dy.abs() < 1e-6 {
-        return None; // Ray is horizontal — doesn't cross this scanline cleanly.
-    }
-    let t: f32 = dy / ray_dy;
-    if t < 0.0 {
-        return None; // Intersection is behind the ray origin.
-    }
-    let x: f32 = ray_dx * t;
-    // Clamp to cameo bounds.
-    if x < -half_w || x > half_w {
-        return None;
-    }
-    Some(x)
-}
-
-/// Emit a horizontal cameo strip as a SpriteInstance.
-/// `x0` and `x1` are in cameo-local coords (0 = left edge, dw = right edge).
-fn emit_strip(
-    instances: &mut Vec<SpriteInstance>,
-    cam_x: f32,
-    cam_y: f32,
-    dw: f32,
-    row: u32,
-    row_h: f32,
-    x0: f32,
-    x1: f32,
-    entry_uv_origin: [f32; 2],
-    entry_uv_size: [f32; 2],
-    dh: f32,
-    depth: f32,
-    tint: [f32; 3],
-) {
-    if x1 - x0 < 0.01 {
-        return;
-    }
-    let u0: f32 = entry_uv_origin[0] + entry_uv_size[0] * (x0 / dw);
-    let u1: f32 = entry_uv_origin[0] + entry_uv_size[0] * (x1 / dw);
-    let v0: f32 = entry_uv_origin[1] + entry_uv_size[1] * (row as f32 * row_h / dh);
-    let v_h: f32 = entry_uv_size[1] * (row_h / dh);
-    instances.push(SpriteInstance {
-        position: [cam_x + x0, cam_y + row as f32 * row_h],
-        size: [x1 - x0, row_h],
-        uv_origin: [u0, v0],
-        uv_size: [u1 - u0, v_h],
-        depth,
-        tint,
-        alpha: 1.0,
-    });
-}
-
 /// Horizontal padding around the ready text (each side, in native pixels).
 const READY_PAD_X: f32 = 2.0;
 /// Vertical padding around the ready text (each side, in native pixels).
@@ -482,20 +408,26 @@ fn ready_text_scale(ui_scale: f32) -> f32 {
     ui_scale
 }
 
-/// Returns (cameo_instances, overlay_instances).
+/// Returns (cameo_instances, gclock_instances, overlay_instances).
 /// Cameo instances use the cameo atlas texture.
+/// Gclock instances use the GCLOCK2 atlas texture (progress overlay).
 /// Overlay instances are dark strip quads drawn with the darken_texture.
 pub(crate) fn build_sidebar_cameo_instances(
     state: &AppState,
     view: &SidebarView,
     ready_text: &str,
-) -> (Vec<SpriteInstance>, Vec<SpriteInstance>) {
+) -> (Vec<SpriteInstance>, Vec<SpriteInstance>, Vec<SpriteInstance>) {
     let Some(atlas) = state.sidebar_cameo_atlas.as_ref() else {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new());
     };
     let mut instances = Vec::new();
+    let mut gclock_instances = Vec::new();
     let mut overlay_instances = Vec::new();
     let co = [state.camera_x, state.camera_y];
+    let gclock_frames: &[crate::render::sidebar_chrome::SidebarChromeEntry] =
+        crate::app_sidebar_render::current_sidebar_chrome(state)
+            .map(|a| a.gclock_frames.as_slice())
+            .unwrap_or(&[]);
     for item in &view.items {
         let Some(entry) = atlas.get(&item.type_id) else {
             continue;
@@ -511,98 +443,42 @@ pub(crate) fn build_sidebar_cameo_instances(
         let is_building = !item.is_ready && item.progress > 0.0;
 
         if is_building {
-            // Radial clock-wipe using scanline edge intersection.
-            // The built sector sweeps clockwise from 12 o'clock (top center).
-            // For each scanline row, we find where the sweep edge crosses and
-            // emit separate bright (built) and blue-tinted (unbuilt) strips.
-            let progress = item.progress.clamp(0.0, 1.0);
-            let built_angle = progress * std::f32::consts::TAU;
+            // Full cameo quad (normal tint — GCLOCK2 overlay handles darkening).
             let cam_x = (slot.x + (slot.w - dw) * 0.5 + co[0]).round();
             let cam_y = (slot.y + (slot.h - dh) * 0.5 + co[1]).round();
-            let row_h = dh / WIPE_SCANLINES as f32;
-            let half_w = dw * 0.5;
-            let half_h = dh * 0.5;
-            let depth = 0.00044_f32;
+            instances.push(SpriteInstance {
+                position: [cam_x, cam_y],
+                size: [dw, dh],
+                uv_origin: entry.uv_origin,
+                uv_size: entry.uv_size,
+                depth: 0.00044,
+                tint: [1.0, 1.0, 1.0],
+                alpha: 1.0,
+            });
 
-            // Precompute: does the sweep edge cross x=0 (12 o'clock line)?
-            // The 12 o'clock edge is always at x = center (dx=0), going up.
-            // The built sector starts at angle 0 (top) and goes to built_angle.
-
-            for row in 0..WIPE_SCANLINES {
-                // dy = center of this scanline relative to cameo center.
-                let dy = (row as f32 + 0.5) * row_h - half_h;
-
-                // Find where the sweep edge intersects this row.
-                let _edge_x = sweep_edge_x(built_angle, dy, half_w);
-
-                // For each pixel in this row, the angle from center determines
-                // if it's built or unbuilt. The built sector is [0, built_angle).
-                // We need to split this row into built and unbuilt strips.
-                //
-                // Key insight: the 12 o'clock line (angle=0) is at dx=0 (center column).
-                // The sweep edge is at edge_x. Between them is the built sector.
-                //
-                // Depending on built_angle quadrant and row position, the built
-                // region may be left, right, center, or the entire row.
-
-                // Simple approach: sample many points along the row and find
-                // the transitions. With 1px resolution this is pixel-perfect.
-                // For a 60px wide cameo, this is 60 angle tests per row.
-                // Total: 48 * 60 = 2880 atan2 calls — fast on modern CPUs.
-
-                let cols: u32 = 60;
-                let col_w = dw / cols as f32;
-                // Find runs of same tint and emit one strip per run.
-                let mut run_start: u32 = 0;
-                let mut run_built: bool = {
-                    let dx = (0.5) * col_w - half_w;
-                    let mut a: f32 = dx.atan2(-dy);
-                    if a < 0.0 {
-                        a += std::f32::consts::TAU;
-                    }
-                    a < built_angle
+            // GCLOCK2 overlay — select frame from progress (0.0-1.0).
+            // gamemd: frame = Production_Value + 1, Production_Value = 0..54.
+            if !gclock_frames.is_empty() {
+                let progress = item.progress.clamp(0.0, 1.0);
+                // gamemd draws frame = Production_Value + 1 (range 1-55), skipping
+                // frame 0. Map our 0.0-1.0 progress to frames 1..last.
+                let last_frame = gclock_frames.len() - 1;
+                let frame_index = if last_frame >= 2 {
+                    ((progress * (last_frame - 1) as f32).round() as usize + 1)
+                        .min(last_frame)
+                } else {
+                    last_frame.min(1)
                 };
-
-                for col in 1..=cols {
-                    let current_built = if col < cols {
-                        let dx = (col as f32 + 0.5) * col_w - half_w;
-                        let mut a: f32 = dx.atan2(-dy);
-                        if a < 0.0 {
-                            a += std::f32::consts::TAU;
-                        }
-                        a < built_angle
-                    } else {
-                        !run_built // Force flush of last run.
-                    };
-
-                    if current_built != run_built {
-                        // Emit the accumulated run.
-                        let x0 = run_start as f32 * col_w;
-                        let x1 = col as f32 * col_w;
-                        let tint = if run_built {
-                            WIPE_CLEAR_TINT
-                        } else {
-                            WIPE_BLUE_TINT
-                        };
-                        emit_strip(
-                            &mut instances,
-                            cam_x,
-                            cam_y,
-                            dw,
-                            row,
-                            row_h,
-                            x0,
-                            x1,
-                            entry.uv_origin,
-                            entry.uv_size,
-                            dh,
-                            depth,
-                            tint,
-                        );
-                        run_start = col;
-                        run_built = current_built;
-                    }
-                }
+                let gclock_entry = &gclock_frames[frame_index];
+                gclock_instances.push(SpriteInstance {
+                    position: [cam_x, cam_y],
+                    size: [dw, dh],
+                    uv_origin: gclock_entry.uv_origin,
+                    uv_size: gclock_entry.uv_size,
+                    depth: 0.00043,
+                    tint: [1.0, 1.0, 1.0],
+                    alpha: 1.0,
+                });
             }
         } else {
             // Non-building items: single full cameo quad. No blinking.
@@ -677,7 +553,7 @@ pub(crate) fn build_sidebar_cameo_instances(
             });
         }
     }
-    (instances, overlay_instances)
+    (instances, gclock_instances, overlay_instances)
 }
 
 // ---------------------------------------------------------------------------

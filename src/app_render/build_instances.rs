@@ -73,6 +73,7 @@ pub(super) struct SidebarInstances {
     pub sidebar: Vec<SpriteInstance>,
     pub chrome: Vec<SpriteInstance>,
     pub cameo: Vec<SpriteInstance>,
+    pub gclock: Vec<SpriteInstance>,
     pub cameo_overlay: Vec<SpriteInstance>,
     pub text: Vec<SpriteInstance>,
     pub minimap: Vec<SpriteInstance>,
@@ -537,7 +538,7 @@ pub(super) fn build_sidebar_instances(state: &mut AppState) -> SidebarInstances 
         let theme = crate::app_sidebar_render::current_sidebar_theme(state);
         crate::app_sidebar_text::ready_color_for_theme(theme)
     };
-    let (cameo, cameo_overlay) = view
+    let (cameo, gclock, cameo_overlay) = view
         .as_ref()
         .map(|v| build_sidebar_cameo_instances(state, v, ready_text))
         .unwrap_or_default();
@@ -552,6 +553,7 @@ pub(super) fn build_sidebar_instances(state: &mut AppState) -> SidebarInstances 
         sidebar,
         chrome,
         cameo,
+        gclock,
         cameo_overlay,
         text,
         minimap,
