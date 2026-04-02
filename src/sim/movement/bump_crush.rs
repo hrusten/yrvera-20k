@@ -11,12 +11,13 @@
 //! - Part of sim/ — depends on sim/entity_store, sim/game_entity, sim/locomotor,
 //!   sim/pathfinding, sim/rng, rules/locomotor_type.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::{CellOccupancy, OccupancyGrid};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{SimFixed, fixed_distance};
@@ -79,71 +80,8 @@ const NEIGHBOR_OFFSETS: [(i32, i32); 8] = [
     (-1, -1), // NW
 ];
 
-/// Tracks what occupies a single isometric cell for movement checks.
-#[derive(Debug, Clone, Default)]
-pub struct CellOccupancy {
-    /// Non-infantry entity IDs (vehicles, structures). If non-empty, cell is fully
-    /// blocked — no sub-cell sharing allowed.
-    pub blockers: Vec<u64>,
-    /// Infantry entity IDs and their sub-cell positions. Up to 3 per cell.
-    pub infantry: Vec<(u64, u8)>,
-}
-
-/// Per-cell occupancy map for one movement layer (ground or bridge).
-pub type OccupancyMap = BTreeMap<(u16, u16), CellOccupancy>;
-
-/// Shared owner for selecting the occupancy snapshot that matches a movement layer.
-pub fn occupancy_map_for_layer<'a>(
-    layer: MovementLayer,
-    ground: &'a OccupancyMap,
-    bridge: &'a OccupancyMap,
-) -> &'a OccupancyMap {
-    if layer == MovementLayer::Bridge {
-        bridge
-    } else {
-        ground
-    }
-}
-
-/// Mutable variant of `occupancy_map_for_layer` used while building snapshots.
-pub fn occupancy_map_for_layer_mut<'a>(
-    layer: MovementLayer,
-    ground: &'a mut OccupancyMap,
-    bridge: &'a mut OccupancyMap,
-) -> &'a mut OccupancyMap {
-    if layer == MovementLayer::Bridge {
-        bridge
-    } else {
-        ground
-    }
-}
-
-/// Build occupancy maps for ground and bridge layers from all entities.
-///
-/// Air and underground entities are excluded — they don't block ground cells.
-pub fn build_occupancy_maps(entities: &EntityStore) -> (OccupancyMap, OccupancyMap) {
-    let mut ground: OccupancyMap = BTreeMap::new();
-    let mut bridge: OccupancyMap = BTreeMap::new();
-
-    for entity in entities.values() {
-        let layer = entity.movement_layer_or_ground();
-        if matches!(layer, MovementLayer::Air | MovementLayer::Underground) {
-            continue;
-        }
-        let map: &mut OccupancyMap = occupancy_map_for_layer_mut(layer, &mut ground, &mut bridge);
-        let pos: (u16, u16) = (entity.position.rx, entity.position.ry);
-        let occ: &mut CellOccupancy = map.entry(pos).or_default();
-
-        if entity.category == EntityCategory::Infantry {
-            let sub: u8 = entity.sub_cell.unwrap_or(2);
-            occ.infantry.push((entity.stable_id, sub));
-        } else {
-            occ.blockers.push(entity.stable_id);
-        }
-    }
-
-    (ground, bridge)
-}
+// Old CellOccupancy, OccupancyMap, build_occupancy_maps, and occupancy_map_for_layer*
+// have been replaced by the persistent OccupancyGrid in sim/occupancy.rs.
 
 /// Build the set of cells blocked by entities for pathfinding purposes.
 ///
@@ -226,29 +164,30 @@ pub fn build_entity_block_set(
 
 /// Find the first available sub-cell in a cell. Returns `None` if the cell is
 /// full (3 infantry) or contains a vehicle/structure.
-pub fn allocate_sub_cell(occ: Option<&CellOccupancy>) -> Option<u8> {
+pub fn allocate_sub_cell(occ: Option<&CellOccupancy>, layer: MovementLayer) -> Option<u8> {
     let Some(o) = occ else {
         // Empty cell — first infantry gets sub-cell 2 (NE corner).
         return Some(FUNCTIONAL_SUB_CELLS[0]);
     };
     // Vehicle/structure in cell blocks all sub-cells.
-    if !o.blockers.is_empty() {
+    if o.has_blockers_on(layer) {
         return None;
     }
-    if o.infantry.len() >= MAX_INFANTRY_PER_CELL {
+    let infantry: Vec<(u64, u8)> = o.infantry(layer).collect();
+    if infantry.len() >= MAX_INFANTRY_PER_CELL {
         return None;
     }
     // Find first sub-cell not already occupied.
     FUNCTIONAL_SUB_CELLS
         .iter()
         .copied()
-        .find(|&spot| !o.infantry.iter().any(|&(_, s)| s == spot))
+        .find(|&spot| !infantry.iter().any(|&(_, s)| s == spot))
 }
 
 /// Can infantry enter this cell? True if there's an available sub-cell and no
 /// vehicles/structures blocking.
-pub fn cell_passable_for_infantry(occ: Option<&CellOccupancy>) -> bool {
-    allocate_sub_cell(occ).is_some()
+pub fn cell_passable_for_infantry(occ: Option<&CellOccupancy>, layer: MovementLayer) -> bool {
+    allocate_sub_cell(occ, layer).is_some()
 }
 
 /// Find the first available sub-cell, accounting for both the (stale) occupancy
@@ -260,21 +199,23 @@ pub fn cell_passable_for_infantry(occ: Option<&CellOccupancy>) -> bool {
 /// and subsequent blocking/repath oscillation.
 pub fn allocate_sub_cell_with_reserved(
     occ: Option<&CellOccupancy>,
+    layer: MovementLayer,
     reserved: Option<&[u8]>,
 ) -> Option<u8> {
     // Vehicle/structure in cell blocks all sub-cells.
     if let Some(o) = occ {
-        if !o.blockers.is_empty() {
+        if o.has_blockers_on(layer) {
             return None;
         }
     }
-    let stale_count: usize = occ.map_or(0, |o| o.infantry.len());
+    let infantry: Vec<(u64, u8)> = occ.map_or_else(Vec::new, |o| o.infantry(layer).collect());
+    let stale_count: usize = infantry.len();
     let reserved_count: usize = reserved.map_or(0, |v| v.len());
     if stale_count + reserved_count >= MAX_INFANTRY_PER_CELL {
         return None;
     }
     FUNCTIONAL_SUB_CELLS.iter().copied().find(|&spot| {
-        let in_stale: bool = occ.is_some_and(|o| o.infantry.iter().any(|&(_, s)| s == spot));
+        let in_stale: bool = infantry.iter().any(|&(_, s)| s == spot);
         let in_reserved: bool = reserved.is_some_and(|v| v.contains(&spot));
         !in_stale && !in_reserved
     })
@@ -292,6 +233,7 @@ pub fn allocate_sub_cell_with_reserved(
 /// at call sites without position data (spawning, terrain checks).
 pub fn allocate_sub_cell_with_preference(
     occ: Option<&CellOccupancy>,
+    layer: MovementLayer,
     reserved: Option<&[u8]>,
     sub_x: SimFixed,
     sub_y: SimFixed,
@@ -299,18 +241,19 @@ pub fn allocate_sub_cell_with_preference(
 ) -> Option<u8> {
     // Vehicle/structure blocks all infantry.
     if let Some(o) = occ {
-        if !o.blockers.is_empty() {
+        if o.has_blockers_on(layer) {
             return None;
         }
     }
-    let stale_count: usize = occ.map_or(0, |o| o.infantry.len());
+    let infantry: Vec<(u64, u8)> = occ.map_or_else(Vec::new, |o| o.infantry(layer).collect());
+    let stale_count: usize = infantry.len();
     let reserved_count: usize = reserved.map_or(0, |v| v.len());
     if stale_count + reserved_count >= MAX_INFANTRY_PER_CELL {
         return None;
     }
 
     let is_occupied = |spot: u8| -> bool {
-        let in_stale: bool = occ.is_some_and(|o| o.infantry.iter().any(|&(_, s)| s == spot));
+        let in_stale: bool = infantry.iter().any(|&(_, s)| s == spot);
         let in_reserved: bool = reserved.is_some_and(|v| v.contains(&spot));
         in_stale || in_reserved
     };
@@ -401,18 +344,19 @@ pub fn can_crush(
 /// Returns an empty vec if the mover can't crush anything there.
 pub fn collect_crush_victims(
     cell: (u16, u16),
-    occ_map: &OccupancyMap,
+    occupancy: &OccupancyGrid,
+    layer: MovementLayer,
     mover_zone: MovementZone,
     mover_omni_crusher: bool,
     entities: &EntityStore,
 ) -> Vec<u64> {
-    let Some(occ) = occ_map.get(&cell) else {
+    let Some(occ) = occupancy.get(cell.0, cell.1) else {
         return Vec::new();
     };
     let mut victims: Vec<u64> = Vec::new();
 
     // Check infantry occupants.
-    for &(eid, _sub) in &occ.infantry {
+    for (eid, _sub) in occ.infantry(layer) {
         if let Some(e) = entities.get(eid) {
             if can_crush(
                 mover_zone,
@@ -426,7 +370,7 @@ pub fn collect_crush_victims(
         }
     }
     // Check vehicle/structure occupants (only OmniCrusher/CrusherAll can crush vehicles).
-    for &eid in &occ.blockers {
+    for eid in occ.blockers(layer) {
         if let Some(e) = entities.get(eid) {
             if can_crush(
                 mover_zone,
@@ -449,16 +393,17 @@ pub fn collect_crush_victims(
 /// would become empty after crush kills are applied).
 pub fn cell_passable_after_crush(
     cell: (u16, u16),
-    occ_map: &OccupancyMap,
+    occupancy: &OccupancyGrid,
+    layer: MovementLayer,
     mover_zone: MovementZone,
     mover_omni_crusher: bool,
     entities: &EntityStore,
 ) -> bool {
-    let Some(occ) = occ_map.get(&cell) else {
+    let Some(occ) = occupancy.get(cell.0, cell.1) else {
         return true; // empty cell
     };
     // All blockers must be crushable.
-    for &eid in &occ.blockers {
+    for eid in occ.blockers(layer) {
         if let Some(e) = entities.get(eid) {
             if !can_crush(
                 mover_zone,
@@ -472,7 +417,7 @@ pub fn cell_passable_after_crush(
         }
     }
     // All infantry must be crushable.
-    for &(eid, _) in &occ.infantry {
+    for (eid, _) in occ.infantry(layer) {
         if let Some(e) = entities.get(eid) {
             if !can_crush(
                 mover_zone,
@@ -513,7 +458,7 @@ pub fn scatter_blocker(
     entities: &mut EntityStore,
     blocker_id: u64,
     path_grid: Option<&PathGrid>,
-    occupied: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     reserved: &BTreeSet<(MovementLayer, u16, u16)>,
     layer: MovementLayer,
     rng: &mut SimRng,
@@ -554,8 +499,8 @@ pub fn scatter_blocker(
             }
         }
         // Must not be occupied by vehicles/structures. Infantry sub-cells OK.
-        if let Some(occ) = occupied.get(&(nx, ny)) {
-            if !occ.blockers.is_empty() {
+        if let Some(occ) = occupancy.get(nx, ny) {
+            if occ.has_blockers_on(layer) {
                 continue;
             }
         }
@@ -598,6 +543,15 @@ mod tests {
         e.category = EntityCategory::Unit;
         e.crushable = false;
         e
+    }
+
+    /// Helper: build an OccupancyGrid from a set of entity descriptions.
+    fn make_occ(entries: &[(u16, u16, u64, MovementLayer, Option<u8>)]) -> OccupancyGrid {
+        let mut grid = OccupancyGrid::new();
+        for &(rx, ry, eid, layer, sub) in entries {
+            grid.add(rx, ry, eid, layer, sub);
+        }
+        grid
     }
 
     // -- can_crush tests --
@@ -695,57 +649,54 @@ mod tests {
     #[test]
     fn test_allocate_sub_cell_empty_cell() {
         // No occupancy entry → first spot (2 = NE corner).
-        assert_eq!(allocate_sub_cell(None), Some(2));
+        assert_eq!(allocate_sub_cell(None, MovementLayer::Ground), Some(2));
     }
 
     #[test]
     fn test_allocate_sub_cell_one_infantry() {
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 2)],
-        };
-        assert_eq!(allocate_sub_cell(Some(&occ)), Some(3));
+        let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, Some(2))]);
+        let occ = grid.get(5, 5).unwrap();
+        assert_eq!(allocate_sub_cell(Some(occ), MovementLayer::Ground), Some(3));
     }
 
     #[test]
     fn test_allocate_sub_cell_two_infantry() {
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 2), (2, 3)],
-        };
-        assert_eq!(allocate_sub_cell(Some(&occ)), Some(4));
+        let grid = make_occ(&[
+            (5, 5, 1, MovementLayer::Ground, Some(2)),
+            (5, 5, 2, MovementLayer::Ground, Some(3)),
+        ]);
+        let occ = grid.get(5, 5).unwrap();
+        assert_eq!(allocate_sub_cell(Some(occ), MovementLayer::Ground), Some(4));
     }
 
     #[test]
     fn test_allocate_sub_cell_full() {
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 2), (2, 3), (3, 4)],
-        };
-        assert_eq!(allocate_sub_cell(Some(&occ)), None);
+        let grid = make_occ(&[
+            (5, 5, 1, MovementLayer::Ground, Some(2)),
+            (5, 5, 2, MovementLayer::Ground, Some(3)),
+            (5, 5, 3, MovementLayer::Ground, Some(4)),
+        ]);
+        let occ = grid.get(5, 5).unwrap();
+        assert_eq!(allocate_sub_cell(Some(occ), MovementLayer::Ground), None);
     }
 
     #[test]
     fn test_vehicle_blocks_all_sub_cells() {
-        let occ = CellOccupancy {
-            blockers: vec![99],
-            infantry: vec![],
-        };
-        assert_eq!(allocate_sub_cell(Some(&occ)), None);
+        let grid = make_occ(&[(5, 5, 99, MovementLayer::Ground, None)]);
+        let occ = grid.get(5, 5).unwrap();
+        assert_eq!(allocate_sub_cell(Some(occ), MovementLayer::Ground), None);
     }
 
     #[test]
     fn test_cell_passable_for_infantry_empty() {
-        assert!(cell_passable_for_infantry(None));
+        assert!(cell_passable_for_infantry(None, MovementLayer::Ground));
     }
 
     #[test]
     fn test_cell_passable_for_infantry_with_vehicle() {
-        let occ = CellOccupancy {
-            blockers: vec![1],
-            infantry: vec![],
-        };
-        assert!(!cell_passable_for_infantry(Some(&occ)));
+        let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, None)]);
+        let occ = grid.get(5, 5).unwrap();
+        assert!(!cell_passable_for_infantry(Some(occ), MovementLayer::Ground));
     }
 
     // -- collect_crush_victims tests --
@@ -756,16 +707,16 @@ mod tests {
         let inf = infantry(1, 5, 5, 2);
         store.insert(inf);
 
-        let mut occ_map: OccupancyMap = BTreeMap::new();
-        occ_map.insert(
-            (5, 5),
-            CellOccupancy {
-                blockers: vec![],
-                infantry: vec![(1, 2)],
-            },
-        );
+        let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, Some(2))]);
 
-        let victims = collect_crush_victims((5, 5), &occ_map, MovementZone::Crusher, false, &store);
+        let victims = collect_crush_victims(
+            (5, 5),
+            &grid,
+            MovementLayer::Ground,
+            MovementZone::Crusher,
+            false,
+            &store,
+        );
         assert_eq!(victims, vec![1]);
     }
 
@@ -776,16 +727,16 @@ mod tests {
         inf.crushable = false;
         store.insert(inf);
 
-        let mut occ_map: OccupancyMap = BTreeMap::new();
-        occ_map.insert(
-            (5, 5),
-            CellOccupancy {
-                blockers: vec![],
-                infantry: vec![(1, 2)],
-            },
-        );
+        let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, Some(2))]);
 
-        let victims = collect_crush_victims((5, 5), &occ_map, MovementZone::Crusher, false, &store);
+        let victims = collect_crush_victims(
+            (5, 5),
+            &grid,
+            MovementLayer::Ground,
+            MovementZone::Crusher,
+            false,
+            &store,
+        );
         assert!(victims.is_empty());
     }
 
@@ -794,7 +745,7 @@ mod tests {
     #[test]
     fn test_scatter_blocker_issues_movement() {
         let grid = PathGrid::new(10, 10);
-        let occupied: OccupancyMap = BTreeMap::new();
+        let occupancy = OccupancyGrid::new();
         let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
         let mut rng = SimRng::new(42);
 
@@ -806,7 +757,7 @@ mod tests {
             &mut store,
             1,
             Some(&grid),
-            &occupied,
+            &occupancy,
             &reserved,
             MovementLayer::Ground,
             &mut rng,
@@ -827,17 +778,11 @@ mod tests {
     #[test]
     fn test_scatter_blocker_all_blocked() {
         let grid = PathGrid::new(3, 3);
-        let mut occupied: OccupancyMap = BTreeMap::new();
+        let mut occupancy = OccupancyGrid::new();
         for &(dx, dy) in &NEIGHBOR_OFFSETS {
             let nx = (1 + dx) as u16;
             let ny = (1 + dy) as u16;
-            occupied.insert(
-                (nx, ny),
-                CellOccupancy {
-                    blockers: vec![100],
-                    infantry: vec![],
-                },
-            );
+            occupancy.add(nx, ny, 100, MovementLayer::Ground, None);
         }
         let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
         let mut rng = SimRng::new(42);
@@ -850,7 +795,7 @@ mod tests {
             &mut store,
             1,
             Some(&grid),
-            &occupied,
+            &occupancy,
             &reserved,
             MovementLayer::Ground,
             &mut rng,
@@ -862,7 +807,7 @@ mod tests {
     #[test]
     fn test_scatter_blocker_skips_already_moving() {
         let grid = PathGrid::new(10, 10);
-        let occupied: OccupancyMap = BTreeMap::new();
+        let occupancy = OccupancyGrid::new();
         let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
         let mut rng = SimRng::new(42);
 
@@ -881,7 +826,7 @@ mod tests {
             &mut store,
             1,
             Some(&grid),
-            &occupied,
+            &occupancy,
             &reserved,
             MovementLayer::Ground,
             &mut rng,
@@ -895,7 +840,7 @@ mod tests {
     #[test]
     fn test_scatter_deterministic() {
         let grid = PathGrid::new(10, 10);
-        let occupied: OccupancyMap = BTreeMap::new();
+        let occupancy = OccupancyGrid::new();
         let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
 
         let mut store1 = EntityStore::new();
@@ -905,7 +850,7 @@ mod tests {
             &mut store1,
             1,
             Some(&grid),
-            &occupied,
+            &occupancy,
             &reserved,
             MovementLayer::Ground,
             &mut rng1,
@@ -918,7 +863,7 @@ mod tests {
             &mut store2,
             1,
             Some(&grid),
-            &occupied,
+            &occupancy,
             &reserved,
             MovementLayer::Ground,
             &mut rng2,
@@ -929,72 +874,60 @@ mod tests {
         assert_eq!(t1.path, t2.path, "Scatter must be deterministic");
     }
 
-    // -- build_occupancy_maps tests --
-
-    #[test]
-    fn test_build_occupancy_maps_separates_infantry() {
-        let mut store = EntityStore::new();
-        store.insert(infantry(1, 5, 5, 2));
-        store.insert(infantry(2, 5, 5, 3));
-        store.insert(vehicle(3, 6, 6));
-
-        let (ground, _bridge) = build_occupancy_maps(&store);
-        let occ_55 = ground.get(&(5, 5)).unwrap();
-        assert_eq!(occ_55.infantry.len(), 2);
-        assert!(occ_55.blockers.is_empty());
-
-        let occ_66 = ground.get(&(6, 6)).unwrap();
-        assert!(occ_66.infantry.is_empty());
-        assert_eq!(occ_66.blockers.len(), 1);
-    }
-
     // -- allocate_sub_cell_with_reserved tests --
 
     #[test]
     fn test_allocate_with_reserved_empty_cell_no_reservations() {
-        // No occupancy, no reservations → first spot (2 = NE corner).
-        assert_eq!(allocate_sub_cell_with_reserved(None, None), Some(2));
+        assert_eq!(
+            allocate_sub_cell_with_reserved(None, MovementLayer::Ground, None),
+            Some(2)
+        );
     }
 
     #[test]
     fn test_allocate_with_reserved_skips_reserved_spot() {
-        // Empty stale occupancy, but spot 2 reserved this tick → returns spot 3.
         let reserved: Vec<u8> = vec![2];
         assert_eq!(
-            allocate_sub_cell_with_reserved(None, Some(&reserved)),
+            allocate_sub_cell_with_reserved(None, MovementLayer::Ground, Some(&reserved)),
             Some(3)
         );
     }
 
     #[test]
     fn test_allocate_with_reserved_full_from_reservations() {
-        // All 3 spots reserved this tick → None.
         let reserved: Vec<u8> = vec![2, 3, 4];
-        assert_eq!(allocate_sub_cell_with_reserved(None, Some(&reserved)), None);
+        assert_eq!(
+            allocate_sub_cell_with_reserved(None, MovementLayer::Ground, Some(&reserved)),
+            None
+        );
     }
 
     #[test]
     fn test_allocate_with_reserved_full_mixed() {
-        // 2 stale + 1 reserved = 3 total → None.
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 2), (2, 3)],
-        };
+        let grid = make_occ(&[
+            (5, 5, 1, MovementLayer::Ground, Some(2)),
+            (5, 5, 2, MovementLayer::Ground, Some(3)),
+        ]);
+        let occ = grid.get(5, 5).unwrap();
         let reserved: Vec<u8> = vec![4];
         assert_eq!(
-            allocate_sub_cell_with_reserved(Some(&occ), Some(&reserved)),
+            allocate_sub_cell_with_reserved(
+                Some(occ),
+                MovementLayer::Ground,
+                Some(&reserved)
+            ),
             None
         );
     }
 
     #[test]
     fn test_allocate_with_reserved_vehicle_blocks() {
-        // Vehicle in cell blocks all sub-cells even with no reservations.
-        let occ = CellOccupancy {
-            blockers: vec![99],
-            infantry: vec![],
-        };
-        assert_eq!(allocate_sub_cell_with_reserved(Some(&occ), None), None);
+        let grid = make_occ(&[(5, 5, 99, MovementLayer::Ground, None)]);
+        let occ = grid.get(5, 5).unwrap();
+        assert_eq!(
+            allocate_sub_cell_with_reserved(Some(occ), MovementLayer::Ground, None),
+            None
+        );
     }
 
     // -- quadrant detection tests --
@@ -1057,10 +990,10 @@ mod tests {
 
     #[test]
     fn test_preference_ne_entry_fast_path() {
-        // Approaching from NE (sub_x=200, sub_y=40) → quadrant 2 → sub-cell 2 free → fast-path.
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
             None,
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(200),
             SimFixed::from_num(40),
@@ -1071,28 +1004,26 @@ mod tests {
 
     #[test]
     fn test_preference_ne_entry_occupied_fallback() {
-        // Approaching from NE, sub-cell 2 occupied → preference table: try 4, then 3.
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 2)],
-        };
+        let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, Some(2))]);
+        let occ = grid.get(5, 5).unwrap();
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
-            Some(&occ),
+            Some(occ),
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(200),
             SimFixed::from_num(40),
             &mut rng,
         );
-        assert_eq!(result, Some(4)); // NE preference table: effective order is [4, 3]
+        assert_eq!(result, Some(4));
     }
 
     #[test]
     fn test_preference_sw_entry() {
-        // Approaching from SW → quadrant 3 → sub-cell 3 free → fast-path.
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
             None,
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(40),
             SimFixed::from_num(200),
@@ -1103,28 +1034,26 @@ mod tests {
 
     #[test]
     fn test_preference_sw_entry_occupied_fallback() {
-        // Approaching from SW, sub-cell 3 occupied → preference table: try 4, then 2.
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 3)],
-        };
+        let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, Some(3))]);
+        let occ = grid.get(5, 5).unwrap();
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
-            Some(&occ),
+            Some(occ),
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(40),
             SimFixed::from_num(200),
             &mut rng,
         );
-        assert_eq!(result, Some(4)); // SW preference: effective order is [4, 2]
+        assert_eq!(result, Some(4));
     }
 
     #[test]
     fn test_preference_se_entry() {
-        // Approaching from SE → quadrant 4 → sub-cell 4 free → fast-path.
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
             None,
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(200),
             SimFixed::from_num(200),
@@ -1135,31 +1064,28 @@ mod tests {
 
     #[test]
     fn test_preference_se_entry_occupied_fallback() {
-        // Approaching from SE, sub-cell 4 occupied → preference table: try 2, then 3.
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 4)],
-        };
+        let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, Some(4))]);
+        let occ = grid.get(5, 5).unwrap();
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
-            Some(&occ),
+            Some(occ),
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(200),
             SimFixed::from_num(200),
             &mut rng,
         );
-        assert_eq!(result, Some(2)); // SE preference: effective order is [2, 3]
+        assert_eq!(result, Some(2));
     }
 
     #[test]
     fn test_preference_center_entry_randomizes() {
-        // Center entry (128,128) → quadrant 0 → random rotation table.
-        // Run multiple times with different RNG seeds to verify we get different sub-cells.
         let mut seen: BTreeSet<u8> = BTreeSet::new();
         for seed in 0..20u64 {
             let mut rng = SimRng::new(seed);
             let result = allocate_sub_cell_with_preference(
                 None,
+                MovementLayer::Ground,
                 None,
                 SimFixed::from_num(128),
                 SimFixed::from_num(128),
@@ -1168,7 +1094,6 @@ mod tests {
             assert!(result.is_some());
             seen.insert(result.unwrap());
         }
-        // With 20 seeds and 4 rotations, we should see all 3 possible sub-cells.
         assert!(seen.contains(&2), "expected sub-cell 2 from randomization");
         assert!(seen.contains(&3), "expected sub-cell 3 from randomization");
         assert!(seen.contains(&4), "expected sub-cell 4 from randomization");
@@ -1176,13 +1101,16 @@ mod tests {
 
     #[test]
     fn test_preference_all_occupied() {
-        let occ = CellOccupancy {
-            blockers: vec![],
-            infantry: vec![(1, 2), (2, 3), (3, 4)],
-        };
+        let grid = make_occ(&[
+            (5, 5, 1, MovementLayer::Ground, Some(2)),
+            (5, 5, 2, MovementLayer::Ground, Some(3)),
+            (5, 5, 3, MovementLayer::Ground, Some(4)),
+        ]);
+        let occ = grid.get(5, 5).unwrap();
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
-            Some(&occ),
+            Some(occ),
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(200),
             SimFixed::from_num(40),
@@ -1193,11 +1121,11 @@ mod tests {
 
     #[test]
     fn test_preference_respects_reserved() {
-        // Sub-cell 2 reserved (not in stale occ) → NE fast-path blocked → fallback to 4.
         let reserved: Vec<u8> = vec![2];
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
             None,
+            MovementLayer::Ground,
             Some(&reserved),
             SimFixed::from_num(200),
             SimFixed::from_num(40),
@@ -1208,13 +1136,12 @@ mod tests {
 
     #[test]
     fn test_preference_vehicle_blocks() {
-        let occ = CellOccupancy {
-            blockers: vec![99],
-            infantry: vec![],
-        };
+        let grid = make_occ(&[(5, 5, 99, MovementLayer::Ground, None)]);
+        let occ = grid.get(5, 5).unwrap();
         let mut rng = SimRng::new(42);
         let result = allocate_sub_cell_with_preference(
-            Some(&occ),
+            Some(occ),
+            MovementLayer::Ground,
             None,
             SimFixed::from_num(200),
             SimFixed::from_num(40),
