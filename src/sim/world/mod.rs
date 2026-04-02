@@ -1030,8 +1030,18 @@ impl Simulation {
         // DEPENDS ON: commands (may set movement targets for air/special units).
         // INDEPENDENT OF: ground movement (air units bypass A* and occupancy).
         air_movement::tick_air_movement(&mut self.entities, tick_ms, self.tick);
-        teleport_movement::tick_teleport_movement(&mut self.entities, tick_ms, self.tick);
-        tunnel_movement::tick_tunnel_movement(&mut self.entities, tick_ms, self.tick);
+        teleport_movement::tick_teleport_movement(
+            &mut self.entities,
+            &mut self.occupancy,
+            tick_ms,
+            self.tick,
+        );
+        tunnel_movement::tick_tunnel_movement(
+            &mut self.entities,
+            &mut self.occupancy,
+            tick_ms,
+            self.tick,
+        );
         let _rocket_detonations =
             rocket_movement::tick_rocket_movement(&mut self.entities, tick_ms, self.tick);
         droppod_movement::tick_droppod_movement(&mut self.entities, tick_ms, self.tick);
