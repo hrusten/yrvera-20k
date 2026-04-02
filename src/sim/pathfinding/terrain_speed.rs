@@ -7,7 +7,7 @@
 //! 2. **Slope** — uphill slows, downhill speeds up (SlopeClimb / SlopeDescend)
 //! 3. **Crowd density** — units slow when many neighbors occupy nearby cells
 //!
-//! Depends on: `ResolvedTerrainGrid` (cell height + land type), `OccupancyMap`
+//! Depends on: `ResolvedTerrainGrid` (cell height + land type), `OccupancyGrid`
 //! (nearby unit count), `SpeedCostProfile` (INI-parsed terrain percentages).
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;

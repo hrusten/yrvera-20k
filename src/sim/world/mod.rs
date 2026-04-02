@@ -383,36 +383,10 @@ impl Simulation {
         }
     }
 
-    /// Remove an entity from the occupancy grid. For structures, removes all
-    /// foundation cells using the provided foundation string (e.g. "2x2").
-    /// Call before removing the entity from EntityStore.
-    pub(crate) fn remove_entity_occupancy(
-        &mut self,
-        stable_id: u64,
-        foundation: Option<&str>,
-    ) {
-        if let Some(entity) = self.entities.get(stable_id) {
-            let rx = entity.position.rx;
-            let ry = entity.position.ry;
-            if let Some(f) = foundation {
-                let (fw, fh) = crate::sim::production::foundation_dimensions(f);
-                for dy in 0..fh {
-                    for dx in 0..fw {
-                        self.occupancy.remove(rx + dx, ry + dy, stable_id);
-                    }
-                }
-            } else {
-                self.occupancy.remove(rx, ry, stable_id);
-            }
-        }
-    }
-
     /// Despawn an entity by stable_id, removing it from EntityStore.
     /// Decrements owned count if the entity was not already dying (combat deaths
     /// are decremented when dying is first set, not at physical removal).
-    /// Also removes the entity from the occupancy grid (single-cell only —
-    /// callers with foundation info should call `remove_entity_occupancy` first
-    /// for structures).
+    /// Also removes the entity from the occupancy grid (origin cell only).
     pub(crate) fn despawn_entity(&mut self, stable_id: u64) {
         // Gather entity data before any mutable borrows.
         let entity_info = self.entities.get(stable_id).map(|e| {

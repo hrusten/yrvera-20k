@@ -2,7 +2,7 @@
 //!
 //! Extracted from movement.rs to keep that file under 600 lines. Contains:
 //! - `CellOccupancy` — tracks what entities occupy each cell (vehicles vs infantry sub-cells)
-//! - `OccupancyMap` — per-cell occupancy for ground and bridge layers
+//! - `OccupancyGrid` — persistent per-cell occupancy (see sim/occupancy.rs)
 //! - Sub-cell allocation for infantry (spots 2, 3, 4 — max 3 per cell)
 //! - Crush checks: Crusher/CrusherAll movement zones vs crushable/omni_crush_resistant
 //! - Scatter: issue movement commands to displace friendly blockers (replaces old teleport "bump")
@@ -80,8 +80,6 @@ const NEIGHBOR_OFFSETS: [(i32, i32); 8] = [
     (-1, -1), // NW
 ];
 
-// Old CellOccupancy, OccupancyMap, build_occupancy_maps, and occupancy_map_for_layer*
-// have been replaced by the persistent OccupancyGrid in sim/occupancy.rs.
 
 /// Build the set of cells blocked by entities for pathfinding purposes.
 ///
