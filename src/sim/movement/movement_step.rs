@@ -12,7 +12,8 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::components::{MovementTarget, Position};
 use crate::sim::debug_event_log::DebugEventKind;
-use crate::sim::movement::bump_crush::{self, OccupancyMap};
+use crate::sim::movement::bump_crush;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::movement::drive_track::{self, DriveTrackState};
 use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
@@ -375,8 +376,7 @@ pub(super) fn process_cell_crossings(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    occupied_ground: &OccupancyMap,
-    occupied_bridge: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     reserved_destinations: &mut BTreeSet<(MovementLayer, u16, u16)>,
     reserved_infantry_sub_cells: &mut BTreeMap<(MovementLayer, u16, u16), Vec<u8>>,
     stats: &mut MovementTickStats,
@@ -583,8 +583,6 @@ pub(super) fn process_cell_crossings(
         }
 
         // --- Occupancy check (entity-aware: sub-cell, crush, bump) ---
-        let occ_map: &OccupancyMap =
-            bump_crush::occupancy_map_for_layer(next_layer, occupied_ground, occupied_bridge);
         // Occupancy check: vehicles defer to crush/bump/attack handler,
         // infantry defer to sub-cell/attack handler. Both break out of the
         // loop to release the mutable entity borrow for blocker lookups.
@@ -594,7 +592,7 @@ pub(super) fn process_cell_crossings(
             (nx, ny),
             (position.rx, position.ry),
             active_layer,
-            occ_map,
+            occupancy,
             reserved_infantry_sub_cells,
         ) {
             deferred_cell_check = Some(check);
@@ -634,7 +632,7 @@ pub(super) fn process_cell_crossings(
             next_layer,
             nx,
             ny,
-            occ_map,
+            occupancy,
             reserved_infantry_sub_cells,
             reserved_destinations,
             rng,
@@ -661,13 +659,12 @@ pub(super) fn process_cell_crossings(
         // cell's occupancy rather than carrying the current cell's.
         if category == EntityCategory::Infantry && target.next_index < target.path.len() {
             let next_cell = target.path[target.next_index];
-            let next_occ =
-                bump_crush::occupancy_map_for_layer(active_layer, occupied_ground, occupied_bridge);
             let next_reserved = reserved_infantry_sub_cells
                 .get(&(active_layer, next_cell.0, next_cell.1))
                 .map(Vec::as_slice);
             if let Some(pre_sub) = bump_crush::allocate_sub_cell_with_preference(
-                next_occ.get(&(next_cell.0, next_cell.1)),
+                occupancy.get(next_cell.0, next_cell.1),
+                active_layer,
                 next_reserved,
                 position.sub_x,
                 position.sub_y,

@@ -25,8 +25,9 @@ use crate::map::entities::EntityCategory;
 use crate::map::houses::{self, HouseAllianceMap};
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::sim::entity_store::EntityStore;
-use crate::sim::movement::bump_crush::{self, OccupancyMap};
+use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::OccupancyGrid;
 
 // ---------------------------------------------------------------------------
 // Result enums
@@ -92,7 +93,7 @@ pub fn check_terrain(
     path_grid: Option<&PathGrid>,
     cost_grid: Option<&TerrainCostGrid>,
     reserved_destinations: &BTreeSet<(MovementLayer, u16, u16)>,
-    occ_map: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     reserved_sub_cells: Option<&[u8]>,
 ) -> TerrainCheckResult {
     let (nx, ny) = target;
@@ -108,7 +109,6 @@ pub fn check_terrain(
             path_grid.is_some_and(|grid| grid.is_walkable_on_layer(nx, ny, MovementLayer::Bridge))
         }
         MovementLayer::Air | MovementLayer::Underground => {
-            // Air/underground don't use ground/bridge walkability.
             true
         }
     };
@@ -122,11 +122,12 @@ pub fn check_terrain(
     }
 
     // --- Occupancy ---
-    let occ = occ_map.get(&target);
+    let occ = occupancy.get(nx, ny);
 
     if mover_category == EntityCategory::Infantry {
         // Infantry: check sub-cell availability.
-        let sub = bump_crush::allocate_sub_cell_with_reserved(occ, reserved_sub_cells);
+        let sub =
+            bump_crush::allocate_sub_cell_with_reserved(occ, target_layer, reserved_sub_cells);
         if sub.is_some() {
             return TerrainCheckResult::Clear;
         }
@@ -134,10 +135,10 @@ pub fn check_terrain(
         return TerrainCheckResult::NeedsBlockerCheck;
     }
 
-    // Vehicle/aircraft/structure: cell must be unoccupied.
+    // Vehicle/aircraft/structure: cell must be unoccupied on this layer.
     match occ {
         None => TerrainCheckResult::Clear,
-        Some(o) if o.blockers.is_empty() && o.infantry.is_empty() => TerrainCheckResult::Clear,
+        Some(o) if o.is_empty_on(target_layer) => TerrainCheckResult::Clear,
         Some(_) => TerrainCheckResult::NeedsBlockerCheck,
     }
 }
@@ -160,12 +161,13 @@ pub fn check_terrain(
 /// additional terrain/object state before these occupancy outcomes are chosen.
 pub fn classify_occupied_cell(
     target: (u16, u16),
+    target_layer: MovementLayer,
     mover_id: u64,
     mover_zone: MovementZone,
     mover_omni_crusher: bool,
     mover_owner: &str,
     mover_locomotor: LocomotorKind,
-    occ_map: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     entities: &EntityStore,
     alliances: &HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
@@ -173,7 +175,8 @@ pub fn classify_occupied_cell(
     // --- Crush check ---
     let victims = bump_crush::collect_crush_victims(
         target,
-        occ_map,
+        occupancy,
+        target_layer,
         mover_zone,
         mover_omni_crusher,
         entities,
@@ -181,7 +184,8 @@ pub fn classify_occupied_cell(
     if !victims.is_empty()
         && bump_crush::cell_passable_after_crush(
             target,
-            occ_map,
+            occupancy,
+            target_layer,
             mover_zone,
             mover_omni_crusher,
             entities,
@@ -191,7 +195,7 @@ pub fn classify_occupied_cell(
     }
 
     // --- Find primary blocker ---
-    let blocker_id = find_primary_blocker(target, mover_id, occ_map);
+    let blocker_id = find_primary_blocker(target, target_layer, mover_id, occupancy);
     let Some(bid) = blocker_id else {
         // No identifiable blocker (shouldn't happen if Phase 1 said NeedsBlockerCheck).
         return apply_overrides(CellEntryResult::Impassable, mover_locomotor);
@@ -204,17 +208,21 @@ pub fn classify_occupied_cell(
 
 /// Find the primary blocker entity in a cell (first vehicle/structure, or first
 /// non-self infantry).
-fn find_primary_blocker(target: (u16, u16), mover_id: u64, occ_map: &OccupancyMap) -> Option<u64> {
-    let occ = occ_map.get(&target)?;
+fn find_primary_blocker(
+    target: (u16, u16),
+    layer: MovementLayer,
+    mover_id: u64,
+    occupancy: &OccupancyGrid,
+) -> Option<u64> {
+    let occ = occupancy.get(target.0, target.1)?;
     // Prefer vehicle/structure blockers over infantry.
-    if let Some(&bid) = occ.blockers.first() {
+    if let Some(bid) = occ.blockers(layer).next() {
         return Some(bid);
     }
     // Fall back to first non-self infantry.
-    occ.infantry
-        .iter()
-        .find(|&&(id, _)| id != mover_id)
-        .map(|&(id, _)| id)
+    occ.infantry(layer)
+        .find(|&(id, _)| id != mover_id)
+        .map(|(id, _)| id)
 }
 
 /// Classify a single blocker as enemy, friendly-moving, or friendly-stationary.
@@ -258,11 +266,10 @@ fn apply_overrides(result: CellEntryResult, locomotor: LocomotorKind) -> CellEnt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::movement::bump_crush::CellOccupancy;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
 
-    fn empty_occ() -> OccupancyMap {
-        BTreeMap::new()
+    fn empty_occ() -> OccupancyGrid {
+        OccupancyGrid::new()
     }
 
     #[test]
@@ -282,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_impassable_blocked_grid() {
-        use crate::sim::pathfinding::PathGrid; // re-exported from core
+        use crate::sim::pathfinding::PathGrid;
         let mut grid = PathGrid::new(10, 10);
         grid.set_blocked(5, 5, true);
         let result = check_terrain(
@@ -317,14 +324,8 @@ mod tests {
 
     #[test]
     fn test_vehicle_occupied_needs_check() {
-        let mut occ = empty_occ();
-        occ.insert(
-            (5, 5),
-            CellOccupancy {
-                blockers: vec![42],
-                infantry: vec![],
-            },
-        );
+        let mut occ = OccupancyGrid::new();
+        occ.add(5, 5, 42, MovementLayer::Ground, None);
         let result = check_terrain(
             (5, 5),
             MovementLayer::Ground,
@@ -340,14 +341,8 @@ mod tests {
 
     #[test]
     fn test_infantry_subcell_available() {
-        let mut occ = empty_occ();
-        occ.insert(
-            (5, 5),
-            CellOccupancy {
-                blockers: vec![],
-                infantry: vec![(10, 2)], // 1 infantry, sub-cell 2
-            },
-        );
+        let mut occ = OccupancyGrid::new();
+        occ.add(5, 5, 10, MovementLayer::Ground, Some(2));
         let result = check_terrain(
             (5, 5),
             MovementLayer::Ground,
@@ -363,14 +358,10 @@ mod tests {
 
     #[test]
     fn test_infantry_cell_full() {
-        let mut occ = empty_occ();
-        occ.insert(
-            (5, 5),
-            CellOccupancy {
-                blockers: vec![],
-                infantry: vec![(10, 2), (11, 3), (12, 4)],
-            },
-        );
+        let mut occ = OccupancyGrid::new();
+        occ.add(5, 5, 10, MovementLayer::Ground, Some(2));
+        occ.add(5, 5, 11, MovementLayer::Ground, Some(3));
+        occ.add(5, 5, 12, MovementLayer::Ground, Some(4));
         let result = check_terrain(
             (5, 5),
             MovementLayer::Ground,

@@ -29,7 +29,9 @@ use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement;
-use crate::sim::movement::bump_crush::{self, OccupancyMap};
+use crate::sim::movement::bump_crush;
+use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
@@ -71,6 +73,7 @@ pub fn tick_idle_scatter(
     rules: Option<&RuleSet>,
     path_grid: Option<&PathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
+    occupancy: &OccupancyGrid,
     rng: &mut SimRng,
     frame_counter: u64,
     interner: &crate::sim::intern::StringInterner,
@@ -79,9 +82,6 @@ pub fn tick_idle_scatter(
         return;
     }
     let Some(grid) = path_grid else { return };
-
-    // Snapshot occupancy for cell-sharing checks.
-    let (ground_occ, _bridge_occ) = bump_crush::build_occupancy_maps(entities);
 
     // Collect idle mobile units sharing a cell with others. Deterministic order
     // via keys_sorted() is critical for lockstep correctness.
@@ -109,8 +109,8 @@ pub fn tick_idle_scatter(
         let pos = (entity.position.rx, entity.position.ry);
 
         // Only scatter if sharing the cell with at least one other entity.
-        let sharing = ground_occ.get(&pos).is_some_and(|occ| {
-            let total = occ.blockers.len() + occ.infantry.len();
+        let sharing = occupancy.get(pos.0, pos.1).is_some_and(|occ| {
+            let total = occ.blockers(MovementLayer::Ground).count() + occ.infantry(MovementLayer::Ground).count();
             total > 1
         });
         if !sharing {
@@ -136,11 +136,11 @@ pub fn tick_idle_scatter(
             // For infantry: must have a free sub-cell. For vehicles: must be empty.
             let available = match entity.category {
                 EntityCategory::Infantry => {
-                    bump_crush::cell_passable_for_infantry(ground_occ.get(&(rx, ry)))
+                    bump_crush::cell_passable_for_infantry(occupancy.get(rx, ry), MovementLayer::Ground)
                 }
-                _ => ground_occ
-                    .get(&(rx, ry))
-                    .map_or(true, |o| o.blockers.is_empty()),
+                _ => occupancy
+                    .get(rx, ry)
+                    .map_or(true, |o| !o.has_blockers_on(MovementLayer::Ground)),
             };
             if available {
                 dest = Some((rx, ry));
@@ -149,7 +149,9 @@ pub fn tick_idle_scatter(
         }
 
         if let Some(target) = dest {
-            if let Some(occ) = ground_occ.get(&pos) {
+            if let Some(occ) = occupancy.get(pos.0, pos.1) {
+                let blockers: Vec<_> = occ.blockers(MovementLayer::Ground).collect();
+                let infantry: Vec<_> = occ.infantry(MovementLayer::Ground).collect();
                 log::info!(
                     "IDLE_SCATTER entity={} {:?} at ({},{}) → ({},{}) blockers={:?} infantry={:?}",
                     id,
@@ -158,8 +160,8 @@ pub fn tick_idle_scatter(
                     pos.1,
                     target.0,
                     target.1,
-                    occ.blockers,
-                    occ.infantry,
+                    blockers,
+                    infantry,
                 );
             }
             scatter_commands.push((id, target));
@@ -200,10 +202,10 @@ pub fn scatter_units_from_cell(
     target_cell: (u16, u16),
     path_grid: &PathGrid,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
+    occupancy: &OccupancyGrid,
     interner: &crate::sim::intern::StringInterner,
 ) -> u32 {
     let spiral = generate_spiral_offsets(MAX_SPIRAL_RADIUS, MAX_SCATTER_DIRECTIONS);
-    let (ground_occ, _bridge_occ) = bump_crush::build_occupancy_maps(entities);
 
     // Collect candidate entities: idle mobile units owned by this house.
     // keys_sorted() takes &mut self, so .to_vec() releases the borrow before
@@ -251,7 +253,7 @@ pub fn scatter_units_from_cell(
             target_cell,
             *category,
             path_grid,
-            &ground_occ,
+            occupancy,
         );
 
         let Some(dest) = scatter_cell else {
@@ -305,7 +307,7 @@ fn find_passable_scatter_cell(
     target_cell: (u16, u16),
     category: EntityCategory,
     path_grid: &PathGrid,
-    ground_occ: &OccupancyMap,
+    occupancy: &OccupancyGrid,
 ) -> Option<(u16, u16)> {
     while *direction_idx < spiral.len() {
         let (dx, dy) = spiral[*direction_idx];
@@ -330,12 +332,11 @@ fn find_passable_scatter_cell(
         // Check occupancy: infantry can share cells, vehicles cannot.
         let available = match category {
             EntityCategory::Infantry => {
-                bump_crush::cell_passable_for_infantry(ground_occ.get(&(rx, ry)))
+                bump_crush::cell_passable_for_infantry(occupancy.get(rx, ry), MovementLayer::Ground)
             }
-            _ => match ground_occ.get(&(rx, ry)) {
-                Some(o) => o.blockers.is_empty(),
-                None => true,
-            },
+            _ => occupancy
+                .get(rx, ry)
+                .map_or(true, |o| !o.has_blockers_on(MovementLayer::Ground)),
         };
         if !available {
             continue;

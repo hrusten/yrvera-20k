@@ -32,7 +32,8 @@ use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, dt_from_tick_ms, fixed_distance,
 };
 
-use super::bump_crush::{self, OccupancyMap};
+use super::bump_crush;
+use crate::sim::occupancy::OccupancyGrid;
 use super::locomotor::{GroundMovePhase, MovementLayer};
 use super::movement_bridge::{
     BRIDGE_Z_OFFSET, apply_bridge_lookahead_if_needed, apply_pending_bridge_render_state,
@@ -281,6 +282,7 @@ pub fn tick_movement_with_grids(
     path_grid: Option<&PathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     alliances: &HouseAllianceMap,
+    occupancy: &OccupancyGrid,
     rng: &mut SimRng,
     tick_ms: u32,
     sim_tick: u64,
@@ -309,9 +311,6 @@ pub fn tick_movement_with_grids(
     let dt: SimFixed = dt_from_tick_ms(tick_ms);
     // Collect entities that have finished their paths (need movement_target removal after loop).
     let mut finished_entities: Vec<u64> = Vec::new();
-    // Rich occupancy snapshot: tracks entity IDs, infantry sub-cells, and vehicle blockers.
-    let (occupied_ground, occupied_bridge): (OccupancyMap, OccupancyMap) =
-        bump_crush::build_occupancy_maps(entities);
     let mut reserved_destinations: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
     // Per-cell sub-cell reservations for infantry. Tracks which sub-cell spots have
     // been claimed by earlier movers this tick, preventing duplicate sub-cell assignment
@@ -449,18 +448,13 @@ pub fn tick_movement_with_grids(
                     next_cell,
                 ) {
                     (Some(terrain), Some(st), Some(loco), Some(nc)) => {
-                        let occ = if active_layer == MovementLayer::Bridge {
-                            &occupied_bridge
-                        } else {
-                            &occupied_ground
-                        };
                         terrain_speed::compute_cell_speed_modifier(
                             st,
                             loco.kind,
                             (entity.position.rx, entity.position.ry),
                             nc,
                             terrain,
-                            occ,
+                            occupancy,
                             terrain_speed_config,
                         )
                     }
@@ -582,11 +576,6 @@ pub fn tick_movement_with_grids(
                             entity.on_bridge = resolved_layer == MovementLayer::Bridge;
                         }
                         // Reserve destination cell.
-                        let occ_map = super::bump_crush::occupancy_map_for_layer(
-                            active_layer,
-                            &occupied_ground,
-                            &occupied_bridge,
-                        );
                         super::movement_reservation::reserve_destination_after_transition(
                             entity.category,
                             &mut entity.locomotor,
@@ -597,7 +586,7 @@ pub fn tick_movement_with_grids(
                             active_layer,
                             nx,
                             ny,
-                            occ_map,
+                            occupancy,
                             &mut reserved_infantry_sub_cells,
                             &mut reserved_destinations,
                             rng,
@@ -703,8 +692,7 @@ pub fn tick_movement_with_grids(
                 resolved_terrain,
                 entity_cost_grid,
                 mover_entity_blocks,
-                &occupied_ground,
-                &occupied_bridge,
+                occupancy,
                 &mut reserved_destinations,
                 &mut reserved_infantry_sub_cells,
                 &mut stats,
@@ -843,8 +831,7 @@ pub fn tick_movement_with_grids(
                 mcfg,
                 entity_cost_grid,
                 mover_entity_blocks,
-                &occupied_ground,
-                &occupied_bridge,
+                occupancy,
                 alliances,
                 path_grid,
                 resolved_terrain,

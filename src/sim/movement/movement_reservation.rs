@@ -7,9 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::map::entities::EntityCategory;
 use crate::sim::components::{MovementTarget, Position};
-use crate::sim::movement::bump_crush::{self, OccupancyMap};
+use crate::sim::movement::bump_crush;
 use crate::sim::movement::drive_track::DriveTrackState;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::rng::SimRng;
 
 pub(super) fn reserve_destination_after_transition(
@@ -22,7 +23,7 @@ pub(super) fn reserve_destination_after_transition(
     next_layer: MovementLayer,
     nx: u16,
     ny: u16,
-    occ_map: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     reserved_infantry_sub_cells: &mut BTreeMap<(MovementLayer, u16, u16), Vec<u8>>,
     reserved_destinations: &mut BTreeSet<(MovementLayer, u16, u16)>,
     rng: &mut SimRng,
@@ -32,7 +33,8 @@ pub(super) fn reserve_destination_after_transition(
             .get(&(next_layer, nx, ny))
             .map(Vec::as_slice);
         let Some(sub) = bump_crush::allocate_sub_cell_with_preference(
-            occ_map.get(&(nx, ny)),
+            occupancy.get(nx, ny),
+            next_layer,
             reserved,
             position.sub_x,
             position.sub_y,

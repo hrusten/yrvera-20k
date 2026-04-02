@@ -1015,6 +1015,7 @@ impl Simulation {
             path_grid,
             &self.terrain_costs,
             &self.house_alliances,
+            &self.occupancy,
             &mut self.rng,
             tick_ms,
             self.tick,
