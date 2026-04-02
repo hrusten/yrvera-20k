@@ -173,3 +173,128 @@ impl OccupancyGrid {
         self.cells.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_and_get() {
+        let mut grid = OccupancyGrid::new();
+        grid.add(5, 5, 1, MovementLayer::Ground, None);
+        let occ = grid.get(5, 5).unwrap();
+        assert_eq!(occ.occupants.len(), 1);
+        assert_eq!(occ.occupants[0].entity_id, 1);
+        assert_eq!(occ.occupants[0].layer, MovementLayer::Ground);
+        assert!(occ.occupants[0].sub_cell.is_none());
+    }
+
+    #[test]
+    fn remove_cleans_up_empty_cell() {
+        let mut grid = OccupancyGrid::new();
+        grid.add(5, 5, 1, MovementLayer::Ground, None);
+        grid.remove(5, 5, 1);
+        assert!(grid.get(5, 5).is_none());
+        assert_eq!(grid.occupied_cell_count(), 0);
+    }
+
+    #[test]
+    fn remove_nonexistent_is_noop() {
+        let mut grid = OccupancyGrid::new();
+        grid.remove(5, 5, 99);
+        assert!(grid.get(5, 5).is_none());
+    }
+
+    #[test]
+    fn move_entity_transfers_between_cells() {
+        let mut grid = OccupancyGrid::new();
+        grid.add(5, 5, 1, MovementLayer::Ground, None);
+        grid.move_entity(5, 5, 6, 6, 1, MovementLayer::Ground, None);
+        assert!(grid.get(5, 5).is_none());
+        let occ = grid.get(6, 6).unwrap();
+        assert_eq!(occ.occupants.len(), 1);
+        assert_eq!(occ.occupants[0].entity_id, 1);
+    }
+
+    #[test]
+    fn layer_filtering() {
+        let mut grid = OccupancyGrid::new();
+        grid.add(5, 5, 1, MovementLayer::Ground, None);
+        grid.add(5, 5, 2, MovementLayer::Bridge, None);
+        grid.add(5, 5, 3, MovementLayer::Ground, Some(2));
+
+        let occ = grid.get(5, 5).unwrap();
+        let ground_blockers: Vec<u64> = occ.blockers(MovementLayer::Ground).collect();
+        assert_eq!(ground_blockers, vec![1]);
+        let bridge_blockers: Vec<u64> = occ.blockers(MovementLayer::Bridge).collect();
+        assert_eq!(bridge_blockers, vec![2]);
+        let ground_inf: Vec<(u64, u8)> = occ.infantry(MovementLayer::Ground).collect();
+        assert_eq!(ground_inf, vec![(3, 2)]);
+        assert_eq!(occ.infantry(MovementLayer::Bridge).count(), 0);
+    }
+
+    #[test]
+    fn is_empty_on_layer() {
+        let mut grid = OccupancyGrid::new();
+        assert!(grid.is_empty_on_layer(5, 5, MovementLayer::Ground));
+        grid.add(5, 5, 1, MovementLayer::Bridge, None);
+        assert!(grid.is_empty_on_layer(5, 5, MovementLayer::Ground));
+        assert!(!grid.is_empty_on_layer(5, 5, MovementLayer::Bridge));
+    }
+
+    #[test]
+    fn infantry_subcells() {
+        let mut grid = OccupancyGrid::new();
+        grid.add(5, 5, 10, MovementLayer::Ground, Some(2));
+        grid.add(5, 5, 11, MovementLayer::Ground, Some(3));
+        grid.add(5, 5, 12, MovementLayer::Ground, Some(4));
+
+        let occ = grid.get(5, 5).unwrap();
+        let inf: Vec<(u64, u8)> = occ.infantry(MovementLayer::Ground).collect();
+        assert_eq!(inf.len(), 3);
+        assert!(!occ.has_blockers_on(MovementLayer::Ground));
+    }
+
+    #[test]
+    fn multi_cell_building() {
+        let mut grid = OccupancyGrid::new();
+        for dy in 0..2u16 {
+            for dx in 0..2u16 {
+                grid.add(10 + dx, 10 + dy, 100, MovementLayer::Ground, None);
+            }
+        }
+        assert!(grid.contains_entity(10, 10, 100));
+        assert!(grid.contains_entity(11, 10, 100));
+        assert!(grid.contains_entity(10, 11, 100));
+        assert!(grid.contains_entity(11, 11, 100));
+        assert!(!grid.contains_entity(12, 12, 100));
+
+        for dy in 0..2u16 {
+            for dx in 0..2u16 {
+                grid.remove(10 + dx, 10 + dy, 100);
+            }
+        }
+        assert_eq!(grid.occupied_cell_count(), 0);
+    }
+
+    #[test]
+    fn update_sub_cell() {
+        let mut grid = OccupancyGrid::new();
+        grid.add(5, 5, 1, MovementLayer::Ground, Some(2));
+        grid.update_sub_cell(5, 5, 1, Some(4));
+        let occ = grid.get(5, 5).unwrap();
+        let inf: Vec<(u64, u8)> = occ.infantry(MovementLayer::Ground).collect();
+        assert_eq!(inf, vec![(1, 4)]);
+    }
+
+    #[test]
+    fn count_on_layer() {
+        let mut grid = OccupancyGrid::new();
+        grid.add(5, 5, 1, MovementLayer::Ground, None);
+        grid.add(5, 5, 2, MovementLayer::Ground, Some(2));
+        grid.add(5, 5, 3, MovementLayer::Bridge, None);
+        assert_eq!(grid.count_on_layer(5, 5, MovementLayer::Ground), 2);
+        assert_eq!(grid.count_on_layer(5, 5, MovementLayer::Bridge), 1);
+        assert_eq!(grid.count_on_layer(5, 5, MovementLayer::Air), 0);
+    }
+}
