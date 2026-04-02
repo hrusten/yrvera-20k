@@ -229,8 +229,41 @@ impl Simulation {
 
             let owner_str = self.interner.resolve(ge.owner).to_string();
             let category = ge.category;
+            let spawn_rx = ge.position.rx;
+            let spawn_ry = ge.position.ry;
+            let spawn_layer = ge
+                .locomotor
+                .as_ref()
+                .map_or(MovementLayer::Ground, |l| l.layer);
+            let spawn_sub_cell = ge.sub_cell;
+            let spawn_sid = ge.stable_id;
+            let spawn_foundation =
+                if category == EntityCategory::Structure {
+                    rules
+                        .and_then(|r| r.object(&map_ent.type_id))
+                        .map(|obj| foundation_dimensions(&obj.foundation))
+                } else {
+                    None
+                };
             self.entities.insert(ge);
             self.increment_owned_count(&owner_str, category);
+            // Register in occupancy grid.
+            if let Some((fw, fh)) = spawn_foundation {
+                for dy in 0..fh {
+                    for dx in 0..fw {
+                        self.occupancy
+                            .add(spawn_rx + dx, spawn_ry + dy, spawn_sid, spawn_layer, None);
+                    }
+                }
+            } else {
+                self.occupancy.add(
+                    spawn_rx,
+                    spawn_ry,
+                    spawn_sid,
+                    spawn_layer,
+                    spawn_sub_cell,
+                );
+            }
             count += 1;
         }
 
@@ -373,8 +406,38 @@ impl Simulation {
 
         let spawn_owner_str = self.interner.resolve(ge.owner).to_string();
         let spawn_category = ge.category;
+        let spawn_rx = ge.position.rx;
+        let spawn_ry = ge.position.ry;
+        let spawn_layer = ge
+            .locomotor
+            .as_ref()
+            .map_or(MovementLayer::Ground, |l| l.layer);
+        let spawn_sub_cell = ge.sub_cell;
         self.entities.insert(ge);
         self.increment_owned_count(&spawn_owner_str, spawn_category);
+        // Register in occupancy grid.
+        if spawn_category == EntityCategory::Structure {
+            let (fw, fh) = foundation_dimensions(&obj.foundation);
+            for dy in 0..fh {
+                for dx in 0..fw {
+                    self.occupancy.add(
+                        spawn_rx + dx,
+                        spawn_ry + dy,
+                        stable_id,
+                        spawn_layer,
+                        None,
+                    );
+                }
+            }
+        } else {
+            self.occupancy.add(
+                spawn_rx,
+                spawn_ry,
+                stable_id,
+                spawn_layer,
+                spawn_sub_cell,
+            );
+        }
         Some(stable_id)
     }
 
