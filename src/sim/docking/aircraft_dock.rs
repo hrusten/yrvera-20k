@@ -559,7 +559,7 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
             .get(id)
             .and_then(|e| {
                 let obj = rules.object(sim.interner.resolve(e.type_ref))?;
-                Some(crate::util::fixed_math::SimFixed::from_num(
+                Some(crate::util::fixed_math::ra2_speed_to_leptons_per_second(
                     obj.speed.max(1),
                 ))
             })

@@ -98,9 +98,8 @@ pub enum AirMovePhase {
 }
 
 /// Default cruise altitude for Fly locomotor aircraft (in leptons).
-/// RA2 aircraft fly at a fixed altitude — this value produces a visible
-/// vertical offset (~3 cells worth of height).
-const FLY_CRUISE_ALTITUDE: SimFixed = SimFixed::lit("600");
+/// Used only in tests and as a fallback — runtime code uses `GeneralRules.flight_level`.
+const FLY_CRUISE_ALTITUDE: SimFixed = SimFixed::lit("1500");
 
 /// Rate at which Fly aircraft ascend/descend (leptons per second).
 const FLY_CLIMB_RATE: SimFixed = SimFixed::lit("300");
@@ -126,10 +125,16 @@ pub struct LocomotorState {
     /// Speed multiplier applied on top of ObjectType.speed.
     /// 1.0 for most units, 0.65 for Hover, etc.
     pub speed_multiplier: SimFixed,
-    /// Mission-controlled speed fraction (0.0–1.0). Set by aircraft missions
-    /// for dive bombing deceleration and speed tiers. air_movement multiplies
-    /// the base speed by this fraction. Default 1.0 (full speed).
+    /// Mission-controlled speed fraction (0.0–1.0). Acts as the *target* speed
+    /// for Fly aircraft — `fly_current_speed` ramps toward this value.
+    /// Set by aircraft missions for dive bombing deceleration and speed tiers.
+    /// Default 1.0 (full speed).
     pub speed_fraction: SimFixed,
+    /// Actual flight speed fraction (0.0–1.0) for Fly aircraft.
+    /// Ramps toward `speed_fraction` (which acts as target) by +/-0.1 per tick,
+    /// matching the original engine's TargetSpeed/CurrentSpeed system.
+    /// Jumpjets use their own `jumpjet_current_speed` instead.
+    pub fly_current_speed: SimFixed,
     /// Current altitude in leptons (0 = on the ground).
     /// Fly units cruise at FLY_CRUISE_ALTITUDE; Jumpjets hover at JumpjetHeight.
     pub altitude: SimFixed,
@@ -191,9 +196,10 @@ pub struct LocomotorState {
 impl LocomotorState {
     /// Create a LocomotorState from an ObjectType's parsed rules.ini data.
     ///
-    /// Sets the correct layer, phase, speed multiplier, and altitude params
-    /// based on the unit's locomotor kind.
-    pub fn from_object_type(obj: &ObjectType) -> Self {
+    /// `flight_level` is the cruise altitude in leptons from `[General] FlightLevel=`
+    /// (typically `rules.general.flight_level`). Fly/Rocket locomotors use this
+    /// as their target altitude.
+    pub fn from_object_type(obj: &ObjectType, flight_level: i32) -> Self {
         let kind: LocomotorKind = obj.locomotor;
         let sim_one: SimFixed = SimFixed::from_num(1);
 
@@ -218,7 +224,7 @@ impl LocomotorState {
 
         // Extract jumpjet params for altitude and wobble.
         let (target_alt, climb, jj_speed, jj_wobbles) =
-            Self::air_params_from_object(kind, &obj.jumpjet_params);
+            Self::air_params_from_object(kind, &obj.jumpjet_params, flight_level);
 
         // Extract extended jumpjet fields (accel, deviation, crash, turn rate).
         let jj = obj.jumpjet_params.as_ref();
@@ -235,6 +241,7 @@ impl LocomotorState {
             air_phase: AirMovePhase::Landed,
             speed_multiplier,
             speed_fraction: sim_one,
+            fly_current_speed: SIM_ZERO,
             altitude: SIM_ZERO,
             target_altitude: target_alt,
             climb_rate: climb,
@@ -263,10 +270,12 @@ impl LocomotorState {
     fn air_params_from_object(
         kind: LocomotorKind,
         jumpjet_params: &Option<JumpjetParams>,
+        flight_level: i32,
     ) -> (SimFixed, SimFixed, SimFixed, f32) {
         match kind {
             LocomotorKind::Fly | LocomotorKind::Rocket => {
-                (FLY_CRUISE_ALTITUDE, FLY_CLIMB_RATE, SIM_ZERO, 0.0)
+                let alt = SimFixed::from_num(flight_level);
+                (alt, FLY_CLIMB_RATE, SIM_ZERO, 0.0)
             }
             LocomotorKind::Jumpjet => {
                 let jj = jumpjet_params.as_ref();

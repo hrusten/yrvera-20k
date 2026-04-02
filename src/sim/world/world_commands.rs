@@ -192,12 +192,24 @@ impl Simulation {
                         }
                     }
                     // Air units fly in straight lines — no A* pathfinding needed.
-                    air_movement::issue_air_move_command(
+                    let ok = air_movement::issue_air_move_command(
                         &mut self.entities,
                         *entity_id,
                         (*target_rx, *target_ry),
                         info.speed,
-                    )
+                    );
+                    // Set Move mission so the aircraft flies to destination
+                    // before the Idle handler can redirect it to RTB.
+                    if ok {
+                        if let Some(e) = self.entities.get_mut(*entity_id) {
+                            if e.aircraft_mission.is_some() {
+                                e.aircraft_mission = Some(
+                                    crate::sim::aircraft::AircraftMission::Move { sub_state: 0 },
+                                );
+                            }
+                        }
+                    }
+                    ok
                 } else {
                     let Some(grid) = path_grid else { return false };
                     let cost_grid = self.terrain_costs.get(&info.speed_type);
@@ -346,12 +358,22 @@ impl Simulation {
                     )
                 } else if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines.
-                    air_movement::issue_air_move_command(
+                    let ok = air_movement::issue_air_move_command(
                         &mut self.entities,
                         *entity_id,
                         (*target_rx, *target_ry),
                         info.speed,
-                    )
+                    );
+                    if ok {
+                        if let Some(e) = self.entities.get_mut(*entity_id) {
+                            if e.aircraft_mission.is_some() {
+                                e.aircraft_mission = Some(
+                                    crate::sim::aircraft::AircraftMission::Move { sub_state: 0 },
+                                );
+                            }
+                        }
+                    }
+                    ok
                 } else {
                     let Some(grid) = path_grid else { return false };
                     let cost_grid = self.terrain_costs.get(&info.speed_type);

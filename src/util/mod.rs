@@ -9,6 +9,7 @@
 
 pub mod base64;
 pub mod config;
+pub mod facing_table;
 pub mod fixed_math;
 pub mod flh_transform;
 pub mod lcw;

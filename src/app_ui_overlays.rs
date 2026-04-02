@@ -393,7 +393,14 @@ pub(crate) fn build_unit_status_bg_instances(
             continue;
         }
         // Sub-cell offsets are already baked into screen_x/screen_y by the sim tick.
-        let (sx, sy) = crate::app_instances::interpolated_screen_position_entity(e);
+        let (sx, raw_sy) = crate::app_instances::interpolated_screen_position_entity(e);
+        // Aircraft altitude: lift health bar to match the unit sprite position.
+        let altitude_y_offset: f32 = e
+            .locomotor
+            .as_ref()
+            .map(|l| crate::util::fixed_math::sim_to_f32(l.altitude) * 0.06)
+            .unwrap_or(0.0);
+        let sy = raw_sy - altitude_y_offset;
         let is_infantry: bool = e.category == EntityCategory::Infantry;
         let (bar_size, uv_origin, uv_size) = if is_infantry {
             (
@@ -479,7 +486,14 @@ pub(crate) fn build_unit_status_fill_instances(
             continue;
         }
         // Sub-cell offsets are already baked into screen_x/screen_y by the sim tick.
-        let (sx, sy) = crate::app_instances::interpolated_screen_position_entity(e);
+        let (sx, raw_sy) = crate::app_instances::interpolated_screen_position_entity(e);
+        // Aircraft altitude: lift health bar to match the unit sprite position.
+        let altitude_y_offset: f32 = e
+            .locomotor
+            .as_ref()
+            .map(|l| crate::util::fixed_math::sim_to_f32(l.altitude) * 0.06)
+            .unwrap_or(0.0);
+        let sy = raw_sy - altitude_y_offset;
         let ratio: f32 = if health.max == 0 {
             0.0
         } else {

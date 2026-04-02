@@ -172,7 +172,8 @@ impl Simulation {
             // Locomotor for movable entities.
             if let Some(obj) = rules.and_then(|r| r.object(&map_ent.type_id)) {
                 if obj.speed > 0 {
-                    let mut loco = LocomotorState::from_object_type(obj);
+                    let flight_level = rules.map_or(1500, |r| r.general.flight_level);
+                    let mut loco = LocomotorState::from_object_type(obj, flight_level);
                     if bridge_spawn.is_some() {
                         loco.layer = MovementLayer::Bridge;
                     }
@@ -325,7 +326,7 @@ impl Simulation {
         ge.zfudge_bridge = obj.zfudge_bridge;
         ge.too_big_to_fit_under_bridge = obj.too_big_to_fit_under_bridge;
         if obj.speed > 0 {
-            let mut loco = LocomotorState::from_object_type(obj);
+            let mut loco = LocomotorState::from_object_type(obj, rules.general.flight_level);
             // TEMP: GI and Conscript move 6× faster for testing.
             if matches!(
                 self.interner.resolve(ge.type_ref).to_uppercase().as_str(),
