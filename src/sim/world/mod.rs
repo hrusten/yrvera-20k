@@ -587,6 +587,9 @@ impl Simulation {
             .iter()
             .flat_map(|change| change.destroyed_cells.iter().copied())
             .collect();
+        let fallout_ground_grid = self.resolved_terrain.as_ref().map(|terrain| {
+            PathGrid::from_resolved_terrain_with_bridges(terrain, self.bridge_state.as_ref())
+        });
 
         // Spawn bridge destruction explosions (matches original BlowUpBridge logic):
         // ~95% chance per destroyed cell, random anim from BridgeExplosions list,
@@ -604,11 +607,9 @@ impl Simulation {
             if !on_bridge || !destroyed_cells.contains(&(pos.rx, pos.ry)) {
                 continue;
             }
-            let ground_walkable = self
-                .resolved_terrain
-                .as_ref()
-                .and_then(|terrain| terrain.cell(pos.rx, pos.ry))
-                .is_some_and(|cell| !cell.ground_walk_blocked);
+            let ground_walkable = fallout_ground_grid.as_ref().is_some_and(|grid| {
+                grid.is_walkable_on_layer(pos.rx, pos.ry, MovementLayer::Ground)
+            });
             if ground_walkable {
                 let ground_level = self
                     .resolved_terrain

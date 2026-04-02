@@ -481,6 +481,11 @@ fn handle_entity_deaths(
     for (rx, ry, dmg, wh_id, owner_id) in &death_aoe {
         if let Some(warhead) = rules.warhead(interner.resolve(*wh_id)) {
             if warhead.wall && *dmg > 0 {
+                // TODO(RE): Low-bridge overlay damage is not a raw "damage bridge cell" event.
+                // The recovered engine uses a BridgeStrength RNG gate, AtomDamage bypass,
+                // and 3-cell overlay pattern transitions before the pathfinding side-effects.
+                // Keep these events scoped to the current elevated-bridge runtime until
+                // mutable overlay bridge state is wired through the sim.
                 bridge_damage_events.push(BridgeDamageEvent {
                     rx: *rx,
                     ry: *ry,
@@ -1091,6 +1096,9 @@ pub fn tick_combat_with_fog(
                 damage_events.push((target_id, dmg, snap.stable_id, wh_iid));
             }
             if warhead.wall && weapon.damage > 0 {
+                // TODO(RE): Low-bridge overlay damage still needs the recovered overlay-step
+                // logic and connected-section selection. These events currently feed only the
+                // elevated-bridge runtime state.
                 bridge_damage_events.push(BridgeDamageEvent {
                     rx: target_rx,
                     ry: target_ry,
@@ -1108,6 +1116,9 @@ pub fn tick_combat_with_fog(
                 damage_events.push((snap.target, actual_damage, snap.stable_id, wh_iid));
             }
             if warhead.wall && weapon.damage > 0 {
+                // TODO(RE): Low-bridge overlay damage still needs the recovered overlay-step
+                // logic and connected-section selection. These events currently feed only the
+                // elevated-bridge runtime state.
                 bridge_damage_events.push(BridgeDamageEvent {
                     rx: target_rx,
                     ry: target_ry,

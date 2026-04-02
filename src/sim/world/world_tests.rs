@@ -499,6 +499,133 @@ fn test_destroyed_bridge_despawns_unit_over_blocked_ground() {
 }
 
 #[test]
+fn test_destroyed_bridge_despawns_unit_over_overlay_blocked_ground() {
+    let mut sim = Simulation::new();
+    let mut resolved = bridge_cell_with_ground_block(5, 5, 3, false, 0);
+    let idx = resolved.index(5, 5).expect("bridge index");
+    resolved.cells[idx].overlay_blocks = true;
+    sim.resolved_terrain = Some(resolved.clone());
+    sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
+        &resolved, true, 15,
+    ));
+
+    sim.spawn_from_map_with_resolved(
+        &[MapEntity {
+            owner: "Americans".to_string(),
+            type_id: "MTNK".to_string(),
+            health: 256,
+            cell_x: 5,
+            cell_y: 5,
+            facing: 64,
+            category: EntityCategory::Unit,
+            sub_cell: 0,
+            veterancy: 0,
+            high: true,
+        }],
+        Some(&combat_test_rules()),
+        &BTreeMap::new(),
+        Some(&resolved),
+    );
+
+    let changes = sim.apply_bridge_damage_events(&[BridgeDamageEvent {
+        rx: 5,
+        ry: 5,
+        damage: 15,
+    }]);
+    let fallout = sim.resolve_bridge_state_changes(&changes);
+    assert_eq!(fallout, vec![1]);
+    assert!(sim.entities.get(1).is_none());
+}
+
+#[test]
+fn test_destroyed_bridge_despawns_unit_over_terrain_object_blocked_ground() {
+    let mut sim = Simulation::new();
+    let mut resolved = bridge_cell_with_ground_block(5, 5, 3, false, 0);
+    let idx = resolved.index(5, 5).expect("bridge index");
+    resolved.cells[idx].terrain_object_blocks = true;
+    sim.resolved_terrain = Some(resolved.clone());
+    sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
+        &resolved, true, 15,
+    ));
+
+    sim.spawn_from_map_with_resolved(
+        &[MapEntity {
+            owner: "Americans".to_string(),
+            type_id: "MTNK".to_string(),
+            health: 256,
+            cell_x: 5,
+            cell_y: 5,
+            facing: 64,
+            category: EntityCategory::Unit,
+            sub_cell: 0,
+            veterancy: 0,
+            high: true,
+        }],
+        Some(&combat_test_rules()),
+        &BTreeMap::new(),
+        Some(&resolved),
+    );
+
+    let changes = sim.apply_bridge_damage_events(&[BridgeDamageEvent {
+        rx: 5,
+        ry: 5,
+        damage: 15,
+    }]);
+    let fallout = sim.resolve_bridge_state_changes(&changes);
+    assert_eq!(fallout, vec![1]);
+    assert!(sim.entities.get(1).is_none());
+}
+
+#[test]
+fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
+    let mut sim = Simulation::new();
+    let mut resolved = bridge_cell_with_ground_block(5, 5, 3, false, 0);
+    let idx = resolved.index(5, 5).expect("bridge index");
+    resolved.cells[idx].is_cliff_like = true;
+    sim.resolved_terrain = Some(resolved.clone());
+    sim.bridge_state = Some(BridgeRuntimeState::from_resolved_terrain(
+        &resolved, true, 15,
+    ));
+
+    sim.spawn_from_map_with_resolved(
+        &[MapEntity {
+            owner: "Americans".to_string(),
+            type_id: "MTNK".to_string(),
+            health: 256,
+            cell_x: 5,
+            cell_y: 5,
+            facing: 64,
+            category: EntityCategory::Unit,
+            sub_cell: 0,
+            veterancy: 0,
+            high: true,
+        }],
+        Some(&combat_test_rules()),
+        &BTreeMap::new(),
+        Some(&resolved),
+    );
+
+    let changes = sim.apply_bridge_damage_events(&[BridgeDamageEvent {
+        rx: 5,
+        ry: 5,
+        damage: 15,
+    }]);
+
+    let rebuilt_grid = PathGrid::from_resolved_terrain_with_bridges(
+        sim.resolved_terrain.as_ref().expect("resolved terrain"),
+        sim.bridge_state.as_ref(),
+    );
+    assert!(
+        !rebuilt_grid.is_walkable_on_layer(5, 5, MovementLayer::Ground),
+        "destroyed bridge cell should stay ground-blocked when the rebuilt PathGrid says so"
+    );
+
+    let fallout = sim.resolve_bridge_state_changes(&changes);
+    assert_eq!(fallout, vec![1]);
+    assert!(sim.entities.get(1).is_none());
+}
+
+#[test]
 fn test_water_mover_lookahead_does_not_attach_bridge_occupancy_under_bridge() {
     let rules = naval_bridge_test_rules();
     let mut sim = Simulation::new();

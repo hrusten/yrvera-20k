@@ -51,6 +51,7 @@ pub mod vision;
 
 // --- Animation, building overlays, bridge state ---
 pub mod animation;
+pub mod bridge_specs;
 pub mod bridge_state;
 
 // --- Passengers, transport, slaves ---

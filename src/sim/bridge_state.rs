@@ -3,6 +3,11 @@
 //! Bridges are modeled as terrain, not spawned entities. This module owns the
 //! destroyable runtime state used by combat, layered pathing, and bridge-deck
 //! fallout handling.
+//!
+//! TODO(RE): This runtime currently models elevated bridge-deck presence/destruction only.
+//! The recovered low-bridge overlay damage progression now lives in
+//! `sim::bridge_specs`, but wiring it here still needs mutable overlay state,
+//! connected-section selection, and `AtomDamage`/BridgeStrength gate inputs.
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use std::collections::{BTreeMap, VecDeque};

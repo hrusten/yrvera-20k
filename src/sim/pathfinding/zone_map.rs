@@ -140,7 +140,9 @@ pub struct ZoneMap {
     ///
     /// TODO(RE): Bridge-layer zone queries in the original engine go through the
     /// onBridge flag plus ZoneConnection remap records near the cell, not a standalone
-    /// bridge zone grid.
+    /// bridge zone grid. The recovered gate/record helpers now live in
+    /// `sim::bridge_specs`, but the live runtime still lacks stored ZoneConnection
+    /// records and bridge-remap integration.
     bridge_zone_ids: Option<Vec<ZoneId>>,
     pub width: u16,
     pub height: u16,
