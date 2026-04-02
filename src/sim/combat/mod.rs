@@ -47,6 +47,7 @@ use crate::sim::world::{SimFireEvent, SimSoundEvent};
 use crate::util::fixed_math::{SIM_ZERO, SimFixed, sim_to_i32};
 
 use super::game_entity::GameEntity;
+use super::occupancy::OccupancyGrid;
 use super::production::foundation_dimensions;
 
 /// RA2 runs at 15 logical frames per second. ROF values are in frames.
@@ -257,6 +258,7 @@ use self::combat_targeting::{AttackerSnapshot, GarrisonSnapshot, acquire_best_ta
 /// Advance combat for all entities with AttackTarget components.
 pub fn tick_combat(
     entities: &mut EntityStore,
+    occupancy: &mut OccupancyGrid,
     rules: &RuleSet,
     interner: &mut StringInterner,
     resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
@@ -264,6 +266,7 @@ pub fn tick_combat(
 ) -> CombatTickResult {
     tick_combat_with_fog(
         entities,
+        occupancy,
         rules,
         interner,
         None,
@@ -349,6 +352,7 @@ struct DeathEffects {
 /// (bridge damage, sound events, etc.) without the combat function growing unbounded.
 fn handle_entity_deaths(
     entities: &mut EntityStore,
+    occupancy: &mut OccupancyGrid,
     rules: &RuleSet,
     interner: &mut StringInterner,
     dead_entities: &[u64],
@@ -470,6 +474,10 @@ fn handle_entity_deaths(
                 log::trace!("Entity {} dying (death animation)", dead_id);
             } else {
                 // Structures and voxel vehicles: immediate despawn.
+                // Remove from occupancy before entity is gone.
+                if let Some(entity) = entities.get(dead_id) {
+                    occupancy.remove(entity.position.rx, entity.position.ry, dead_id);
+                }
                 entities.remove(dead_id);
                 despawned_ids.push(dead_id);
                 log::trace!("Entity {} destroyed", dead_id);
@@ -572,6 +580,7 @@ fn destroy_ore_at_impact(
 /// Returns reveal events and stable IDs of entities despawned this tick.
 pub fn tick_combat_with_fog(
     entities: &mut EntityStore,
+    occupancy: &mut OccupancyGrid,
     rules: &RuleSet,
     interner: &mut StringInterner,
     fog: Option<&FogState>,
@@ -1260,6 +1269,7 @@ pub fn tick_combat_with_fog(
     // Phase 6: handle death effects — death weapons, passengers, explosions, despawn.
     let death = handle_entity_deaths(
         entities,
+        occupancy,
         rules,
         interner,
         &dead_entities,

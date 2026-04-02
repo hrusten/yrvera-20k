@@ -7,12 +7,12 @@
 //! 2. **Slope** — uphill slows, downhill speeds up (SlopeClimb / SlopeDescend)
 //! 3. **Crowd density** — units slow when many neighbors occupy nearby cells
 //!
-//! Depends on: `ResolvedTerrainGrid` (cell height + land type), `OccupancyMap`
+//! Depends on: `ResolvedTerrainGrid` (cell height + land type), `OccupancyGrid`
 //! (nearby unit count), `SpeedCostProfile` (INI-parsed terrain percentages).
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{LocomotorKind, SpeedType};
-use crate::sim::movement::bump_crush::OccupancyMap;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SimFixed};
 
 // --- Constants from the original engine ---
@@ -84,7 +84,7 @@ pub fn compute_cell_speed_modifier(
     current_cell: (u16, u16),
     next_cell: (u16, u16),
     terrain: &ResolvedTerrainGrid,
-    occupancy: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     config: &TerrainSpeedConfig,
 ) -> SimFixed {
     let terrain_factor = terrain_speed_factor(speed_type, next_cell, terrain);
@@ -151,7 +151,7 @@ fn slope_speed_factor(
 /// threshold, a jam factor is applied to simulate traffic congestion.
 fn crowd_speed_factor(
     current_cell: (u16, u16),
-    occupancy: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     config: &TerrainSpeedConfig,
 ) -> SimFixed {
     let (cx, cy) = (current_cell.0 as i32, current_cell.1 as i32);
@@ -167,7 +167,7 @@ fn crowd_speed_factor(
             if nx < 0 || ny < 0 {
                 continue;
             }
-            if occupancy.contains_key(&(nx as u16, ny as u16)) {
+            if occupancy.get(nx as u16, ny as u16).is_some() {
                 occupied_count = occupied_count.saturating_add(1);
             }
         }
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn crowd_below_threshold_no_slowdown() {
         let config = TerrainSpeedConfig::default();
-        let occupancy = OccupancyMap::new();
+        let occupancy = OccupancyGrid::new();
         let factor = crowd_speed_factor((5, 5), &occupancy, &config);
         assert_eq!(factor, SIM_ONE);
     }

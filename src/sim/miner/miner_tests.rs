@@ -12,6 +12,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::miner::{
     CargoBale, Miner, MinerConfig, MinerKind, MinerState, RefineryDockPhase, ResourceNode,
     ResourceType,
@@ -220,6 +221,7 @@ fn tick_miners_n(sim: &mut Simulation, rules: &RuleSet, n: usize) {
     for _ in 0..n {
         crate::sim::movement::teleport_movement::tick_teleport_movement(
             &mut sim.entities,
+            &mut OccupancyGrid::new(),
             67,
             sim.tick,
         );

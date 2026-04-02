@@ -28,6 +28,7 @@ use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState, BridgeStateChange};
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::combat;
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -178,6 +179,11 @@ pub struct Simulation {
     #[serde(skip)]
     pub resolved_terrain: Option<ResolvedTerrainGrid>,
     pub bridge_state: Option<BridgeRuntimeState>,
+    /// Persistent cell occupancy — tracks what entities occupy each cell.
+    /// Maintained incrementally via add/remove at spawn, move, and death sites.
+    /// Rebuilt from entities on deserialization.
+    #[serde(skip)]
+    pub occupancy: OccupancyGrid,
     /// SHP interned IDs for bridge destruction explosions (from rules.ini BridgeExplosions=).
     #[serde(skip)]
     pub bridge_explosions: Vec<InternedId>,
@@ -264,6 +270,7 @@ impl Simulation {
             prev_path_grid: None,
             resolved_terrain: None,
             bridge_state: None,
+            occupancy: OccupancyGrid::new(),
             bridge_explosions: Vec::new(),
             radar_events: RadarEventQueue::default(),
             power_states: BTreeMap::new(),
@@ -379,13 +386,26 @@ impl Simulation {
     /// Despawn an entity by stable_id, removing it from EntityStore.
     /// Decrements owned count if the entity was not already dying (combat deaths
     /// are decremented when dying is first set, not at physical removal).
+    /// Also removes the entity from the occupancy grid (origin cell only).
     pub(crate) fn despawn_entity(&mut self, stable_id: u64) {
-        if let Some(entity) = self.entities.get(stable_id) {
-            if !entity.dying {
-                let owner_str = self.interner.resolve(entity.owner).to_string();
-                let category = entity.category;
+        // Gather entity data before any mutable borrows.
+        let entity_info = self.entities.get(stable_id).map(|e| {
+            (
+                e.dying,
+                self.interner.resolve(e.owner).to_string(),
+                e.category,
+                e.position.rx,
+                e.position.ry,
+            )
+        });
+        if let Some((dying, owner_str, category, rx, ry)) = entity_info {
+            if !dying {
                 self.decrement_owned_count(&owner_str, category);
             }
+            // Remove from occupancy grid (origin cell only; multi-cell structures
+            // should have their foundation cells removed by the caller via
+            // remove_entity_occupancy before calling despawn_entity).
+            self.occupancy.remove(rx, ry, stable_id);
         }
         self.entities.remove(stable_id);
     }
@@ -970,6 +990,7 @@ impl Simulation {
             path_grid,
             &self.terrain_costs,
             &self.house_alliances,
+            &self.occupancy,
             &mut self.rng,
             tick_ms,
             self.tick,
@@ -985,8 +1006,18 @@ impl Simulation {
         // DEPENDS ON: commands (may set movement targets for air/special units).
         // INDEPENDENT OF: ground movement (air units bypass A* and occupancy).
         air_movement::tick_air_movement(&mut self.entities, tick_ms, self.tick);
-        teleport_movement::tick_teleport_movement(&mut self.entities, tick_ms, self.tick);
-        tunnel_movement::tick_tunnel_movement(&mut self.entities, tick_ms, self.tick);
+        teleport_movement::tick_teleport_movement(
+            &mut self.entities,
+            &mut self.occupancy,
+            tick_ms,
+            self.tick,
+        );
+        tunnel_movement::tick_tunnel_movement(
+            &mut self.entities,
+            &mut self.occupancy,
+            tick_ms,
+            self.tick,
+        );
         let _rocket_detonations =
             rocket_movement::tick_rocket_movement(&mut self.entities, tick_ms, self.tick);
         droppod_movement::tick_droppod_movement(&mut self.entities, tick_ms, self.tick);
@@ -1073,6 +1104,7 @@ impl Simulation {
             self.tick_order_intents_pre_combat(rules);
             let combat_result = combat::tick_combat_with_fog(
                 &mut self.entities,
+                &mut self.occupancy,
                 rules,
                 &mut self.interner,
                 Some(&self.fog),
@@ -1231,6 +1263,17 @@ impl Simulation {
 
         // Tick world-effect animations and remove finished ones.
         self.world_effects.retain_mut(|fx| !fx.tick(tick_ms));
+
+        // Debug-mode safety net: rebuild occupancy from scratch and compare
+        // with the persistent grid. Catches missed add/remove calls.
+        // Note: rebuild() only registers single cells (no multi-cell foundations),
+        // so this check is conservative — extra cells from foundations are expected.
+        // Enable via OCCUPANCY_DEBUG=1 environment variable for focused debugging.
+        #[cfg(debug_assertions)]
+        if std::env::var("OCCUPANCY_DEBUG").is_ok() {
+            let expected = OccupancyGrid::rebuild(&self.entities);
+            self.occupancy.debug_assert_matches(&expected);
+        }
 
         self.tick = execute_tick;
         let state_hash = self.state_hash();

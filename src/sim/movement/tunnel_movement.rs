@@ -24,6 +24,7 @@ use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::facing_from_delta;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::{PathGrid, find_path_with_costs};
 use crate::util::fixed_math::{SIM_ZERO, SimFixed, dt_from_tick_ms, int_distance_to_sim};
@@ -165,7 +166,12 @@ fn begin_burrow(
 /// Advance all in-progress tunnel state machines.
 ///
 /// Called once per simulation tick from `advance_tick()`.
-pub fn tick_tunnel_movement(entities: &mut EntityStore, tick_ms: u32, sim_tick: u64) {
+pub fn tick_tunnel_movement(
+    entities: &mut EntityStore,
+    occupancy: &mut OccupancyGrid,
+    tick_ms: u32,
+    sim_tick: u64,
+) {
     if tick_ms == 0 {
         return;
     }
@@ -195,6 +201,8 @@ pub fn tick_tunnel_movement(entities: &mut EntityStore, tick_ms: u32, sim_tick: 
             TunnelPhase::DigIn => {
                 tunnel.timer -= dt;
                 if tunnel.timer <= SIM_ZERO {
+                    // Remove from ground occupancy before going underground.
+                    occupancy.remove(entity.position.rx, entity.position.ry, id);
                     // Transition to underground: switch layer.
                     if let Some(ref mut loco) = entity.locomotor {
                         loco.layer = MovementLayer::Underground;
@@ -223,6 +231,7 @@ pub fn tick_tunnel_movement(entities: &mut EntityStore, tick_ms: u32, sim_tick: 
                     entity.position.sub_x = CELL_CENTER_LEPTON;
                     entity.position.sub_y = CELL_CENTER_LEPTON;
                     entity.position.refresh_screen_coords();
+                    // Underground layer is not tracked in occupancy — no move needed.
                     tunnel.phase = TunnelPhase::DigOut;
                     tunnel.timer = DIG_OUT_DURATION_S;
                 } else {
@@ -245,6 +254,7 @@ pub fn tick_tunnel_movement(entities: &mut EntityStore, tick_ms: u32, sim_tick: 
                         entity.position.sub_x = CELL_CENTER_LEPTON;
                         entity.position.sub_y = CELL_CENTER_LEPTON;
                         entity.position.refresh_screen_coords();
+                        // Underground layer is not tracked in occupancy.
                     }
                 }
             }
@@ -255,6 +265,14 @@ pub fn tick_tunnel_movement(entities: &mut EntityStore, tick_ms: u32, sim_tick: 
                     if let Some(ref mut loco) = entity.locomotor {
                         loco.layer = MovementLayer::Ground;
                     }
+                    // Re-add to ground occupancy now that we've surfaced.
+                    occupancy.add(
+                        entity.position.rx,
+                        entity.position.ry,
+                        id,
+                        MovementLayer::Ground,
+                        entity.sub_cell,
+                    );
                     finished.push(id);
                 }
             }
@@ -397,7 +415,7 @@ mod tests {
 
         // Tick through the entire sequence.
         for _ in 0..200 {
-            tick_tunnel_movement(&mut entities, 33, 0);
+            tick_tunnel_movement(&mut entities, &mut OccupancyGrid::new(), 33, 0);
         }
 
         // Should have arrived at destination and be back on ground.
@@ -430,7 +448,7 @@ mod tests {
 
         // Tick past DigIn into UndergroundTravel.
         for _ in 0..10 {
-            tick_tunnel_movement(&mut entities, 33, 0);
+            tick_tunnel_movement(&mut entities, &mut OccupancyGrid::new(), 33, 0);
         }
 
         let entity = entities.get(1).expect("should exist");

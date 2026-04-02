@@ -225,14 +225,10 @@ fn handle_search_ore(
         return;
     }
 
-    // Chrono miners only scan TiberiumShortScan (6 cells).
-    // If nothing found locally, go straight to WaitNoOre — skip the
-    // archive/long/global tiers that war miners use.
-    if snap.miner.kind == MinerKind::Chrono {
-        snap.miner.state = MinerState::WaitNoOre;
-        snap.miner.rescan_cooldown = config.rescan_cooldown_ticks;
-        return;
-    }
+    // gamemd.exe (0x0073E844): both war miners and chrono miners use
+    // TiberiumLongScan for the initial search — no early exit for chrono.
+    // The only chrono-specific behavior is stopping piggybacked locomotion
+    // before the scan, which we handle elsewhere.
 
     // ArchiveTarget pattern (from RA1): if we remember a productive patch and it
     // still has ore, go back there before doing a full global search. This prevents

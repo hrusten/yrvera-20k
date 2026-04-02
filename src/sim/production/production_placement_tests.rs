@@ -125,7 +125,9 @@ fn completed_building_moves_into_ready_placement_pool() {
         BTreeMap::from([(ProductionCategory::Building, VecDeque::from([qi]))]),
     );
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, None, 33);
+    // tick_ms must be large enough to complete 10 remaining base frames in one
+    // tick: 10 frames × 66 ms/frame = 660 ms minimum at 1× production rate.
+    let spawned = tick_production(&mut sim, &rules, &height_map, None, 700);
     assert!(!spawned, "completed building should wait for placement");
     assert!(sim.production.queues_by_owner.is_empty());
     assert_eq!(

@@ -15,7 +15,8 @@ use crate::sim::combat::AttackTarget;
 use crate::sim::components::Position;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
-use crate::sim::movement::bump_crush::{self, OccupancyMap};
+use crate::sim::movement::bump_crush;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::movement::drive_track::DriveTrackState;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
@@ -40,7 +41,7 @@ pub(super) fn detect_deferred_cell_check(
     next_cell: (u16, u16),
     current_cell: (u16, u16),
     active_layer: MovementLayer,
-    occ_map: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     reserved_infantry_sub_cells: &BTreeMap<(MovementLayer, u16, u16), Vec<u8>>,
 ) -> Option<DeferredCellCheck> {
     let is_self_cell =
@@ -49,15 +50,15 @@ pub(super) fn detect_deferred_cell_check(
         return None;
     }
 
-    let cell_occ = occ_map.get(&next_cell);
+    let cell_occ = occupancy.get(next_cell.0, next_cell.1);
     if mover_category == EntityCategory::Infantry {
         let reserved = reserved_infantry_sub_cells
             .get(&(next_layer, next_cell.0, next_cell.1))
             .map(Vec::as_slice);
-        if bump_crush::allocate_sub_cell_with_reserved(cell_occ, reserved).is_none() {
+        if bump_crush::allocate_sub_cell_with_reserved(cell_occ, next_layer, reserved).is_none() {
             return Some(DeferredCellCheck::Infantry(next_cell, next_layer));
         }
-    } else if cell_occ.is_some_and(|o| !o.blockers.is_empty() || !o.infantry.is_empty()) {
+    } else if cell_occ.is_some_and(|o| o.has_blockers_on(next_layer) || o.infantry(next_layer).next().is_some()) {
         return Some(DeferredCellCheck::Vehicle(next_cell, next_layer));
     }
 
@@ -96,12 +97,12 @@ pub(super) fn naval_terrain_diag(
     )
 }
 
-pub(super) fn naval_occ_diag(occ_map: &OccupancyMap, cell: (u16, u16)) -> String {
-    match occ_map.get(&cell) {
+pub(super) fn naval_occ_diag(occupancy: &OccupancyGrid, layer: MovementLayer, cell: (u16, u16)) -> String {
+    match occupancy.get(cell.0, cell.1) {
         Some(occ) => format!(
             "occ[blockers={} infantry={}]",
-            occ.blockers.len(),
-            occ.infantry.len(),
+            occ.blockers(layer).count(),
+            occ.infantry(layer).count(),
         ),
         None => "occ[empty]".into(),
     }
@@ -121,8 +122,7 @@ pub(super) fn handle_deferred_occupancy(
     mcfg: MovementConfig,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    occupied_ground: &OccupancyMap,
-    occupied_bridge: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     alliances: &HouseAllianceMap,
     path_grid: Option<&PathGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
@@ -141,20 +141,19 @@ pub(super) fn handle_deferred_occupancy(
         DeferredCellCheck::Infantry((nx, ny), layer)
         | DeferredCellCheck::Vehicle((nx, ny), layer) => (nx, ny, layer),
     };
-    let occ_map: &OccupancyMap =
-        bump_crush::occupancy_map_for_layer(next_layer, occupied_ground, occupied_bridge);
     let mover_loco_kind = snap
         .locomotor
         .as_ref()
         .map_or(LocomotorKind::Drive, |l| l.kind);
     let entry_result = cell_entry::classify_occupied_cell(
         (nx, ny),
+        next_layer,
         entity_id,
         snap.movement_zone,
         snap.omni_crusher,
         interner.resolve(snap.owner),
         mover_loco_kind,
-        occ_map,
+        occupancy,
         entities,
         alliances,
         interner,
@@ -180,7 +179,7 @@ pub(super) fn handle_deferred_occupancy(
                 .map(|mt| mt.path_blocked)
                 .unwrap_or(false),
             naval_terrain_diag(resolved_terrain, (nx, ny)),
-            naval_occ_diag(occ_map, (nx, ny)),
+            naval_occ_diag(occupancy, next_layer, (nx, ny)),
         );
     }
 
@@ -216,7 +215,7 @@ pub(super) fn handle_deferred_occupancy(
                     entities,
                     blocker_id,
                     path_grid,
-                    occ_map,
+                    occupancy,
                     reserved_destinations,
                     next_layer,
                     rng,
@@ -323,7 +322,7 @@ pub(super) fn handle_deferred_occupancy(
                                 entities,
                                 blocker_id,
                                 path_grid,
-                                occ_map,
+                                occupancy,
                                 reserved_destinations,
                                 next_layer,
                                 rng,

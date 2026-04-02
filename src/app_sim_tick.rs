@@ -253,6 +253,12 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
             );
             // Despawn entities whose death animation has completed.
             for dead_id in &death_finished {
+                // Remove from occupancy before despawning.
+                if let Some(entity) = sim.entities.get(*dead_id) {
+                    let rx = entity.position.rx;
+                    let ry = entity.position.ry;
+                    sim.occupancy.remove(rx, ry, *dead_id);
+                }
                 sim.entities.remove(*dead_id);
             }
             if !death_finished.is_empty() {

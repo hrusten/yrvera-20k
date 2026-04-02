@@ -305,6 +305,7 @@ fn eject_garrison_occupants(sim: &mut Simulation, rules: &RuleSet, building_id: 
         used_cells.push((exit_rx, exit_ry));
 
         // Place infantry at the exit cell.
+        let pax_sub_cell;
         if let Some(pax) = sim.entities.get_mut(pax_id) {
             pax.passenger_role = PassengerRole::None;
             pax.position.rx = exit_rx;
@@ -314,7 +315,18 @@ fn eject_garrison_occupants(sim: &mut Simulation, rules: &RuleSet, building_id: 
             pax.position.sub_x = sub_x;
             pax.position.sub_y = sub_y;
             pax.position.refresh_screen_coords();
+            pax_sub_cell = pax.sub_cell;
+        } else {
+            pax_sub_cell = None;
         }
+        // Register evacuated passenger in occupancy grid.
+        sim.occupancy.add(
+            exit_rx,
+            exit_ry,
+            pax_id,
+            crate::sim::movement::locomotor::MovementLayer::Ground,
+            pax_sub_cell,
+        );
 
         // Scatter: issue a short move to a random adjacent cell.
         let scatter_speed = sim

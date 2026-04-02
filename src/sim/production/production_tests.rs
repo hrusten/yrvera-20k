@@ -511,6 +511,15 @@ pub(super) fn spawn_structure(
         false,
     );
     sim.entities.insert(ge);
+    // Register structure in occupancy grid (single cell — test structures
+    // don't have foundation data, so just register the origin cell).
+    sim.occupancy.add(
+        rx,
+        ry,
+        sid,
+        crate::sim::movement::locomotor::MovementLayer::Ground,
+        None,
+    );
     if sim.next_stable_entity_id <= sid {
         sim.next_stable_entity_id = sid + 1;
     }

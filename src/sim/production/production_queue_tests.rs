@@ -449,7 +449,9 @@ fn tick_production_advances_each_owner_queue() {
         BTreeMap::from([(ProductionCategory::Infantry, VecDeque::from([qi_so]))]),
     );
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, None, 33);
+    // tick_ms must be large enough to complete 10 remaining base frames in one
+    // tick: 10 frames × 66 ms/frame = 660 ms minimum at 1× production rate.
+    let spawned = tick_production(&mut sim, &rules, &height_map, None, 700);
     assert!(spawned, "At least one queue completion should spawn");
     assert!(
         sim.production.queues_by_owner.is_empty(),
@@ -512,7 +514,9 @@ fn tick_production_advances_multiple_queue_categories_for_same_owner() {
         ]),
     );
 
-    let spawned = tick_production(&mut sim, &rules, &height_map, None, 33);
+    // tick_ms must be large enough to complete 10 remaining base frames in one
+    // tick: 10 frames × 66 ms/frame = 660 ms minimum at 1× production rate.
+    let spawned = tick_production(&mut sim, &rules, &height_map, None, 700);
     assert!(spawned);
     assert!(
         sim.production.queues_by_owner.is_empty(),
@@ -604,7 +608,8 @@ fn paused_queue_category_does_not_advance_while_other_category_does() {
     assert_eq!(infantry.state, BuildQueueState::Paused);
     assert_eq!(infantry.remaining_base_frames, 1000);
     assert_eq!(vehicle.state, BuildQueueState::Building);
-    assert_eq!(vehicle.remaining_base_frames, 899);
+    // tick_ms=100 at 1× rate: 100 * 1_000_000 / (66 * 1_000_000) = 1 frame.
+    assert_eq!(vehicle.remaining_base_frames, 999);
 }
 
 #[test]

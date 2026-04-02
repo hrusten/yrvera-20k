@@ -23,6 +23,7 @@ use crate::rules::ruleset::GeneralRules;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::locomotor::OverrideKind;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::util::fixed_math::isqrt_i64;
 use crate::util::lepton::CELL_CENTER_LEPTON;
 
@@ -144,7 +145,12 @@ pub fn issue_teleport_command(
 /// Called once per simulation tick from `advance_tick()`.
 /// Relocate executes instantly (one tick), then ChronoDelay counts down
 /// `being_warped_ticks` each subsequent tick until the teleport completes.
-pub fn tick_teleport_movement(entities: &mut EntityStore, tick_ms: u32, sim_tick: u64) {
+pub fn tick_teleport_movement(
+    entities: &mut EntityStore,
+    occupancy: &mut OccupancyGrid,
+    tick_ms: u32,
+    sim_tick: u64,
+) {
     if tick_ms == 0 {
         return;
     }
@@ -167,11 +173,28 @@ pub fn tick_teleport_movement(entities: &mut EntityStore, tick_ms: u32, sim_tick
         match teleport.phase {
             TeleportPhase::Relocate => {
                 // Instant relocation in one tick — matches original Phase 0.
+                let old_rx = entity.position.rx;
+                let old_ry = entity.position.ry;
                 entity.position.rx = teleport.target_rx;
                 entity.position.ry = teleport.target_ry;
                 entity.position.sub_x = CELL_CENTER_LEPTON;
                 entity.position.sub_y = CELL_CENTER_LEPTON;
                 entity.position.refresh_screen_coords();
+                let layer = entity
+                    .locomotor
+                    .as_ref()
+                    .map_or(crate::sim::movement::locomotor::MovementLayer::Ground, |l| {
+                        l.layer
+                    });
+                occupancy.move_entity(
+                    old_rx,
+                    old_ry,
+                    teleport.target_rx,
+                    teleport.target_ry,
+                    id,
+                    layer,
+                    entity.sub_cell,
+                );
                 teleport.phase = TeleportPhase::ChronoDelay;
             }
             TeleportPhase::ChronoDelay => {
@@ -388,7 +411,7 @@ mod tests {
         );
 
         // One tick relocates instantly (matches original Phase 0).
-        tick_teleport_movement(&mut entities, 33, 0);
+        tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), 33, 0);
 
         let entity = entities.get(1).expect("should exist");
         assert_eq!(entity.position.rx, 20, "Should have relocated to target");
@@ -403,7 +426,7 @@ mod tests {
         // Tick through ChronoDelay (being_warped_ticks countdown).
         let delay = ts.being_warped_ticks;
         for _ in 0..delay + 5 {
-            tick_teleport_movement(&mut entities, 33, 0);
+            tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), 33, 0);
         }
 
         // TeleportState should be removed after completion.
@@ -433,7 +456,7 @@ mod tests {
 
         // Complete the whole sequence: 1 tick for Relocate + chrono delay ticks.
         for _ in 0..200 {
-            tick_teleport_movement(&mut entities, 33, 0);
+            tick_teleport_movement(&mut entities, &mut OccupancyGrid::new(), 33, 0);
         }
 
         // Should have restored to Drive.
