@@ -12,7 +12,9 @@ use crate::sim::world::Simulation;
 
 use super::production_tech::producer_candidates_for_owner_category;
 use super::production_types::ProductionCategory;
-use crate::sim::movement::bump_crush::{self, OccupancyMap};
+use crate::sim::movement::bump_crush;
+use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::occupancy::OccupancyGrid;
 
 pub fn find_spawn_cell_for_owner(
     sim: &mut Simulation,
@@ -64,9 +66,7 @@ pub fn find_spawn_cell_for_owner(
             .insert(queue_category, first.0);
     }
 
-    // Build occupancy snapshot so spawn cell selection respects entity limits
-    // (max 3 infantry per cell, no vehicle overlap).
-    let (ground_occ, _bridge_occ) = bump_crush::build_occupancy_maps(&sim.entities);
+    // Use persistent occupancy grid for spawn cell selection.
 
     let bases: &[(u64, u16, u16, String)] = if ordered_bases.is_empty() {
         &fallback_structures
@@ -82,7 +82,7 @@ pub fn find_spawn_cell_for_owner(
             produced_category,
             rules,
             path_grid,
-            &ground_occ,
+            &sim.occupancy,
             resolved_terrain,
             require_water,
         ) {
@@ -110,7 +110,7 @@ fn find_spawn_cell_near_structure(
     produced_category: ObjectCategory,
     rules: &RuleSet,
     path_grid: Option<&crate::sim::pathfinding::PathGrid>,
-    ground_occ: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     require_water: bool,
 ) -> Option<(u16, u16)> {
@@ -127,7 +127,7 @@ fn find_spawn_cell_near_structure(
                     && cell_available_for_spawn(
                         cand,
                         produced_category,
-                        ground_occ,
+                        occupancy,
                         resolved_terrain,
                         require_water,
                     )
@@ -139,7 +139,7 @@ fn find_spawn_cell_near_structure(
                 if cell_available_for_spawn(
                     cand,
                     produced_category,
-                    ground_occ,
+                    occupancy,
                     resolved_terrain,
                     require_water,
                 ) {
@@ -157,7 +157,7 @@ fn find_spawn_cell_near_structure(
         (base_rx, base_ry),
         12,
         produced_category,
-        ground_occ,
+        occupancy,
         resolved_terrain,
         require_water,
     )
@@ -168,7 +168,7 @@ fn nearest_walkable_around(
     center: (u16, u16),
     max_radius: u16,
     produced_category: ObjectCategory,
-    ground_occ: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     require_water: bool,
 ) -> Option<(u16, u16)> {
@@ -187,7 +187,7 @@ fn nearest_walkable_around(
                 && cell_available_for_spawn(
                     top,
                     produced_category,
-                    ground_occ,
+                    occupancy,
                     resolved_terrain,
                     require_water,
                 )
@@ -199,7 +199,7 @@ fn nearest_walkable_around(
                 && cell_available_for_spawn(
                     bot,
                     produced_category,
-                    ground_occ,
+                    occupancy,
                     resolved_terrain,
                     require_water,
                 )
@@ -213,7 +213,7 @@ fn nearest_walkable_around(
                 && cell_available_for_spawn(
                     left,
                     produced_category,
-                    ground_occ,
+                    occupancy,
                     resolved_terrain,
                     require_water,
                 )
@@ -225,7 +225,7 @@ fn nearest_walkable_around(
                 && cell_available_for_spawn(
                     right,
                     produced_category,
-                    ground_occ,
+                    occupancy,
                     resolved_terrain,
                     require_water,
                 )
@@ -244,7 +244,7 @@ fn nearest_walkable_around(
 fn cell_available_for_spawn(
     cell: (u16, u16),
     produced_category: ObjectCategory,
-    ground_occ: &OccupancyMap,
+    occupancy: &OccupancyGrid,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     require_water: bool,
 ) -> bool {
@@ -258,13 +258,15 @@ fn cell_available_for_spawn(
             return false;
         }
     }
-    let occ = ground_occ.get(&cell);
+    let occ = occupancy.get(cell.0, cell.1);
     match produced_category {
-        ObjectCategory::Infantry => bump_crush::cell_passable_for_infantry(occ),
+        ObjectCategory::Infantry => {
+            bump_crush::cell_passable_for_infantry(occ, MovementLayer::Ground)
+        }
         _ => {
             // Vehicles/aircraft need no vehicle or structure already in the cell.
             match occ {
-                Some(o) => o.blockers.is_empty(),
+                Some(o) => !o.has_blockers_on(MovementLayer::Ground),
                 None => true,
             }
         }

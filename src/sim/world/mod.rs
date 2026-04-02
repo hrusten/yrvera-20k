@@ -1129,6 +1129,7 @@ impl Simulation {
             self.tick_order_intents_pre_combat(rules);
             let combat_result = combat::tick_combat_with_fog(
                 &mut self.entities,
+                &mut self.occupancy,
                 rules,
                 &mut self.interner,
                 Some(&self.fog),
