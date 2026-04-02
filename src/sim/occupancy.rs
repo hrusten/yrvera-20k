@@ -213,6 +213,44 @@ impl OccupancyGrid {
     pub fn occupied_cell_count(&self) -> usize {
         self.cells.len()
     }
+
+    /// Assert that this grid matches an expected grid. Panics with a diff on mismatch.
+    /// Only compiled in debug builds — used as a safety net after each tick.
+    #[cfg(debug_assertions)]
+    pub fn debug_assert_matches(&self, expected: &OccupancyGrid) {
+        let self_cells: std::collections::BTreeSet<(u16, u16)> =
+            self.cells.keys().copied().collect();
+        let expected_cells: std::collections::BTreeSet<(u16, u16)> =
+            expected.cells.keys().copied().collect();
+        let missing: Vec<_> = expected_cells.difference(&self_cells).collect();
+        let extra: Vec<_> = self_cells.difference(&expected_cells).collect();
+        if !missing.is_empty() || !extra.is_empty() {
+            panic!(
+                "OccupancyGrid mismatch: {} missing cells, {} extra cells.\n\
+                 Missing (expected but not in grid): {:?}\n\
+                 Extra (in grid but not expected): {:?}",
+                missing.len(),
+                extra.len(),
+                &missing[..missing.len().min(10)],
+                &extra[..extra.len().min(10)],
+            );
+        }
+        for (&cell, expected_occ) in &expected.cells {
+            let actual_occ = self.cells.get(&cell).unwrap();
+            let mut expected_ids: Vec<u64> =
+                expected_occ.occupants.iter().map(|o| o.entity_id).collect();
+            let mut actual_ids: Vec<u64> =
+                actual_occ.occupants.iter().map(|o| o.entity_id).collect();
+            expected_ids.sort();
+            actual_ids.sort();
+            if expected_ids != actual_ids {
+                panic!(
+                    "OccupancyGrid mismatch at cell ({},{}): expected {:?}, got {:?}",
+                    cell.0, cell.1, expected_ids, actual_ids,
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

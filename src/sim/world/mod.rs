@@ -1289,6 +1289,17 @@ impl Simulation {
         // Tick world-effect animations and remove finished ones.
         self.world_effects.retain_mut(|fx| !fx.tick(tick_ms));
 
+        // Debug-mode safety net: rebuild occupancy from scratch and compare
+        // with the persistent grid. Catches missed add/remove calls.
+        // Note: rebuild() only registers single cells (no multi-cell foundations),
+        // so this check is conservative — extra cells from foundations are expected.
+        // Enable via OCCUPANCY_DEBUG=1 environment variable for focused debugging.
+        #[cfg(debug_assertions)]
+        if std::env::var("OCCUPANCY_DEBUG").is_ok() {
+            let expected = OccupancyGrid::rebuild(&self.entities);
+            self.occupancy.debug_assert_matches(&expected);
+        }
+
         self.tick = execute_tick;
         let state_hash = self.state_hash();
         TickResult {
