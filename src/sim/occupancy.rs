@@ -75,6 +75,12 @@ pub struct OccupancyGrid {
     cells: BTreeMap<(u16, u16), CellOccupancy>,
 }
 
+impl Default for OccupancyGrid {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OccupancyGrid {
     /// Create an empty occupancy grid.
     pub fn new() -> Self {

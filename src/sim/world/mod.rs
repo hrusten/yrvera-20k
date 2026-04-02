@@ -28,6 +28,7 @@ use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState, BridgeStateChange};
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::combat;
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -178,6 +179,11 @@ pub struct Simulation {
     #[serde(skip)]
     pub resolved_terrain: Option<ResolvedTerrainGrid>,
     pub bridge_state: Option<BridgeRuntimeState>,
+    /// Persistent cell occupancy — tracks what entities occupy each cell.
+    /// Maintained incrementally via add/remove at spawn, move, and death sites.
+    /// Rebuilt from entities on deserialization.
+    #[serde(skip)]
+    pub occupancy: OccupancyGrid,
     /// SHP interned IDs for bridge destruction explosions (from rules.ini BridgeExplosions=).
     #[serde(skip)]
     pub bridge_explosions: Vec<InternedId>,
@@ -264,6 +270,7 @@ impl Simulation {
             prev_path_grid: None,
             resolved_terrain: None,
             bridge_state: None,
+            occupancy: OccupancyGrid::new(),
             bridge_explosions: Vec::new(),
             radar_events: RadarEventQueue::default(),
             power_states: BTreeMap::new(),
