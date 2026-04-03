@@ -1081,141 +1081,20 @@ fn octile_heuristic(ax: u16, ay: u16, bx: u16, by: u16) -> i32 {
 /// Returns `Some(path)` where path is a sequence of (rx, ry) cells from
 /// start to goal (both inclusive). Returns `None` if no path exists or
 /// the search exceeds MAX_SEARCH_NODES.
-///
-/// The path is suitable for the movement system to follow cell-by-cell.
-pub fn find_path(grid: &PathGrid, start: (u16, u16), goal: (u16, u16)) -> Option<Vec<(u16, u16)>> {
-    // Early exit: start or goal is blocked.
-    if !grid.is_walkable(start.0, start.1) || !grid.is_walkable(goal.0, goal.1) {
-        return None;
-    }
-
-    // Trivial case: already at the goal.
-    if start == goal {
-        return Some(vec![start]);
-    }
-
-    let w: usize = grid.width as usize;
-    let h: usize = grid.height as usize;
-    let total_cells: usize = w * h;
-
-    // g_cost[i] = best known cost from start to cell i. i32::MAX = unvisited.
-    let mut g_cost: Vec<i32> = vec![i32::MAX; total_cells];
-    // came_from[i] = index of the cell we reached i from. usize::MAX = no parent.
-    let mut came_from: Vec<usize> = vec![usize::MAX; total_cells];
-    // closed[i] = true if cell has been fully processed.
-    let mut closed: Vec<bool> = vec![false; total_cells];
-
-    let start_idx: usize = start.1 as usize * w + start.0 as usize;
-    let goal_idx: usize = goal.1 as usize * w + goal.0 as usize;
-
-    g_cost[start_idx] = 0;
-
-    // Min-heap: Reverse wrapping makes BinaryHeap pop smallest f_cost first.
-    let mut open: BinaryHeap<Reverse<AStarNode>> = BinaryHeap::new();
-    open.push(Reverse(AStarNode {
-        f_cost: octile_heuristic(start.0, start.1, goal.0, goal.1),
-        g_cost: 0,
-        x: start.0,
-        y: start.1,
-        height: 0,
-    }));
-
-    let mut nodes_evaluated: u32 = 0;
-
-    while let Some(Reverse(current)) = open.pop() {
-        let cx: u16 = current.x;
-        let cy: u16 = current.y;
-        let c_idx: usize = cy as usize * w + cx as usize;
-
-        // Skip if already processed (duplicate entry in the heap).
-        if closed[c_idx] {
-            continue;
-        }
-        closed[c_idx] = true;
-
-        // Found the goal — reconstruct and return the path.
-        if c_idx == goal_idx {
-            return Some(reconstruct_path(&came_from, start_idx, goal_idx, w));
-        }
-
-        nodes_evaluated += 1;
-        if nodes_evaluated >= MAX_SEARCH_NODES {
-            log::warn!(
-                "A* search exhausted {} nodes without finding path from ({},{}) to ({},{})",
-                MAX_SEARCH_NODES,
-                start.0,
-                start.1,
-                goal.0,
-                goal.1
-            );
-            return None;
-        }
-
-        // Explore all 8 neighbors.
-        for &(dx, dy, is_diagonal) in &NEIGHBORS {
-            let nx: i32 = cx as i32 + dx;
-            let ny: i32 = cy as i32 + dy;
-
-            // Bounds check (negative values caught by the u16 conversion below).
-            if nx < 0 || ny < 0 || nx >= grid.width as i32 || ny >= grid.height as i32 {
-                continue;
-            }
-
-            let nx: u16 = nx as u16;
-            let ny: u16 = ny as u16;
-            let n_idx: usize = ny as usize * w + nx as usize;
-
-            if closed[n_idx] || !grid.is_walkable(nx, ny) {
-                continue;
-            }
-
-            // For diagonal moves, ensure both adjacent cardinal cells are walkable.
-            // This prevents cutting through diagonal wall corners.
-            // Reuse bounds-checked nx/ny: (cx+dx, cy) = (nx, cy), (cx, cy+dy) = (cx, ny).
-            if is_diagonal {
-                if !grid.is_walkable(nx, cy) || !grid.is_walkable(cx, ny) {
-                    continue;
-                }
-            }
-
-            let step_cost: i32 = if is_diagonal {
-                DIAGONAL_COST
-            } else {
-                CARDINAL_COST
-            };
-            let tentative_g: i32 = current.g_cost + step_cost;
-
-            if tentative_g < g_cost[n_idx] {
-                g_cost[n_idx] = tentative_g;
-                came_from[n_idx] = c_idx;
-                let h: i32 = octile_heuristic(nx, ny, goal.0, goal.1);
-                open.push(Reverse(AStarNode {
-                    f_cost: tentative_g + h,
-                    g_cost: tentative_g,
-                    x: nx,
-                    y: ny,
-                    height: 0,
-                }));
-            }
-        }
-    }
-
-    // Open set exhausted — no path exists.
-    None
+pub fn find_path(
+    grid: &PathGrid,
+    start: (u16, u16),
+    goal: (u16, u16),
+) -> Option<Vec<(u16, u16)>> {
+    let steps = astar_search(grid, start, MovementLayer::Ground, goal, &AStarOptions::default())?;
+    Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
 }
 
 /// A* pathfinding with optional terrain cost modifiers and entity blocking.
 ///
-/// When `costs` is `Some`, step cost is scaled by `100 / cost_at(x,y)` so that
-/// slower terrain (cost < 100) increases path cost and faster terrain (cost > 100)
-/// decreases it. Cells with cost 0 are treated as blocked.
-///
-/// When `entity_blocks` is `Some`, cells in the set are treated as blocked UNLESS
-/// they are the goal cell (units must be able to path to an occupied destination).
-/// This implements RA2's "friendly moving units as passable" optimization: the caller
-/// builds the set from stationary/enemy entities only, excluding moving friendlies.
-///
-/// When `costs` is `None`, behaves identically to `find_path` (plus entity blocking).
+/// When `costs` is `Some`, step cost is scaled by `100 / cost_at(x,y)`.
+/// When `entity_blocks` is `Some`, cells in the set are treated as blocked
+/// UNLESS they are the goal cell.
 pub fn find_path_with_costs(
     grid: &PathGrid,
     start: (u16, u16),
@@ -1226,53 +1105,24 @@ pub fn find_path_with_costs(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<(u16, u16)>> {
-    // Delegate to base find_path when no cost grid and no entity blocks.
-    if entity_blocks.is_none() || entity_blocks.is_some_and(|s| s.is_empty()) {
-        let Some(cost_grid) = costs else {
-            // No cost grid — PathGrid-only A*. This path is only safe for Winged
-            // units (air movement) since water cells are PathGrid-walkable.
-            log::debug!(
-                "find_path_with_costs: no cost grid, using PathGrid-only A* ({:?}→{:?})",
-                start,
-                goal,
-            );
-            return find_path(grid, start, goal);
-        };
-        return find_path_with_costs_inner(
-            grid,
-            start,
-            goal,
-            cost_grid,
-            None,
-            movement_zone,
-            resolved_terrain,
-            penalty_cells,
-        );
-    }
-    let Some(cost_grid) = costs else {
-        // Entity blocks but no cost grid — PathGrid-only A* with entity blocking.
-        // Only safe for Winged units since water is PathGrid-walkable.
-        log::debug!(
-            "find_path_with_costs: no cost grid with entity blocks, using PathGrid-only A* ({:?}→{:?})",
-            start,
-            goal,
-        );
-        return find_path_with_entity_blocks(grid, start, goal, entity_blocks);
-    };
-    find_path_with_costs_inner(
+    let steps = astar_search(
         grid,
         start,
+        MovementLayer::Ground,
         goal,
-        cost_grid,
-        entity_blocks,
-        movement_zone,
-        resolved_terrain,
-        penalty_cells,
-    )
+        &AStarOptions {
+            terrain_costs: costs,
+            entity_blocks,
+            penalty_cells,
+            movement_zone,
+            resolved_terrain,
+            ..Default::default()
+        },
+    )?;
+    Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
 }
 
 /// Corridor-restricted A*: only expands cells whose zone ID is in `allowed_zones`.
-/// Used by the hierarchical zone search to confine A* to a Dijkstra-computed corridor.
 pub fn find_path_with_costs_corridor(
     grid: &PathGrid,
     start: (u16, u16),
@@ -1285,19 +1135,22 @@ pub fn find_path_with_costs_corridor(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<(u16, u16)>> {
-    let cost_grid = costs?;
-    find_path_with_costs_corridor_inner(
+    let steps = astar_search(
         grid,
         start,
+        MovementLayer::Ground,
         goal,
-        cost_grid,
-        entity_blocks,
-        zone_map,
-        allowed_zones,
-        movement_zone,
-        resolved_terrain,
-        penalty_cells,
-    )
+        &AStarOptions {
+            terrain_costs: costs,
+            entity_blocks,
+            corridor: Some((zone_map, allowed_zones)),
+            penalty_cells,
+            movement_zone,
+            resolved_terrain,
+            ..Default::default()
+        },
+    )?;
+    Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
 }
 
 /// A* restricted to cells in `allowed_zones`. Identical to `find_path_with_costs_inner`
@@ -1879,6 +1732,10 @@ fn reconstruct_layered_path(
     path
 }
 
+/// Bridge-aware A* pathfinding with height-based routing.
+///
+/// Uses dual closed lists (ground/bridge) per cell for bridge-aware routing.
+/// Returns per-cell layer assignment derived from height comparison.
 pub fn find_layered_path(
     grid: &PathGrid,
     ground_blocks: Option<&BTreeSet<(u16, u16)>>,
@@ -1892,175 +1749,19 @@ pub fn find_layered_path(
     if !matches!(start_layer, MovementLayer::Ground | MovementLayer::Bridge) {
         return None;
     }
-    let start_layer = if grid.is_walkable_on_layer(start.0, start.1, start_layer) {
-        start_layer
-    } else if start_layer == MovementLayer::Bridge
-        && grid.is_walkable_on_layer(start.0, start.1, MovementLayer::Ground)
-    {
-        MovementLayer::Ground
-    } else if start_layer == MovementLayer::Ground
-        && grid.is_walkable_on_layer(start.0, start.1, MovementLayer::Bridge)
-    {
-        MovementLayer::Bridge
-    } else {
-        return None;
-    };
-    let goal_layers = goal_layers_for(grid, start_layer, goal);
-    if goal_layers.is_empty() {
-        return None;
-    }
-    if start == goal && goal_layers.contains(&start_layer) {
-        return Some(vec![LayeredPathStep {
-            rx: start.0,
-            ry: start.1,
-            layer: start_layer,
-        }]);
-    }
-
-    let w = grid.width as usize;
-    let h = grid.height as usize;
-    let total_states = w * h * 2;
-    let mut g_cost = vec![i32::MAX; total_states];
-    let mut came_from = vec![usize::MAX; total_states];
-    let mut closed = vec![false; total_states];
-
-    let start_idx = layered_state_index(w, start.0, start.1, start_layer);
-    g_cost[start_idx] = 0;
-    let mut open_layers: BinaryHeap<Reverse<(i32, usize)>> = BinaryHeap::new();
-    open_layers.push(Reverse((0, start_idx)));
-    let mut nodes_evaluated = 0u32;
-
-    while let Some(Reverse((_priority, state_idx))) = open_layers.pop() {
-        if closed[state_idx] {
-            continue;
-        }
-        let cell = state_idx / 2;
-        let cx = (cell % w) as u16;
-        let cy = (cell / w) as u16;
-        let layer = if state_idx % 2 == 0 {
-            MovementLayer::Ground
-        } else {
-            MovementLayer::Bridge
-        };
-        closed[state_idx] = true;
-        if (cx, cy) == goal && goal_layers.contains(&layer) {
-            return Some(reconstruct_layered_path(
-                &came_from, start_idx, state_idx, w,
-            ));
-        }
-
-        nodes_evaluated += 1;
-        if nodes_evaluated >= MAX_SEARCH_NODES {
-            return None;
-        }
-
-        if grid.cell(cx, cy).is_some_and(|cell| cell.transition) {
-            let other = if layer == MovementLayer::Ground {
-                MovementLayer::Bridge
-            } else {
-                MovementLayer::Ground
-            };
-            if grid.is_walkable_on_layer(cx, cy, other) {
-                let other_idx = layered_state_index(w, cx, cy, other);
-                let tentative_g = g_cost[state_idx] + CARDINAL_COST;
-                if tentative_g < g_cost[other_idx] {
-                    g_cost[other_idx] = tentative_g;
-                    came_from[other_idx] = state_idx;
-                    let h_cost = octile_heuristic(cx, cy, goal.0, goal.1);
-                    open_layers.push(Reverse((tentative_g + h_cost, other_idx)));
-                }
-            }
-        }
-
-        for &(dx, dy, is_diagonal) in &NEIGHBORS {
-            let nx_i = cx as i32 + dx;
-            let ny_i = cy as i32 + dy;
-            if nx_i < 0 || ny_i < 0 || nx_i >= grid.width as i32 || ny_i >= grid.height as i32 {
-                continue;
-            }
-            let nx = nx_i as u16;
-            let ny = ny_i as u16;
-            if !grid.is_walkable_on_layer(nx, ny, layer) {
-                continue;
-            }
-            // Entity blocking — layer-separated so bridge units don't block
-            // ground pathfinding and vice versa.
-            let blocks = match layer {
-                MovementLayer::Ground => ground_blocks,
-                MovementLayer::Bridge => bridge_blocks,
-                _ => None,
-            };
-            if let Some(b) = blocks {
-                if b.contains(&(nx, ny)) && (nx, ny) != goal {
-                    continue;
-                }
-            }
-            // Reuse bounds-checked nx/ny: (cx+dx, cy) = (nx, cy), (cx, cy+dy) = (cx, ny).
-            if is_diagonal {
-                if !grid.is_walkable_on_layer(nx, cy, layer)
-                    || !grid.is_walkable_on_layer(cx, ny, layer)
-                {
-                    continue;
-                }
-                // Diagonal corners must also be passable for this SpeedType (ground layer).
-                if layer == MovementLayer::Ground {
-                    if let Some(tc) = terrain_costs {
-                        if tc.cost_at(nx, cy) == 0 || tc.cost_at(cx, ny) == 0 {
-                            continue;
-                        }
-                    }
-                }
-            }
-            // Terrain cost check — 0 means blocked for this SpeedType (ground layer only).
-            let terrain_cost: u8 = if layer == MovementLayer::Ground {
-                terrain_costs.map_or(100, |tc| tc.cost_at(nx, ny))
-            } else {
-                100 // bridge layer: no terrain cost modifiers
-            };
-            if terrain_cost == 0 {
-                continue;
-            }
-            let next_idx = layered_state_index(w, nx, ny, layer);
-            if closed[next_idx] {
-                continue;
-            }
-            let base_cost = if is_diagonal {
-                DIAGONAL_COST
-            } else {
-                CARDINAL_COST
-            };
-            // Weighted step cost — higher terrain_cost = cheaper step.
-            // Roads (250) preferred, clear (100) normal, rough (75) avoided.
-            let mut step_cost = base_cost * 100 / terrain_cost as i32;
-            // Height-based cost penalty: the original engine gives cliff/ramp
-            // cells a 4x base cost. Units prefer flat routes
-            // over climbing hills when both paths lead to the same destination.
-            if layer == MovementLayer::Ground {
-                if let (Some(cur_cell), Some(next_cell)) = (grid.cell(cx, cy), grid.cell(nx, ny)) {
-                    let h_diff =
-                        (cur_cell.ground_level as i32 - next_cell.ground_level as i32).abs();
-                    if h_diff > 0 {
-                        step_cost *= CLIFF_COST_MULTIPLIER;
-                    }
-                }
-            }
-            // Cooperative pathfinding: friendly movers' path cells cost 4× more.
-            if let Some(penalties) = penalty_cells {
-                if penalties.contains(&(nx, ny)) {
-                    step_cost *= COOPERATIVE_COST_MULTIPLIER;
-                }
-            }
-            let tentative_g = g_cost[state_idx] + step_cost;
-            if tentative_g < g_cost[next_idx] {
-                g_cost[next_idx] = tentative_g;
-                came_from[next_idx] = state_idx;
-                let h_cost = octile_heuristic(nx, ny, goal.0, goal.1);
-                open_layers.push(Reverse((tentative_g + h_cost, next_idx)));
-            }
-        }
-    }
-
-    None
+    astar_search(
+        grid,
+        start,
+        start_layer,
+        goal,
+        &AStarOptions {
+            terrain_costs,
+            entity_blocks: ground_blocks,
+            bridge_blocks,
+            penalty_cells,
+            ..Default::default()
+        },
+    )
 }
 
 // Tests extracted to core_tests.rs to stay under 400 lines.
