@@ -7,6 +7,7 @@ use crate::sim::production::{
     BuildOption, BuildQueueState, ProducerFocusView, ProductionCategory, QueueItemView,
     ReadyBuildingView,
 };
+use crate::sim::superweapon::SuperWeaponView;
 
 use super::{
     CAMEO_COLUMNS, Rect, SidebarAction, SidebarChromeLayoutSpec, SidebarControlButton, SidebarItem,
@@ -45,6 +46,7 @@ pub fn build_sidebar_view(
         producer_focus,
         scroll_rows,
         interner,
+        &[],
     )
 }
 
@@ -64,6 +66,7 @@ pub fn build_sidebar_view_with_spec(
     producer_focus: &[ProducerFocusView],
     scroll_rows: usize,
     interner: Option<&crate::sim::intern::StringInterner>,
+    sw_views: &[SuperWeaponView],
 ) -> SidebarView {
     // Collect items first to know how many rows we need.
     let selected_category = active_tab.category();
@@ -74,6 +77,7 @@ pub fn build_sidebar_view_with_spec(
         ready_buildings,
         armed_building,
         interner,
+        sw_views,
     );
     let total_items = all_entries.len();
     let total_rows = (total_items + CAMEO_COLUMNS - 1) / CAMEO_COLUMNS;
@@ -290,11 +294,37 @@ fn collect_build_entries(
     ready_buildings: &[ReadyBuildingView],
     armed_building: Option<&str>,
     interner: Option<&crate::sim::intern::StringInterner>,
+    sw_views: &[SuperWeaponView],
 ) -> Vec<BuildEntry> {
     let armed_id: Option<InternedId> = armed_building.and_then(|s| interner.and_then(|i| i.get(s)));
     let resolve = |id: InternedId| -> String {
         interner.map_or(format!("#{}", id.index()), |i| i.resolve(id).to_string())
     };
+
+    // Superweapon cameos go first on the Defense tab, sorted before regular items.
+    let mut sw_entries: Vec<BuildEntry> = Vec::new();
+    if category == ProductionCategory::Defense {
+        for sw in sw_views {
+            // Use sidebar_image (e.g. "INTICON") as the type_id for cameo atlas lookup.
+            let type_id = sw
+                .sidebar_image
+                .as_deref()
+                .unwrap_or(&sw.display_name)
+                .to_string();
+            sw_entries.push(BuildEntry {
+                type_id,
+                display_name: sw.display_name.clone(),
+                cost: None,
+                enabled: sw.is_online,
+                progress: sw.progress,
+                queued_count: 0,
+                is_building_this_type: !sw.is_ready && sw.is_online && sw.progress > 0.0,
+                is_ready: sw.is_ready,
+                is_armed: false,
+            });
+        }
+    }
+
     // Collect build options, merging ready-building state into matching entries
     // so that a completed building shows "READY" on its existing cameo slot
     // instead of spawning a duplicate entry.
@@ -381,6 +411,12 @@ fn collect_build_entries(
                 is_armed,
             });
         }
+    }
+
+    // Prepend superweapon entries before regular defense items.
+    if !sw_entries.is_empty() {
+        sw_entries.append(&mut entries);
+        return sw_entries;
     }
 
     entries

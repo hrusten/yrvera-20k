@@ -59,7 +59,7 @@ impl Default for GameOptions {
             short_game: true,
             bases: true,
             bridges_destroyable: true,
-            super_weapons: false,
+            super_weapons: true,
             build_off_ally: false,
             crates: true,
             mcv_redeploy: true,

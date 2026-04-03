@@ -47,6 +47,7 @@ pub mod aircraft;
 
 // --- Vision, fog of war, power ---
 pub mod power_system;
+pub mod superweapon;
 pub mod vision;
 
 // --- Animation, building overlays, bridge state ---

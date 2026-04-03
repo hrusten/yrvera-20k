@@ -58,6 +58,8 @@ fn make_obj(locomotor: LocomotorKind, category: ObjectCategory) -> ObjectType {
         guard_range: None,
         explodes: false,
         death_weapon: None,
+        super_weapon: None,
+        super_weapon2: None,
         spy_sat: false,
         gap_generator: false,
         radar: false,

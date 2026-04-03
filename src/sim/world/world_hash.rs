@@ -28,6 +28,7 @@ impl Simulation {
         self.hash_power_states(&mut hasher);
         self.hash_fog_and_alliances(&mut hasher);
         self.hash_bridge_state(&mut hasher);
+        self.hash_super_weapons(&mut hasher);
         self.hash_entities(&mut hasher);
 
         hasher.finish()
@@ -183,6 +184,43 @@ impl Simulation {
             cell.destroyable.hash(hasher);
             cell.deck_level.hash(hasher);
             cell.bridge_group_id.hash(hasher);
+        }
+    }
+
+    /// Hash per-house superweapon state and active lightning storm.
+    fn hash_super_weapons(&self, hasher: &mut impl Hasher) {
+        for (owner, weapons) in &self.super_weapons {
+            owner.hash(hasher);
+            for (type_id, inst) in weapons {
+                type_id.hash(hasher);
+                inst.is_active.hash(hasher);
+                inst.is_ready.hash(hasher);
+                inst.is_suspended.hash(hasher);
+                inst.charge_start_tick.hash(hasher);
+                inst.charge_duration.hash(hasher);
+                inst.charge_drain_state.hash(hasher);
+                inst.ready_tick.hash(hasher);
+            }
+        }
+        // Hash lightning storm global state.
+        self.lightning_storm.is_some().hash(hasher);
+        if let Some(ref ls) = self.lightning_storm {
+            ls.owner.hash(hasher);
+            ls.target_rx.hash(hasher);
+            ls.target_ry.hash(hasher);
+            ls.deferment_remaining.hash(hasher);
+            ls.duration_remaining.hash(hasher);
+            ls.center_bolt_timer.hash(hasher);
+            ls.scatter_bolt_timer.hash(hasher);
+            ls.last_bolt_rx.hash(hasher);
+            ls.last_bolt_ry.hash(hasher);
+        }
+        // Hash queued lightning storm.
+        self.queued_lightning_storm.is_some().hash(hasher);
+        if let Some(ref qs) = self.queued_lightning_storm {
+            qs.owner.hash(hasher);
+            qs.target_rx.hash(hasher);
+            qs.target_ry.hash(hasher);
         }
     }
 

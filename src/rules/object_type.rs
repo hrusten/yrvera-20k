@@ -245,6 +245,11 @@ pub struct ObjectType {
     /// Specific weapon fired on death (overrides default explosion behavior).
     /// References a [WeaponName] section in rules.ini.
     pub death_weapon: Option<String>,
+    /// Superweapon type ID granted when this building is completed (SuperWeapon= in rules.ini).
+    /// References a section listed in [SuperWeaponTypes].
+    pub super_weapon: Option<String>,
+    /// Secondary superweapon type ID, typically from an upgrade (SuperWeapon2= in rules.ini).
+    pub super_weapon2: Option<String>,
     /// When true, this building provides full map vision while powered.
     /// Used by the Allied Spy Satellite Uplink (GASPYSAT).
     pub spy_sat: bool,
@@ -674,6 +679,8 @@ impl ObjectType {
             guard_range: section.get_f32("GuardRange").map(sim_from_f32),
             explodes: section.get_bool("Explodes").unwrap_or(false),
             death_weapon: section.get("DeathWeapon").map(|s| s.to_string()),
+            super_weapon: section.get("SuperWeapon").map(|s| s.to_string()),
+            super_weapon2: section.get("SuperWeapon2").map(|s| s.to_string()),
             spy_sat: section.get_bool("SpySat").unwrap_or(false),
             gap_generator: section.get_bool("GapGenerator").unwrap_or(false),
             radar: section.get_bool("Radar").unwrap_or(false),

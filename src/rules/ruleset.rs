@@ -26,6 +26,7 @@ use crate::rules::projectile_type::ProjectileType;
 use crate::rules::radar_event_config::RadarEventConfig;
 use crate::rules::terrain_rules::TerrainRules;
 use crate::rules::warhead_type::WarheadType;
+use crate::rules::superweapon_type::SuperWeaponType;
 use crate::rules::weapon_type::WeaponType;
 use crate::util::fixed_math::{SimFixed, sim_from_f32};
 
@@ -307,6 +308,27 @@ pub struct GeneralRules {
     /// valid/invalid cell grid is shown. Fence walls (not in this list) still
     /// render their connectivity ghost. Stored uppercase for case-insensitive matching.
     pub concrete_walls: Vec<String>,
+
+    // -- Lightning Storm superweapon constants --
+    /// Duration of active storm in game frames (LightningStormDuration= in [General]).
+    /// Default 180 frames (12 seconds at 15 fps).
+    pub lightning_storm_duration: i32,
+    /// Damage per lightning bolt strike (LightningDamage= in [General]). Default 250.
+    pub lightning_damage: i32,
+    /// Deferment countdown before storm bolts begin (LightningDeferment= in [General]).
+    /// Default 250 frames.
+    pub lightning_deferment: i32,
+    /// Frames between center bolt strikes (LightningHitDelay= in [General]). Default 10.
+    pub lightning_hit_delay: i32,
+    /// Frames between scatter bolt strikes (LightningScatterDelay= in [General]). Default 5.
+    pub lightning_scatter_delay: i32,
+    /// Cell radius for scatter bolt placement (LightningCellSpread= in [General]). Default 10.
+    pub lightning_cell_spread: i32,
+    /// Minimum manhattan distance between consecutive bolts (LightningSeparation= in [General]).
+    /// Default 3.
+    pub lightning_separation: i32,
+    /// Warhead ID for lightning bolt damage (LightningWarhead= in [General]). Default "IonWH".
+    pub lightning_warhead: String,
 }
 
 /// Default animation rate when art.ini section is missing.
@@ -395,6 +417,14 @@ impl Default for GeneralRules {
             blockage_path_delay_ticks: 60,
             concrete_walls: Vec::new(),
             cliff_back_impassability: 2,
+            lightning_storm_duration: 180,
+            lightning_damage: 250,
+            lightning_deferment: 250,
+            lightning_hit_delay: 10,
+            lightning_scatter_delay: 5,
+            lightning_cell_spread: 10,
+            lightning_separation: 3,
+            lightning_warhead: "IonWH".to_string(),
         }
     }
 }
@@ -657,6 +687,17 @@ impl GeneralRules {
                 .get_i32("CliffBackImpassability")
                 .unwrap_or(2)
                 .clamp(0, 2) as u8,
+            lightning_storm_duration: general.get_i32("LightningStormDuration").unwrap_or(180),
+            lightning_damage: general.get_i32("LightningDamage").unwrap_or(250),
+            lightning_deferment: general.get_i32("LightningDeferment").unwrap_or(250),
+            lightning_hit_delay: general.get_i32("LightningHitDelay").unwrap_or(10).max(1),
+            lightning_scatter_delay: general.get_i32("LightningScatterDelay").unwrap_or(5).max(1),
+            lightning_cell_spread: general.get_i32("LightningCellSpread").unwrap_or(10),
+            lightning_separation: general.get_i32("LightningSeparation").unwrap_or(3),
+            lightning_warhead: general
+                .get("LightningWarhead")
+                .unwrap_or("IonWH")
+                .to_string(),
         }
     }
 
@@ -786,6 +827,8 @@ pub struct RuleSet {
     pub garrison_rules: GarrisonRules,
     /// Radar event visual parameters (ping rectangles on minimap).
     pub radar_event_config: RadarEventConfig,
+    /// All superweapon types indexed by ID (e.g., "LightningStormSpecial" → SuperWeaponType).
+    pub super_weapons: HashMap<String, SuperWeaponType>,
 }
 
 impl RuleSet {
@@ -894,6 +937,25 @@ impl RuleSet {
         let prerequisite_groups: HashMap<String, Vec<String>> = parse_prerequisite_groups(ini);
         log::info!("Prerequisite groups: {} aliases", prerequisite_groups.len());
 
+        // Step 8: Parse superweapon type registry.
+        let mut super_weapons: HashMap<String, SuperWeaponType> = HashMap::new();
+        let sw_ids: Vec<String> = parse_registry(ini, "SuperWeaponTypes");
+        for sw_id in &sw_ids {
+            if let Some(section) = ini.section(sw_id) {
+                if let Some(sw) = SuperWeaponType::from_ini_section(sw_id, section) {
+                    super_weapons.insert(sw_id.clone(), sw);
+                } else {
+                    log::warn!("SuperWeapon '{}' has unknown Type=, skipping", sw_id);
+                }
+            } else {
+                log::trace!(
+                    "SuperWeapon '{}' listed in [SuperWeaponTypes] but has no section",
+                    sw_id
+                );
+            }
+        }
+        log::info!("SuperWeaponTypes: {} loaded", super_weapons.len());
+
         log::info!(
             "RuleSet loaded: {} objects ({} inf, {} veh, {} air, {} bld), \
              {} weapons, {} warheads, {} projectiles",
@@ -924,6 +986,7 @@ impl RuleSet {
             bridge_rules,
             garrison_rules,
             radar_event_config,
+            super_weapons,
         })
     }
 
@@ -972,6 +1035,11 @@ impl RuleSet {
     /// Look up a projectile by ID.
     pub fn projectile(&self, id: &str) -> Option<&ProjectileType> {
         self.projectiles.get(id)
+    }
+
+    /// Look up a superweapon type by ID.
+    pub fn super_weapon(&self, id: &str) -> Option<&SuperWeaponType> {
+        self.super_weapons.get(id)
     }
 
     /// Look up the factory type for a structure by ID (case-insensitive).

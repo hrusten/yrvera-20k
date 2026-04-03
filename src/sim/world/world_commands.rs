@@ -770,6 +770,67 @@ impl Simulation {
                 }
                 true
             }
+            Command::LaunchSuperWeapon {
+                sw_type_id,
+                target_rx,
+                target_ry,
+            } => {
+                if !self.game_options.super_weapons {
+                    return false;
+                }
+                let owner_iid = self.interner.intern(command_owner);
+                let sw_type_str = self.interner.resolve(*sw_type_id).to_string();
+
+                // Look up the instance and verify it's ready.
+                let is_ready = self
+                    .super_weapons
+                    .get(&owner_iid)
+                    .and_then(|weapons| weapons.get(sw_type_id))
+                    .map_or(false, |inst| inst.is_active && inst.is_ready);
+                if !is_ready {
+                    log::warn!(
+                        "LaunchSuperWeapon '{}' by '{}' — not ready",
+                        sw_type_str,
+                        command_owner,
+                    );
+                    return false;
+                }
+
+                // Look up the type to determine dispatch kind.
+                let Some(sw_type) = rules.and_then(|r| r.super_weapon(&sw_type_str)) else {
+                    return false;
+                };
+                let kind = sw_type.kind;
+                let recharge = sw_type.recharge_time_frames;
+
+                // Dispatch based on kind.
+                let success = match kind {
+                    crate::rules::superweapon_type::SuperWeaponKind::LightningStorm => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::lightning_storm::start(
+                            self,
+                            rules,
+                            owner_iid,
+                            *target_rx,
+                            *target_ry,
+                        )
+                    }
+                    other => {
+                        log::warn!("SuperWeapon kind {:?} not yet implemented", other);
+                        false
+                    }
+                };
+
+                if success {
+                    // Reset the instance — restart charging.
+                    if let Some(weapons) = self.super_weapons.get_mut(&owner_iid) {
+                        if let Some(inst) = weapons.get_mut(sw_type_id) {
+                            inst.reset_after_fire(recharge, self.tick);
+                        }
+                    }
+                }
+                success
+            }
         }
     }
 

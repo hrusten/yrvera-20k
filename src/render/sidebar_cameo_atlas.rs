@@ -66,6 +66,21 @@ pub fn build_sidebar_cameo_atlas(
         }
     }
 
+    // Load superweapon sidebar images (e.g. BOLTICON, CHROICON).
+    // These are standalone SHP files in cameo(md).mix, not referenced in art.ini.
+    for sw in rules.super_weapons.values() {
+        if let Some(ref image_name) = sw.sidebar_image {
+            let upper = image_name.to_ascii_uppercase();
+            // Skip if already loaded (e.g. SPYPICON reused as unit cameo).
+            if rendered.iter().any(|r| r.type_id == upper) {
+                continue;
+            }
+            if let Some(cameo) = render_sw_cameo(&upper, asset_manager, palette) {
+                rendered.push(cameo);
+            }
+        }
+    }
+
     if rendered.is_empty() {
         log::warn!("Sidebar cameo atlas: no cameo art found");
         return None;
@@ -232,6 +247,40 @@ fn render_cameo(
 
     Some(RenderedCameo {
         type_id: type_id.to_ascii_uppercase(),
+        rgba: cropped_rgba,
+        width: cropped_w,
+        height: cropped_h,
+    })
+}
+
+/// Load a superweapon sidebar image SHP directly by name.
+///
+/// SW sidebar images are standalone SHP files (e.g. `BOLTICON.SHP`) in
+/// `cameo(md).mix`, not referenced in art.ini. No image/cameo resolution needed.
+fn render_sw_cameo(
+    image_name: &str,
+    asset_manager: &AssetManager,
+    palette: &Palette,
+) -> Option<RenderedCameo> {
+    let shp_name = format!("{image_name}.SHP");
+    let data = asset_manager.get_ref(&shp_name)?;
+    let shp = ShpFile::from_bytes(data).ok()?;
+    if shp.frames.is_empty() {
+        return None;
+    }
+    let frame_rgba = shp.frame_to_rgba(0, palette).ok()?;
+    let frame = &shp.frames[0];
+    let full_w = shp.width as u32;
+    let full_h = shp.height as u32;
+    if full_w == 0 || full_h == 0 {
+        return None;
+    }
+    let mut full_rgba = vec![0u8; (full_w * full_h * 4) as usize];
+    blit_frame_into_full_bounds(&mut full_rgba, full_w, full_h, frame, &frame_rgba);
+    let (cropped_rgba, cropped_w, cropped_h) = crop_visible_bounds(&full_rgba, full_w, full_h)?;
+    log::debug!("SW sidebar cameo {} loaded from {}", image_name, shp_name);
+    Some(RenderedCameo {
+        type_id: image_name.to_ascii_uppercase(),
         rgba: cropped_rgba,
         width: cropped_w,
         height: cropped_h,

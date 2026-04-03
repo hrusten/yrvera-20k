@@ -107,6 +107,14 @@ pub enum SimSoundEvent {
     UnitComplete { owner: InternedId },
     /// A chrono miner teleported — play ChronoInSound/ChronoOutSound.
     ChronoTeleport { rx: u16, ry: u16 },
+    /// A superweapon was launched — play EVA warning.
+    SuperWeaponLaunched {
+        owner: InternedId,
+        rx: u16,
+        ry: u16,
+    },
+    /// A lightning bolt struck — play thunder sound.
+    SuperWeaponStrike { rx: u16, ry: u16 },
 }
 
 /// A fire event produced during combat — carries data for render-side
@@ -193,6 +201,15 @@ pub struct Simulation {
     /// Per-player power state (output, drain, low-power flag, spy blackout timer).
     /// Updated each tick by `power_system::tick_power_states()`.
     pub power_states: BTreeMap<InternedId, PowerState>,
+    /// Per-owner superweapon instances. Outer key = owner, inner key = SW type ID.
+    /// Deterministic iteration via nested BTreeMap.
+    pub super_weapons: BTreeMap<InternedId, BTreeMap<InternedId, crate::sim::superweapon::SuperWeaponInstance>>,
+    /// Active lightning storm state (global — only one at a time).
+    pub lightning_storm: Option<crate::sim::superweapon::lightning_storm::LightningStormState>,
+    /// Queued lightning storm — activates when the current storm ends.
+    pub queued_lightning_storm: Option<crate::sim::superweapon::lightning_storm::QueuedLightningStorm>,
+    /// Whether superweapon grants have been initialized from map-placed buildings.
+    pub super_weapons_initialized: bool,
     /// Per-cell terrain speed modifier config (slope climb/descend, crowd density).
     /// Built from [General] rules at map load.
     #[serde(skip)]
@@ -274,6 +291,10 @@ impl Simulation {
             bridge_explosions: Vec::new(),
             radar_events: RadarEventQueue::default(),
             power_states: BTreeMap::new(),
+            super_weapons: BTreeMap::new(),
+            lightning_storm: None,
+            queued_lightning_storm: None,
+            super_weapons_initialized: false,
             terrain_speed_config: terrain_speed::TerrainSpeedConfig::default(),
             close_enough: SimFixed::from_num(576), // 2.25 cells × 256 lep/cell
             path_delay_ticks: 9,
@@ -1095,6 +1116,13 @@ impl Simulation {
                 tick_ms,
                 &self.interner,
             );
+            // --- Phase 4.5: Superweapons ---
+            // DEPENDS ON: power state (suspend/resume gating).
+            // PRODUCES: world_effects (bolt anims), damage to entities, sound_events.
+            if self.game_options.super_weapons {
+                crate::sim::superweapon::tick_superweapons(self, rules);
+            }
+
             // --- Phase 5: Turrets + Combat ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking),
             //   turret rotation MUST run before combat so turrets are aligned when firing.
@@ -1146,6 +1174,22 @@ impl Simulation {
                     bldg.ry,
                     bldg.z,
                 );
+            }
+            // Refresh superweapon grants for owners who lost structures in combat.
+            if self.game_options.super_weapons && combat_result.structure_destroyed {
+                let mut sw_refresh_owners: Vec<InternedId> = Vec::new();
+                for &dead_id in &combat_result.despawned_ids {
+                    if let Some(entity) = self.entities.get(dead_id) {
+                        if entity.category == crate::map::entities::EntityCategory::Structure
+                            && !sw_refresh_owners.contains(&entity.owner)
+                        {
+                            sw_refresh_owners.push(entity.owner);
+                        }
+                    }
+                }
+                for owner_id in sw_refresh_owners {
+                    crate::sim::superweapon::refresh_super_weapons_for_owner(self, rules, owner_id);
+                }
             }
             // Spawn explosion animations from combat deaths.
             for fx in &combat_result.explosion_effects {

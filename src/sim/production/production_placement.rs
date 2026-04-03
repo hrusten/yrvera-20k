@@ -245,6 +245,11 @@ pub fn place_ready_building(
     }
     maybe_spawn_refinery_harvester(sim, rules, owner, type_id, rx, ry, path_grid, height_map);
 
+    // Refresh superweapon grants — newly placed building may provide a SW.
+    if sim.game_options.super_weapons {
+        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
+    }
+
     let Some(ready_queue) = sim.production.ready_by_owner.get_mut(&owner_id) else {
         return false;
     };

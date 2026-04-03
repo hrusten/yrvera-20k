@@ -331,6 +331,14 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
                             .to_string();
                         GameSoundEvent::BuildingReady { sound_id }
                     }
+                    SimSoundEvent::SuperWeaponLaunched { .. } => {
+                        // TODO: play EVA superweapon warning sound.
+                        continue;
+                    }
+                    SimSoundEvent::SuperWeaponStrike { .. } => {
+                        // TODO: play lightning bolt thunder sound.
+                        continue;
+                    }
                     SimSoundEvent::UnitComplete { owner } => {
                         let owner_str = sim.interner.resolve(owner);
                         if !local_owner_name

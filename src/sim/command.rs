@@ -124,6 +124,14 @@ pub enum Command {
         engineer_id: u64,
         target_building_id: u64,
     },
+    /// Fire a superweapon at a target cell.
+    /// The sim validates that the owner has a ready instance of the specified SW type
+    /// and dispatches to the appropriate launch handler.
+    LaunchSuperWeapon {
+        sw_type_id: InternedId,
+        target_rx: u16,
+        target_ry: u16,
+    },
 }
 
 /// Command with deterministic execution metadata.

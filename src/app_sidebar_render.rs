@@ -91,6 +91,13 @@ pub(crate) fn current_sidebar_view(state: &mut AppState) -> Option<SidebarView> 
             ]
         });
     let interner = state.simulation.as_ref().map(|s| &s.interner);
+    // Query superweapon views for sidebar cameos.
+    let owner_iid = sim.interner.get(&owner_name).unwrap_or_default();
+    let sw_views = if sim.game_options.super_weapons {
+        crate::sim::superweapon::superweapon_views_for_owner(sim, rules, &owner_iid)
+    } else {
+        Vec::new()
+    };
     let mut view = sidebar::build_sidebar_view_with_spec(
         state.sidebar_layout_spec,
         state.render_width() as f32,
@@ -107,6 +114,7 @@ pub(crate) fn current_sidebar_view(state: &mut AppState) -> Option<SidebarView> 
         &producer_focus,
         state.sidebar_scroll_rows,
         interner,
+        &sw_views,
     );
     if state.sidebar_scroll_rows > view.max_scroll_rows {
         state.sidebar_scroll_rows = view.max_scroll_rows;
@@ -126,6 +134,7 @@ pub(crate) fn current_sidebar_view(state: &mut AppState) -> Option<SidebarView> 
             &producer_focus,
             state.sidebar_scroll_rows,
             interner,
+            &sw_views,
         );
     }
     if let Some(atlas) = state.sidebar_cameo_atlas.as_ref() {

@@ -398,9 +398,13 @@ pub fn sell_building(sim: &mut Simulation, rules: &RuleSet, stable_id: u64) -> b
     // Remove from EntityStore.
     sim.entities.remove(stable_id);
     // SpySat sold: fully reshroud the owner so only current LOS remains visible.
+    let owner_id = sim.interner.intern(&owner_name);
     if obj.spy_sat {
-        let owner_id = sim.interner.intern(&owner_name);
         sim.fog.reset_explored_for_owner(owner_id);
+    }
+    // Refresh superweapon grants — sold building may have been providing a SW.
+    if sim.game_options.super_weapons {
+        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
     }
     if refund > 0 {
         *credits_entry_for_owner(sim, &owner_name) += refund;
