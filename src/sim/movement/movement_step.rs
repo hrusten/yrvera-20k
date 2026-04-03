@@ -5,7 +5,7 @@
 //! rotates in place, advances sub-cell position, detects cell boundary crossings, and
 //! performs the actual cell transition with occupancy/terrain checks.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
@@ -354,8 +354,8 @@ pub(super) struct CrossingOutput {
 
 /// Process cell boundary crossings — the inner loop that checks whether
 /// sub_x/sub_y have crossed cell boundaries, validates terrain walkability,
-/// cliff height, reserved destinations, and occupancy, then performs cell
-/// transitions with lepton remainder carry-over.
+/// cliff height, and occupancy, then performs cell transitions with lepton
+/// remainder carry-over.
 ///
 /// Takes individual entity fields to avoid borrow conflicts with
 /// `entity.movement_target` (which the caller holds as `ref mut target`).
@@ -376,9 +376,7 @@ pub(super) fn process_cell_crossings(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    occupancy: &OccupancyGrid,
-    reserved_destinations: &mut BTreeSet<(MovementLayer, u16, u16)>,
-    reserved_infantry_sub_cells: &mut BTreeMap<(MovementLayer, u16, u16), Vec<u8>>,
+    occupancy: &mut OccupancyGrid,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
     rng: &mut SimRng,
@@ -395,6 +393,8 @@ pub(super) fn process_cell_crossings(
         if target.next_index >= target.path.len() {
             break;
         }
+        let old_rx = position.rx;
+        let old_ry = position.ry;
         let (nx, ny): (u16, u16) = target.path[target.next_index];
         let dx_cell: i32 = nx as i32 - position.rx as i32;
         let dy_cell: i32 = ny as i32 - position.ry as i32;
@@ -497,7 +497,6 @@ pub(super) fn process_cell_crossings(
                 finished_entities,
                 &mut aborted_for_stuck,
                 ctx,
-                reserved_destinations,
                 entity_cost_grid,
                 mover_entity_blocks,
                 snap.too_big_to_fit_under_bridge,
@@ -537,7 +536,6 @@ pub(super) fn process_cell_crossings(
                         finished_entities,
                         &mut aborted_for_stuck,
                         ctx,
-                        reserved_destinations,
                         entity_cost_grid,
                         mover_entity_blocks,
                         snap.too_big_to_fit_under_bridge,
@@ -552,36 +550,6 @@ pub(super) fn process_cell_crossings(
             }
         }
 
-        // --- Reserved destination check ---
-        if reserved_destinations.contains(&(next_layer, nx, ny)) {
-            position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
-            position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
-            *drive_track_state = None;
-            let evts = handle_blocked_tick(
-                target,
-                facing,
-                &snap.locomotor,
-                entity_id,
-                (position.rx, position.ry),
-                active_layer,
-                snap.on_bridge,
-                stats,
-                finished_entities,
-                &mut aborted_for_stuck,
-                ctx,
-                reserved_destinations,
-                entity_cost_grid,
-                mover_entity_blocks,
-                snap.too_big_to_fit_under_bridge,
-                mcfg,
-                rng,
-                sim_tick,
-                PATH_STUCK_INIT,
-            );
-            debug_events.extend(evts);
-            break;
-        }
-
         // --- Occupancy check (entity-aware: sub-cell, crush, bump) ---
         // Occupancy check: vehicles defer to crush/bump/attack handler,
         // infantry defer to sub-cell/attack handler. Both break out of the
@@ -593,7 +561,6 @@ pub(super) fn process_cell_crossings(
             (position.rx, position.ry),
             active_layer,
             occupancy,
-            reserved_infantry_sub_cells,
         ) {
             deferred_cell_check = Some(check);
             break;
@@ -605,6 +572,13 @@ pub(super) fn process_cell_crossings(
         // a visible position jump when transitioning from diagonal
         // to cardinal movement (e.g., sub_x=51 → 128 = ~9px snap).
         apply_cell_transition_remainder(target, position, dx_cell, dy_cell, nx, ny);
+        // Update occupancy grid: move entity from old cell to new cell.
+        // Uses current sub_cell (from old cell). For infantry, reserve_destination
+        // below may allocate a new sub-cell and correct it via update_sub_cell.
+        occupancy.move_entity(
+            old_rx, old_ry, nx, ny,
+            entity_id, active_layer, *sub_cell,
+        );
         // Bridge/layer resolution stays in one helper so cell transitions
         // don't duplicate deck/ground height rules across the tick loop.
         let (resolved_layer, bridge_update) = resolve_cell_transition_bridge_state(
@@ -633,11 +607,13 @@ pub(super) fn process_cell_crossings(
             nx,
             ny,
             occupancy,
-            reserved_infantry_sub_cells,
-            reserved_destinations,
             rng,
         ) {
             break;
+        }
+        // After reservation, infantry sub_cell may have changed.
+        if category == EntityCategory::Infantry {
+            occupancy.update_sub_cell(nx, ny, entity_id, *sub_cell);
         }
         stats.moved_steps = stats.moved_steps.saturating_add(1);
 
@@ -659,13 +635,10 @@ pub(super) fn process_cell_crossings(
         // cell's occupancy rather than carrying the current cell's.
         if category == EntityCategory::Infantry && target.next_index < target.path.len() {
             let next_cell = target.path[target.next_index];
-            let next_reserved = reserved_infantry_sub_cells
-                .get(&(active_layer, next_cell.0, next_cell.1))
-                .map(Vec::as_slice);
             if let Some(pre_sub) = bump_crush::allocate_sub_cell_with_preference(
                 occupancy.get(next_cell.0, next_cell.1),
                 active_layer,
-                next_reserved,
+                None,
                 position.sub_x,
                 position.sub_y,
                 rng,

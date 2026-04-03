@@ -517,6 +517,10 @@ impl Simulation {
         for entity in self.entities.values_mut() {
             entity.position.refresh_screen_coords();
         }
+
+        // 3. Rebuild persistent occupancy from entity positions.
+        // OccupancyGrid is #[serde(skip)] — starts empty after deserialization.
+        self.occupancy = OccupancyGrid::rebuild(&self.entities);
     }
 
     pub fn refresh_vision_heights(&mut self, grid: &PathGrid) {
@@ -1009,7 +1013,7 @@ impl Simulation {
             path_grid,
             &self.terrain_costs,
             &self.house_alliances,
-            &self.occupancy,
+            &mut self.occupancy,
             &mut self.rng,
             tick_ms,
             self.tick,

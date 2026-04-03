@@ -1236,7 +1236,10 @@ fn test_height_based_bridge_routing_deck_at_4() {
 
     // Middle cells (bridge span) should be on Bridge layer since
     // start height=4, bridge ground_level=0, diff=4 >= 2 → bridge list
-    let bridge_steps: Vec<_> = path.iter().filter(|s| s.layer == MovementLayer::Bridge).collect();
+    let bridge_steps: Vec<_> = path
+        .iter()
+        .filter(|s| s.layer == MovementLayer::Bridge)
+        .collect();
     assert!(
         !bridge_steps.is_empty(),
         "Bridge cells should route on Bridge layer with height diff >= 2"

@@ -365,7 +365,7 @@ fn test_tick_movement_repaths_when_next_cell_becomes_blocked() {
             Some(&grid),
             &Default::default(),
             &Default::default(),
-            &OccupancyGrid::new(),
+            &mut OccupancyGrid::new(),
             &mut SimRng::new(0),
             250,
             0,
@@ -418,7 +418,7 @@ fn test_tick_movement_no_stacking_same_target_cell() {
         None,
         &Default::default(),
         &Default::default(),
-        &OccupancyGrid::new(),
+        &mut OccupancyGrid::new(),
         &mut SimRng::new(0),
         1000,
         0,
@@ -474,7 +474,7 @@ fn test_repath_cooldown_prevents_thrashing_on_unrecoverable_block() {
             Some(&grid),
             &Default::default(),
             &Default::default(),
-            &OccupancyGrid::new(),
+            &mut OccupancyGrid::new(),
             &mut SimRng::new(0),
             250,
             0,
@@ -500,7 +500,7 @@ fn test_repath_cooldown_prevents_thrashing_on_unrecoverable_block() {
         Some(&grid),
         &Default::default(),
         &Default::default(),
-        &OccupancyGrid::new(),
+        &mut OccupancyGrid::new(),
         &mut SimRng::new(0),
         250,
         0,
@@ -541,7 +541,7 @@ fn test_dynamic_occupancy_repath_routes_around_stationary_blocker() {
     // With blockage_path_delay_ticks=60, the mover must wait ~60 ticks after
     // hitting the occupied cell before a repath is attempted. After repath
     // succeeds, it needs additional ticks to travel the detour to (7,4).
-    let occupancy = OccupancyGrid::rebuild(&entities);
+    let mut occupancy = OccupancyGrid::rebuild(&entities);
     let mut saw_repath_success = false;
     for _ in 0..80 {
         let stats = tick_movement_with_grid(
@@ -549,7 +549,7 @@ fn test_dynamic_occupancy_repath_routes_around_stationary_blocker() {
             Some(&grid),
             &Default::default(),
             &Default::default(),
-            &occupancy,
+            &mut occupancy,
             &mut SimRng::new(0),
             250,
             0,
@@ -607,7 +607,7 @@ fn test_stuck_recovery_clears_unreachable_movement_target() {
     // decrements it by 1 and resets blocked_delay to 60. With both
     // blocked_delay=60 and path_delay_ticks=9 counting down simultaneously,
     // each cycle takes ~61 ticks. 10 failed repaths × 61 ticks ≈ 612 ticks.
-    let occupancy = OccupancyGrid::rebuild(&entities);
+    let mut occupancy = OccupancyGrid::rebuild(&entities);
     let mut recovered = false;
     for _ in 0..700 {
         let stats = tick_movement_with_grid(
@@ -615,7 +615,7 @@ fn test_stuck_recovery_clears_unreachable_movement_target() {
             Some(&grid),
             &Default::default(),
             &Default::default(),
-            &occupancy,
+            &mut occupancy,
             &mut SimRng::new(0),
             250,
             0,
@@ -667,13 +667,13 @@ fn test_movement_tick_stats_report_blocked_attempts() {
         None,
     ));
 
-    let occupancy = OccupancyGrid::rebuild(&entities);
+    let mut occupancy = OccupancyGrid::rebuild(&entities);
     let stats = tick_movement_with_grid(
         &mut entities,
         Some(&grid),
         &Default::default(),
         &Default::default(),
-        &occupancy,
+        &mut occupancy,
         &mut SimRng::new(0),
         250,
         0,
@@ -710,13 +710,13 @@ fn test_friendly_scatter_issues_move_command() {
         None,
     ));
 
-    let occupancy = OccupancyGrid::rebuild(&entities);
+    let mut occupancy = OccupancyGrid::rebuild(&entities);
     let stats = tick_movement_with_grid(
         &mut entities,
         Some(&grid),
         &Default::default(),
         &Default::default(),
-        &occupancy,
+        &mut occupancy,
         &mut SimRng::new(0),
         250,
         0,
@@ -928,7 +928,7 @@ fn test_segment_exhaustion_triggers_auto_repath() {
             Some(&grid),
             &Default::default(),
             &Default::default(),
-            &OccupancyGrid::new(),
+            &mut OccupancyGrid::new(),
             &mut SimRng::new(0),
             250,
             0,
@@ -980,7 +980,7 @@ fn test_exact_24_step_path_no_repath_needed() {
             Some(&grid),
             &Default::default(),
             &Default::default(),
-            &OccupancyGrid::new(),
+            &mut OccupancyGrid::new(),
             &mut SimRng::new(0),
             250,
             0,
@@ -1030,7 +1030,7 @@ fn test_auto_repath_fails_entity_stops() {
             Some(&grid),
             &Default::default(),
             &Default::default(),
-            &OccupancyGrid::new(),
+            &mut OccupancyGrid::new(),
             &mut SimRng::new(0),
             250,
             0,

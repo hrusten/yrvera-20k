@@ -185,7 +185,11 @@ fn reconstruct_path_dual(
         } else {
             MovementLayer::Ground
         };
-        path.push(LayeredPathStep { rx: x, ry: y, layer });
+        path.push(LayeredPathStep {
+            rx: x,
+            ry: y,
+            layer,
+        });
 
         if current_idx == start_idx && current_bridge == start_on_bridge {
             break;
@@ -391,8 +395,7 @@ pub fn astar_search(
         for (dir_index, &(dx, dy, is_diagonal)) in NEIGHBORS.iter().enumerate() {
             let nx_i = cx as i32 + dx;
             let ny_i = cy as i32 + dy;
-            if nx_i < 0 || ny_i < 0 || nx_i >= grid.width() as i32 || ny_i >= grid.height() as i32
-            {
+            if nx_i < 0 || ny_i < 0 || nx_i >= grid.width() as i32 || ny_i >= grid.height() as i32 {
                 continue;
             }
             let nx = nx_i as u16;
@@ -463,8 +466,7 @@ pub fn astar_search(
 
             // Zone corridor filter
             if let Some((zone_map, allowed)) = options.corridor {
-                let cell_zone =
-                    zone_map.zone_at(nx, ny, MovementLayer::Ground);
+                let cell_zone = zone_map.zone_at(nx, ny, MovementLayer::Ground);
                 if cell_zone != super::zone_map::ZONE_INVALID && !allowed.contains(&cell_zone) {
                     continue;
                 }
@@ -500,7 +502,9 @@ pub fn astar_search(
                         options.movement_zone,
                         options.resolved_terrain,
                     ) && (is_water_mover
-                        || options.terrain_costs.map_or(true, |tc| tc.cost_at(nx, cy) > 0));
+                        || options
+                            .terrain_costs
+                            .map_or(true, |tc| tc.cost_at(nx, cy) > 0));
                     let adj2_ok = is_cell_passable_for_mover(
                         grid,
                         cx,
@@ -508,7 +512,9 @@ pub fn astar_search(
                         options.movement_zone,
                         options.resolved_terrain,
                     ) && (is_water_mover
-                        || options.terrain_costs.map_or(true, |tc| tc.cost_at(cx, ny) > 0));
+                        || options
+                            .terrain_costs
+                            .map_or(true, |tc| tc.cost_at(cx, ny) > 0));
                     if !adj1_ok || !adj2_ok {
                         continue;
                     }
@@ -1081,12 +1087,14 @@ fn octile_heuristic(ax: u16, ay: u16, bx: u16, by: u16) -> i32 {
 /// Returns `Some(path)` where path is a sequence of (rx, ry) cells from
 /// start to goal (both inclusive). Returns `None` if no path exists or
 /// the search exceeds MAX_SEARCH_NODES.
-pub fn find_path(
-    grid: &PathGrid,
-    start: (u16, u16),
-    goal: (u16, u16),
-) -> Option<Vec<(u16, u16)>> {
-    let steps = astar_search(grid, start, MovementLayer::Ground, goal, &AStarOptions::default())?;
+pub fn find_path(grid: &PathGrid, start: (u16, u16), goal: (u16, u16)) -> Option<Vec<(u16, u16)>> {
+    let steps = astar_search(
+        grid,
+        start,
+        MovementLayer::Ground,
+        goal,
+        &AStarOptions::default(),
+    )?;
     Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
 }
 
@@ -1152,7 +1160,6 @@ pub fn find_path_with_costs_corridor(
     )?;
     Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
 }
-
 
 /// Parse a foundation string like "2x2" or "3x3" into (width, height).
 /// Returns (1, 1) for malformed or missing input.
