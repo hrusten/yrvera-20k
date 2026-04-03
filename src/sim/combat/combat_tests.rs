@@ -115,7 +115,14 @@ fn test_tick_combat_applies_damage() {
     let mut interner = test_interner();
     issue_attack_command(&mut store, 1, 2, None, &interner);
 
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
 
     let target_health = store.get(2).expect("target alive").health.current;
     assert_eq!(
@@ -194,17 +201,38 @@ fn test_tick_combat_respects_cooldown() {
     issue_attack_command(&mut store, 1, 2, None, &interner);
 
     // First shot fires immediately (cooldown=0).
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
     let h1: u16 = store.get(2).unwrap().health.current;
 
     // Next tick should not fire again immediately.
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
     let h2: u16 = store.get(2).unwrap().health.current;
     assert_eq!(h1, h2, "Should not fire during cooldown");
 
     // After enough ticks, should fire again.
     for _ in 0..40 {
-        tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+        tick_combat(
+            &mut store,
+            &mut OccupancyGrid::new(),
+            &rules,
+            &mut interner,
+            &mut BTreeMap::new(),
+            100,
+        );
     }
     let h3: u16 = store.get(2).unwrap().health.current;
     assert!(h3 < h2, "Should fire after cooldown expires");
@@ -219,7 +247,14 @@ fn test_tick_combat_kills_target() {
     let mut interner = test_interner();
     issue_attack_command(&mut store, 1, 2, None, &interner);
 
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
 
     assert!(store.get(2).is_none(), "Dead entity should be removed");
     assert!(
@@ -238,7 +273,14 @@ fn test_tick_combat_out_of_range() {
     let mut interner = test_interner();
     issue_attack_command(&mut store, 1, 2, None, &interner);
 
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
 
     let target_health = store.get(2).unwrap().health.current;
     assert_eq!(
@@ -263,7 +305,14 @@ fn test_infantry_vs_heavy_armor() {
     let mut interner = test_interner();
     issue_attack_command(&mut store, 1, 2, None, &interner);
 
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
 
     let h: u16 = store.get(2).unwrap().health.current;
     assert_eq!(
@@ -299,7 +348,14 @@ fn test_prone_infantry_takes_scaled_direct_damage() {
     let mut interner = test_interner();
     issue_attack_command(&mut store, 1, 2, None, &interner);
 
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
 
     let target_health = store.get(2).expect("target alive").health.current;
     assert_eq!(
@@ -334,7 +390,14 @@ fn test_prone_infantry_takes_scaled_aoe_damage() {
     let mut interner = test_interner();
     issue_attack_command(&mut store, 1, 2, None, &interner);
 
-    tick_combat(&mut store, &mut OccupancyGrid::new(), &rules, &mut interner, &mut BTreeMap::new(), 100);
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        100,
+    );
 
     let target_health = store.get(2).expect("target alive").health.current;
     assert_eq!(

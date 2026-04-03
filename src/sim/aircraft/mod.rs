@@ -535,7 +535,9 @@ pub fn tick_aircraft_missions(sim: &mut Simulation, rules: &RuleSet) {
             .get(id)
             .and_then(|e| {
                 let obj = rules.object(sim.interner.resolve(e.type_ref))?;
-                Some(crate::util::fixed_math::ra2_speed_to_leptons_per_second(obj.speed.max(1)))
+                Some(crate::util::fixed_math::ra2_speed_to_leptons_per_second(
+                    obj.speed.max(1),
+                ))
             })
             .unwrap_or(SimFixed::from_num(8));
         air_movement::issue_air_move_command(&mut sim.entities, id, (rx, ry), speed);

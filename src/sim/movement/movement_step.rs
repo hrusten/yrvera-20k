@@ -13,7 +13,6 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::components::{MovementTarget, Position};
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::movement::bump_crush;
-use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::movement::drive_track::{self, DriveTrackState};
 use crate::sim::movement::locomotor::{GroundMovePhase, LocomotorState, MovementLayer};
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
@@ -23,6 +22,7 @@ use crate::sim::movement::movement_occupancy::{
 };
 use crate::sim::movement::movement_reservation::reserve_destination_after_transition;
 use crate::sim::movement::turret::{rot_to_facing_delta, shortest_rotation};
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;

@@ -108,9 +108,7 @@ pub fn check_terrain(
         MovementLayer::Bridge => {
             path_grid.is_some_and(|grid| grid.is_walkable_on_layer(nx, ny, MovementLayer::Bridge))
         }
-        MovementLayer::Air | MovementLayer::Underground => {
-            true
-        }
+        MovementLayer::Air | MovementLayer::Underground => true,
     };
     if !terrain_walkable {
         return TerrainCheckResult::Impassable;

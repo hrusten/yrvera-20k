@@ -63,9 +63,7 @@ pub fn start(
     target_ry: u16,
 ) -> bool {
     if sim.lightning_storm.is_some() {
-        log::info!(
-            "Lightning Storm queued — one already active, will start when current ends"
-        );
+        log::info!("Lightning Storm queued — one already active, will start when current ends");
         sim.queued_lightning_storm = Some(QueuedLightningStorm {
             owner,
             target_rx,
@@ -209,18 +207,16 @@ fn pick_scatter_cell(
 }
 
 /// Spawn a single lightning bolt at the given cell: visual effect + area damage.
-fn spawn_bolt(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    rx: u16,
-    ry: u16,
-    owner: InternedId,
-) {
+fn spawn_bolt(sim: &mut Simulation, rules: &RuleSet, rx: u16, ry: u16, owner: InternedId) {
     // 1. Pick a random bolt animation.
     let anim_idx = sim.rng.next_range_u32(BOLT_ANIMS.len() as u32) as usize;
     let anim_name = BOLT_ANIMS[anim_idx];
     let anim_iid = sim.interner.intern(anim_name);
-    let frames = sim.effect_frame_counts.get(&anim_iid).copied().unwrap_or(20);
+    let frames = sim
+        .effect_frame_counts
+        .get(&anim_iid)
+        .copied()
+        .unwrap_or(20);
 
     sim.world_effects.push(WorldEffect {
         shp_name: anim_iid,
@@ -261,5 +257,6 @@ fn spawn_bolt(
     }
 
     // 3. Sound event for the bolt strike.
-    sim.sound_events.push(SimSoundEvent::SuperWeaponStrike { rx, ry });
+    sim.sound_events
+        .push(SimSoundEvent::SuperWeaponStrike { rx, ry });
 }

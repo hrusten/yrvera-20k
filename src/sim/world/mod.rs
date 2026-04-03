@@ -28,7 +28,6 @@ use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai::{self, AiPlayerState};
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState, BridgeStateChange};
-use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::combat;
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -47,6 +46,7 @@ use crate::sim::movement::rocket_movement;
 use crate::sim::movement::teleport_movement;
 use crate::sim::movement::tunnel_movement;
 use crate::sim::movement::turret;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::ore_growth;
 use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
@@ -108,11 +108,7 @@ pub enum SimSoundEvent {
     /// A chrono miner teleported — play ChronoInSound/ChronoOutSound.
     ChronoTeleport { rx: u16, ry: u16 },
     /// A superweapon was launched — play EVA warning.
-    SuperWeaponLaunched {
-        owner: InternedId,
-        rx: u16,
-        ry: u16,
-    },
+    SuperWeaponLaunched { owner: InternedId, rx: u16, ry: u16 },
     /// A lightning bolt struck — play thunder sound.
     SuperWeaponStrike { rx: u16, ry: u16 },
 }
@@ -203,11 +199,13 @@ pub struct Simulation {
     pub power_states: BTreeMap<InternedId, PowerState>,
     /// Per-owner superweapon instances. Outer key = owner, inner key = SW type ID.
     /// Deterministic iteration via nested BTreeMap.
-    pub super_weapons: BTreeMap<InternedId, BTreeMap<InternedId, crate::sim::superweapon::SuperWeaponInstance>>,
+    pub super_weapons:
+        BTreeMap<InternedId, BTreeMap<InternedId, crate::sim::superweapon::SuperWeaponInstance>>,
     /// Active lightning storm state (global — only one at a time).
     pub lightning_storm: Option<crate::sim::superweapon::lightning_storm::LightningStormState>,
     /// Queued lightning storm — activates when the current storm ends.
-    pub queued_lightning_storm: Option<crate::sim::superweapon::lightning_storm::QueuedLightningStorm>,
+    pub queued_lightning_storm:
+        Option<crate::sim::superweapon::lightning_storm::QueuedLightningStorm>,
     /// Whether superweapon grants have been initialized from map-placed buildings.
     pub super_weapons_initialized: bool,
     /// Per-cell terrain speed modifier config (slope climb/descend, crowd density).

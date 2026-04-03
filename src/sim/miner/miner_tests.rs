@@ -12,11 +12,11 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::miner::{
     CargoBale, Miner, MinerConfig, MinerKind, MinerState, RefineryDockPhase, ResourceNode,
     ResourceType,
 };
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production::credits_for_owner;
 use crate::sim::world::Simulation;

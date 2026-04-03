@@ -16,10 +16,10 @@ use crate::sim::components::Position;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::movement::bump_crush;
-use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::movement::drive_track::DriveTrackState;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::movement_blocked::handle_blocked_tick;
+use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::cell_entry::{self, CellEntryResult};
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
@@ -58,7 +58,9 @@ pub(super) fn detect_deferred_cell_check(
         if bump_crush::allocate_sub_cell_with_reserved(cell_occ, next_layer, reserved).is_none() {
             return Some(DeferredCellCheck::Infantry(next_cell, next_layer));
         }
-    } else if cell_occ.is_some_and(|o| o.has_blockers_on(next_layer) || o.infantry(next_layer).next().is_some()) {
+    } else if cell_occ
+        .is_some_and(|o| o.has_blockers_on(next_layer) || o.infantry(next_layer).next().is_some())
+    {
         return Some(DeferredCellCheck::Vehicle(next_cell, next_layer));
     }
 
@@ -97,7 +99,11 @@ pub(super) fn naval_terrain_diag(
     )
 }
 
-pub(super) fn naval_occ_diag(occupancy: &OccupancyGrid, layer: MovementLayer, cell: (u16, u16)) -> String {
+pub(super) fn naval_occ_diag(
+    occupancy: &OccupancyGrid,
+    layer: MovementLayer,
+    cell: (u16, u16),
+) -> String {
     match occupancy.get(cell.0, cell.1) {
         Some(occ) => format!(
             "occ[blockers={} infantry={}]",

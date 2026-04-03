@@ -110,7 +110,8 @@ pub fn tick_idle_scatter(
 
         // Only scatter if sharing the cell with at least one other entity.
         let sharing = occupancy.get(pos.0, pos.1).is_some_and(|occ| {
-            let total = occ.blockers(MovementLayer::Ground).count() + occ.infantry(MovementLayer::Ground).count();
+            let total = occ.blockers(MovementLayer::Ground).count()
+                + occ.infantry(MovementLayer::Ground).count();
             total > 1
         });
         if !sharing {
@@ -135,9 +136,10 @@ pub fn tick_idle_scatter(
             }
             // For infantry: must have a free sub-cell. For vehicles: must be empty.
             let available = match entity.category {
-                EntityCategory::Infantry => {
-                    bump_crush::cell_passable_for_infantry(occupancy.get(rx, ry), MovementLayer::Ground)
-                }
+                EntityCategory::Infantry => bump_crush::cell_passable_for_infantry(
+                    occupancy.get(rx, ry),
+                    MovementLayer::Ground,
+                ),
                 _ => occupancy
                     .get(rx, ry)
                     .map_or(true, |o| !o.has_blockers_on(MovementLayer::Ground)),

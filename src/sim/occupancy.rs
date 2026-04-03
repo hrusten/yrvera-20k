@@ -169,13 +169,7 @@ impl OccupancyGrid {
     }
 
     /// Update an entity's sub-cell within the same cell.
-    pub fn update_sub_cell(
-        &mut self,
-        rx: u16,
-        ry: u16,
-        entity_id: u64,
-        new_sub_cell: Option<u8>,
-    ) {
+    pub fn update_sub_cell(&mut self, rx: u16, ry: u16, entity_id: u64, new_sub_cell: Option<u8>) {
         if let Some(occ) = self.cells.get_mut(&(rx, ry)) {
             if let Some(o) = occ.occupants.iter_mut().find(|o| o.entity_id == entity_id) {
                 o.sub_cell = new_sub_cell;

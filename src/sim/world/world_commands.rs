@@ -204,9 +204,10 @@ impl Simulation {
                     if ok {
                         if let Some(e) = self.entities.get_mut(*entity_id) {
                             if e.aircraft_mission.is_some() {
-                                e.aircraft_mission = Some(
-                                    crate::sim::aircraft::AircraftMission::Move { sub_state: 0 },
-                                );
+                                e.aircraft_mission =
+                                    Some(crate::sim::aircraft::AircraftMission::Move {
+                                        sub_state: 0,
+                                    });
                             }
                         }
                     }
@@ -369,9 +370,10 @@ impl Simulation {
                     if ok {
                         if let Some(e) = self.entities.get_mut(*entity_id) {
                             if e.aircraft_mission.is_some() {
-                                e.aircraft_mission = Some(
-                                    crate::sim::aircraft::AircraftMission::Move { sub_state: 0 },
-                                );
+                                e.aircraft_mission =
+                                    Some(crate::sim::aircraft::AircraftMission::Move {
+                                        sub_state: 0,
+                                    });
                             }
                         }
                     }
@@ -814,11 +816,7 @@ impl Simulation {
                     crate::rules::superweapon_type::SuperWeaponKind::LightningStorm => {
                         let rules = rules.unwrap();
                         crate::sim::superweapon::lightning_storm::start(
-                            self,
-                            rules,
-                            owner_iid,
-                            *target_rx,
-                            *target_ry,
+                            self, rules, owner_iid, *target_rx, *target_ry,
                         )
                     }
                     other => {

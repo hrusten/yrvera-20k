@@ -416,7 +416,11 @@ pub(crate) fn build_sidebar_cameo_instances(
     state: &AppState,
     view: &SidebarView,
     ready_text: &str,
-) -> (Vec<SpriteInstance>, Vec<SpriteInstance>, Vec<SpriteInstance>) {
+) -> (
+    Vec<SpriteInstance>,
+    Vec<SpriteInstance>,
+    Vec<SpriteInstance>,
+) {
     let Some(atlas) = state.sidebar_cameo_atlas.as_ref() else {
         return (Vec::new(), Vec::new(), Vec::new());
     };
@@ -464,8 +468,7 @@ pub(crate) fn build_sidebar_cameo_instances(
                 // frame 0. Map our 0.0-1.0 progress to frames 1..last.
                 let last_frame = gclock_frames.len() - 1;
                 let frame_index = if last_frame >= 2 {
-                    ((progress * (last_frame - 1) as f32).round() as usize + 1)
-                        .min(last_frame)
+                    ((progress * (last_frame - 1) as f32).round() as usize + 1).min(last_frame)
                 } else {
                     last_frame.min(1)
                 };

@@ -229,7 +229,12 @@ fn build_gclock_texture(
 
     log::info!(
         "GCLOCK2 atlas for {}: {}x{} px, {} frames ({}x{} grid)",
-        mix_name, tex_w, tex_h, frame_count, cols, rows,
+        mix_name,
+        tex_w,
+        tex_h,
+        frame_count,
+        cols,
+        rows,
     );
 
     let texture = batch.create_texture(gpu, &atlas_rgba, tex_w, tex_h);
@@ -330,7 +335,10 @@ fn build_theme_atlas(
         match build_gclock_texture(gpu, batch, &mix, &palette, mix_name) {
             Some((tex, entries)) => (Some(tex), entries),
             None => {
-                log::warn!("GCLOCK2.SHP not found in {}, progress overlay disabled", mix_name);
+                log::warn!(
+                    "GCLOCK2.SHP not found in {}, progress overlay disabled",
+                    mix_name
+                );
                 (None, Vec::new())
             }
         };

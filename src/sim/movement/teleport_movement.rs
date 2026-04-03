@@ -180,12 +180,10 @@ pub fn tick_teleport_movement(
                 entity.position.sub_x = CELL_CENTER_LEPTON;
                 entity.position.sub_y = CELL_CENTER_LEPTON;
                 entity.position.refresh_screen_coords();
-                let layer = entity
-                    .locomotor
-                    .as_ref()
-                    .map_or(crate::sim::movement::locomotor::MovementLayer::Ground, |l| {
-                        l.layer
-                    });
+                let layer = entity.locomotor.as_ref().map_or(
+                    crate::sim::movement::locomotor::MovementLayer::Ground,
+                    |l| l.layer,
+                );
                 occupancy.move_entity(
                     old_rx,
                     old_ry,

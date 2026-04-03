@@ -24,9 +24,9 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
 use crate::rules::projectile_type::ProjectileType;
 use crate::rules::radar_event_config::RadarEventConfig;
+use crate::rules::superweapon_type::SuperWeaponType;
 use crate::rules::terrain_rules::TerrainRules;
 use crate::rules::warhead_type::WarheadType;
-use crate::rules::superweapon_type::SuperWeaponType;
 use crate::rules::weapon_type::WeaponType;
 use crate::util::fixed_math::{SimFixed, sim_from_f32};
 

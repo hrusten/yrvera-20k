@@ -235,11 +235,7 @@ pub fn tick_superweapons(sim: &mut Simulation, rules: &RuleSet) {
 ///
 /// Call when a building is completed, sold, or destroyed. Activates new grants
 /// and deactivates revoked ones.
-pub fn refresh_super_weapons_for_owner(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: InternedId,
-) {
+pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
     use std::collections::HashSet;
 
     let owner_str = sim.interner.resolve(owner).to_string();

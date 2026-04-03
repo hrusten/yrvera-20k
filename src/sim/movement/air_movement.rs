@@ -312,20 +312,15 @@ pub fn tick_air_movement(
                     let move_lep = target.speed * fly_speed * dt;
                     if move_lep > SIM_ZERO {
                         let (step_x, step_y) =
-                            crate::util::facing_table::facing_to_movement(
-                                entity.facing,
-                                move_lep,
-                            );
+                            crate::util::facing_table::facing_to_movement(entity.facing, move_lep);
                         let new_lx = cur_lx + I48F16::from(step_x);
                         let new_ly = cur_ly + I48F16::from(step_y);
                         let new_rx = (new_lx / lep256).to_num::<i32>();
                         let new_ry = (new_ly / lep256).to_num::<i32>();
                         entity.position.rx = (new_rx.max(0) as u16).min(511);
                         entity.position.ry = (new_ry.max(0) as u16).min(511);
-                        let sub_x =
-                            new_lx - I48F16::from_num(entity.position.rx) * lep256;
-                        let sub_y =
-                            new_ly - I48F16::from_num(entity.position.ry) * lep256;
+                        let sub_x = new_lx - I48F16::from_num(entity.position.rx) * lep256;
+                        let sub_y = new_ly - I48F16::from_num(entity.position.ry) * lep256;
                         entity.position.sub_x =
                             SimFixed::from_num(sub_x.to_num::<i32>().max(0).min(255));
                         entity.position.sub_y =

@@ -80,7 +80,6 @@ const NEIGHBOR_OFFSETS: [(i32, i32); 8] = [
     (-1, -1), // NW
 ];
 
-
 /// Build the set of cells blocked by entities for pathfinding purposes.
 ///
 /// RA2 key optimization: **moving friendly units are treated as passable terrain**
@@ -106,7 +105,11 @@ pub fn build_entity_block_sets(
     mover_owner: &str,
     alliances: &crate::map::houses::HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
-) -> (BTreeSet<(u16, u16)>, BTreeSet<(u16, u16)>, BTreeSet<(u16, u16)>) {
+) -> (
+    BTreeSet<(u16, u16)>,
+    BTreeSet<(u16, u16)>,
+    BTreeSet<(u16, u16)>,
+) {
     /// Max path steps to include in penalty set per friendly mover.
     /// Matches gamemd.exe PathfinderClass::UpdateBridgePassability loop limit (24).
     const COOPERATIVE_PATH_LOOKAHEAD: usize = 24;
@@ -146,7 +149,10 @@ pub fn build_entity_block_sets(
         // (4x cost in A*) instead of hard-blocking.
         if let Some(ref mt) = entity.movement_target {
             penalty_cells.insert(pos);
-            for &cell in mt.path[mt.next_index..].iter().take(COOPERATIVE_PATH_LOOKAHEAD) {
+            for &cell in mt.path[mt.next_index..]
+                .iter()
+                .take(COOPERATIVE_PATH_LOOKAHEAD)
+            {
                 penalty_cells.insert(cell);
             }
             continue;
@@ -708,7 +714,10 @@ mod tests {
     fn test_cell_passable_for_infantry_with_vehicle() {
         let grid = make_occ(&[(5, 5, 1, MovementLayer::Ground, None)]);
         let occ = grid.get(5, 5).unwrap();
-        assert!(!cell_passable_for_infantry(Some(occ), MovementLayer::Ground));
+        assert!(!cell_passable_for_infantry(
+            Some(occ),
+            MovementLayer::Ground
+        ));
     }
 
     // -- collect_crush_victims tests --
@@ -923,11 +932,7 @@ mod tests {
         let occ = grid.get(5, 5).unwrap();
         let reserved: Vec<u8> = vec![4];
         assert_eq!(
-            allocate_sub_cell_with_reserved(
-                Some(occ),
-                MovementLayer::Ground,
-                Some(&reserved)
-            ),
+            allocate_sub_cell_with_reserved(Some(occ), MovementLayer::Ground, Some(&reserved)),
             None
         );
     }

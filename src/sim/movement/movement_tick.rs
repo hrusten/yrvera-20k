@@ -33,7 +33,6 @@ use crate::util::fixed_math::{
 };
 
 use super::bump_crush;
-use crate::sim::occupancy::OccupancyGrid;
 use super::locomotor::{GroundMovePhase, MovementLayer};
 use super::movement_bridge::{
     BRIDGE_Z_OFFSET, apply_bridge_lookahead_if_needed, apply_pending_bridge_render_state,
@@ -45,6 +44,7 @@ use super::{
     INFANTRY_WOBBLE_AMPLITUDE, MIN_BRAKE_FRACTION, MovementConfig, MovementTickStats,
     MoverSnapshot, PATH_STUCK_INIT, PathfindingContext, facing_from_delta, walking_to_subcell_dest,
 };
+use crate::sim::occupancy::OccupancyGrid;
 
 // Naval diagnostic functions moved to movement_occupancy.rs
 
