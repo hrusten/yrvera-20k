@@ -41,7 +41,7 @@ fn print_overlay_id_mapping_for_dustbowl() {
         .expect("rules ini");
     println!("Rules source: {}", source);
     let rules_ini: IniFile = IniFile::from_bytes(&rules_bytes).expect("parse rules ini");
-    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini);
+    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini, None);
 
     let mut counts: HashMap<u8, u32> = HashMap::new();
     let mut frame_stats: HashMap<u8, HashMap<u8, u32>> = HashMap::new();
@@ -371,7 +371,7 @@ fn dump_raw_overlaytypes_ranges() {
     println!("Missing keys in 0..{}: {:?}", max_key, missing_keys);
     println!("Raw key 0 => {}", section.get("0").unwrap_or("(missing)"));
 
-    let reg = OverlayTypeRegistry::from_ini(&rules_ini);
+    let reg = OverlayTypeRegistry::from_ini(&rules_ini, None);
     println!("Registry len: {}", reg.len());
     println!("Current runtime mapping id->name around 95..110:");
     for i in 95u8..=110u8 {
@@ -462,7 +462,7 @@ fn yr_overlay_registry_matches_ra2_resource_families() {
         .or_else(|| asset_manager.get_with_source("rules.ini"))
         .expect("rules ini");
     let rules_ini: IniFile = IniFile::from_bytes(&rules_bytes).expect("parse rules ini");
-    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini);
+    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini, None);
 
     assert_eq!(reg.name(27), Some("GEM01"));
     assert_eq!(reg.name(38), Some("GEM12"));
@@ -692,7 +692,7 @@ fn dustbowl_overlay_168_stays_non_resource() {
         .or_else(|| asset_manager.get_with_source("rules.ini"))
         .expect("rules ini");
     let rules_ini: IniFile = IniFile::from_bytes(&rules_bytes).expect("parse rules ini");
-    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini);
+    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini, None);
     let count_168 = map.overlays.iter().filter(|e| e.overlay_id == 168).count();
     assert!(count_168 > 0, "expected overlay id 168 on Dustbowl");
     assert_eq!(reg.name(168), Some("SROCK01"));
@@ -723,7 +723,7 @@ fn print_overlay_id_mapping_for_goldst() {
         .expect("rules ini");
     println!("Rules source: {}", source);
     let rules_ini: IniFile = IniFile::from_bytes(&rules_bytes).expect("parse rules ini");
-    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini);
+    let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini, None);
 
     let mut counts: HashMap<u8, u32> = HashMap::new();
     for e in &map.overlays {

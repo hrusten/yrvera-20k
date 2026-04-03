@@ -28,6 +28,7 @@ impl Simulation {
         self.hash_power_states(&mut hasher);
         self.hash_fog_and_alliances(&mut hasher);
         self.hash_bridge_state(&mut hasher);
+        self.hash_overlay_grid(&mut hasher);
         self.hash_super_weapons(&mut hasher);
         self.hash_entities(&mut hasher);
 
@@ -184,6 +185,20 @@ impl Simulation {
             cell.destroyable.hash(hasher);
             cell.deck_level.hash(hasher);
             cell.bridge_group_id.hash(hasher);
+        }
+    }
+
+    fn hash_overlay_grid(&self, hasher: &mut impl Hasher) {
+        let Some(overlay_grid) = &self.overlay_grid else {
+            0u8.hash(hasher);
+            return;
+        };
+        1u8.hash(hasher);
+        for (rx, ry, cell) in overlay_grid.iter_occupied() {
+            rx.hash(hasher);
+            ry.hash(hasher);
+            cell.overlay_id.hash(hasher);
+            cell.overlay_data.hash(hasher);
         }
     }
 

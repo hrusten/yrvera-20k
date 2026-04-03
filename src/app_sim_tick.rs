@@ -776,6 +776,26 @@ fn inject_placed_wall_overlays(state: &mut AppState, placed: &[(u16, u16, String
         }
     }
 
+    // Write placed walls to OverlayGrid and sync connectivity frames.
+    if let Some(registry) = &state.overlay_registry {
+        if let Some(sim) = &mut state.simulation {
+            if let Some(grid) = &mut sim.overlay_grid {
+                // Place new wall overlays.
+                for (rx, ry, type_id) in placed {
+                    if let Some(overlay_id) = registry.id_for_name(type_id) {
+                        grid.place_overlay(*rx, *ry, overlay_id, 0);
+                    }
+                }
+                // Sync connectivity frames from state.overlays to OverlayGrid.
+                for entry in &state.overlays {
+                    if registry.flags(entry.overlay_id).is_some_and(|f| f.wall) {
+                        grid.set_overlay_data(entry.rx, entry.ry, entry.frame);
+                    }
+                }
+            }
+        }
+    }
+
     // Also register the overlay name in overlay_names so the renderer can look it up.
     if let Some(registry) = &state.overlay_registry {
         for (_, _, type_id) in placed {

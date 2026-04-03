@@ -281,7 +281,8 @@ pub fn load_map(
             IniFile::from_bytes(&d).ok()
         })
         .unwrap_or_else(|| IniFile::from_str(""));
-    let overlay_registry: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&rules_ini);
+    let overlay_registry: OverlayTypeRegistry =
+        OverlayTypeRegistry::from_ini(&rules_ini, art_ini.as_ref());
 
     // Compute playable area bounds from LocalSize (border filler hidden by shroud).
     let local_bounds: Option<LocalBounds> = Some(LocalBounds::from_header(&map_data.header));
@@ -553,6 +554,24 @@ pub fn load_map(
             production::seed_resource_nodes_from_overlays(sim, &map_data.overlays, &overlay_names);
         if seeded > 0 {
             log::info!("Seeded {} resource node cells for economy loop", seeded);
+        }
+        // Seed mutable overlay grid from map overlay data.
+        if let Some(rt) = &sim.resolved_terrain {
+            let grid_width = rt.width();
+            let grid_height = rt.height();
+            sim.overlay_grid = Some(
+                crate::sim::overlay_grid::OverlayGrid::from_overlay_entries(
+                    &map_data.overlays,
+                    grid_width,
+                    grid_height,
+                ),
+            );
+            log::info!(
+                "Overlay grid initialized: {}x{}, {} entries",
+                grid_width,
+                grid_height,
+                map_data.overlays.len(),
+            );
         }
         // Initialize ore growth/spread config from merged INI sources.
         let general_default = GeneralRules::default();

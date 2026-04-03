@@ -158,6 +158,7 @@ pub fn tick_ore_growth(
     state: &mut OreGrowthState,
     resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
     path_grid: Option<&PathGrid>,
+    mut overlay_grid: Option<&mut crate::sim::overlay_grid::OverlayGrid>,
     rng: &mut SimRng,
 ) {
     if !config.grows && !config.spreads {
@@ -224,6 +225,13 @@ pub fn tick_ore_growth(
                     {
                         let new_remaining = node.remaining + ORE_BASE_PER_LEVEL;
                         node.remaining = new_remaining.min(MAX_ORE_REMAINING);
+                        // Sync overlay frame to match new density.
+                        if let Some(grid) = overlay_grid.as_deref_mut() {
+                            let frame =
+                                (node.remaining / ORE_BASE_PER_LEVEL).saturating_sub(1).min(11)
+                                    as u8;
+                            grid.set_overlay_data(rx, ry, frame);
+                        }
                     }
                 }
             }
@@ -232,7 +240,15 @@ pub fn tick_ore_growth(
         // Phase 2: Spread — spawn new ore in a random adjacent empty cell.
         if config.spreads {
             for &(rx, ry) in &state.spread_candidates {
-                try_spread_ore(resource_nodes, path_grid, rng, rx, ry, state.map_width);
+                try_spread_ore(
+                    resource_nodes,
+                    path_grid,
+                    overlay_grid.as_deref_mut(),
+                    rng,
+                    rx,
+                    ry,
+                    state.map_width,
+                );
             }
         }
 
@@ -280,6 +296,7 @@ fn reservoir_sample(
 fn try_spread_ore(
     resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
     path_grid: Option<&PathGrid>,
+    overlay_grid: Option<&mut crate::sim::overlay_grid::OverlayGrid>,
     rng: &mut SimRng,
     rx: u16,
     ry: u16,
@@ -309,6 +326,12 @@ fn try_spread_ore(
                     remaining: ORE_BASE_PER_LEVEL,
                 },
             );
+            // New ore at level 1 -> frame 0. Copy overlay_id from source cell.
+            if let Some(grid) = overlay_grid {
+                if let Some(source_id) = grid.cell(rx, ry).overlay_id {
+                    grid.place_overlay(nx, ny, source_id, 0);
+                }
+            }
             return;
         }
     }
@@ -381,7 +404,7 @@ mod tests {
         rng: &mut SimRng,
     ) {
         for _ in 0..10000 {
-            tick_ore_growth(config, state, nodes, None, rng);
+            tick_ore_growth(config, state, nodes, None, None, rng);
             if state.scan_cursor == 0 {
                 return;
             }
@@ -485,7 +508,7 @@ mod tests {
 
         // Run many ticks — nothing should change.
         for _ in 0..100 {
-            tick_ore_growth(&config, &mut state, &mut nodes, None, &mut rng);
+            tick_ore_growth(&config, &mut state, &mut nodes, None, None, &mut rng);
         }
 
         let node = nodes.get(&(5, 5)).expect("node still exists");
@@ -529,7 +552,7 @@ mod tests {
         // Run ticks until cursor wraps.
         let mut wrapped = false;
         for _ in 0..1000 {
-            tick_ore_growth(&config, &mut state, &mut nodes, None, &mut rng);
+            tick_ore_growth(&config, &mut state, &mut nodes, None, None, &mut rng);
             if state.scan_cursor == 0 {
                 wrapped = true;
                 break;
@@ -548,7 +571,7 @@ mod tests {
         nodes_fast.insert((50, 50), ore_node(120));
         let mut rng = SimRng::new(42);
 
-        tick_ore_growth(&fast, &mut state_fast, &mut nodes_fast, None, &mut rng);
+        tick_ore_growth(&fast, &mut state_fast, &mut nodes_fast, None, None, &mut rng);
         let fast_progress = state_fast.scan_cursor;
 
         // Slow rate: 100 minutes → scans very few cells per tick.
@@ -562,7 +585,7 @@ mod tests {
         nodes_slow.insert((50, 50), ore_node(120));
         let mut rng2 = SimRng::new(42);
 
-        tick_ore_growth(&slow, &mut state_slow, &mut nodes_slow, None, &mut rng2);
+        tick_ore_growth(&slow, &mut state_slow, &mut nodes_slow, None, None, &mut rng2);
         let slow_progress = state_slow.scan_cursor;
 
         assert!(

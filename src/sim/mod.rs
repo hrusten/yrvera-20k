@@ -58,6 +58,9 @@ pub mod bridge_state;
 // --- Persistent cell occupancy ---
 pub mod occupancy;
 
+// --- Mutable per-cell overlay state (ore density, wall damage, bridge frames) ---
+pub mod overlay_grid;
+
 // --- Passengers, transport, slaves ---
 pub mod passenger;
 pub mod slave_miner;

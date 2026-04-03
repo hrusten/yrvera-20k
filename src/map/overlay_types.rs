@@ -47,7 +47,7 @@ pub fn high_bridge_direction(id: u8) -> Option<u8> {
 /// Per-overlay-type rendering flags parsed from each type's rules.ini section.
 ///
 /// These flags select the correct palette and Y-offset for rendering.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct OverlayTypeFlags {
     /// Tiberium=yes — rendered with unit palette, gets -12px Y offset.
     pub tiberium: bool,
@@ -67,6 +67,29 @@ pub struct OverlayTypeFlags {
     /// Land= key from INI — terrain classification for this overlay.
     /// "Road" means the overlay acts as a road surface (pavement, concrete).
     pub land: Option<String>,
+    /// Strength= from rules.ini — hit points for destructible overlays.
+    /// Only meaningful when wall=true. Default 1.
+    pub strength: u16,
+    /// DamageLevels= from art.ini — number of damage stages for walls.
+    /// Only meaningful when wall=true. Default 1.
+    pub damage_levels: u16,
+}
+
+impl Default for OverlayTypeFlags {
+    fn default() -> Self {
+        Self {
+            tiberium: false,
+            wall: false,
+            is_veins: false,
+            is_veinhole_monster: false,
+            crate_type: false,
+            bridge_deck: false,
+            track: false,
+            land: None,
+            strength: 1,
+            damage_levels: 1,
+        }
+    }
 }
 
 impl OverlayTypeFlags {
@@ -104,7 +127,7 @@ impl OverlayTypeRegistry {
     /// RA2/YR may skip some numeric keys, but internal overlay ids still follow
     /// the ordered list rather than reserving holes for every missing raw key.
     /// Returns an empty registry if the section is missing.
-    pub fn from_ini(ini: &IniFile) -> Self {
+    pub fn from_ini(ini: &IniFile, art_ini: Option<&IniFile>) -> Self {
         let section = match ini.section("OverlayTypes") {
             Some(s) => s,
             None => {
@@ -155,6 +178,17 @@ impl OverlayTypeRegistry {
             let track = upper_name.starts_with("TRACKS");
             if let Some(type_section) = ini.section(name) {
                 let land = type_section.get("Land").map(|s| s.to_string());
+                // Strength from rules section (e.g., [GAWALL] Strength=300).
+                let strength = type_section
+                    .get("Strength")
+                    .and_then(|v| v.parse::<u16>().ok())
+                    .unwrap_or(1);
+                // DamageLevels from art section (e.g., [GASAND] DamageLevels=2 in art.ini).
+                let damage_levels = art_ini
+                    .and_then(|art| art.section(name))
+                    .and_then(|s| s.get("DamageLevels"))
+                    .and_then(|v| v.parse::<u16>().ok())
+                    .unwrap_or(1);
                 flags.push(OverlayTypeFlags {
                     tiberium: type_section.get_bool("Tiberium").unwrap_or(false),
                     wall: type_section.get_bool("Wall").unwrap_or(false),
@@ -166,6 +200,8 @@ impl OverlayTypeRegistry {
                     bridge_deck,
                     track,
                     land,
+                    strength,
+                    damage_levels,
                 });
             } else {
                 flags.push(OverlayTypeFlags {
@@ -332,7 +368,7 @@ mod tests {
 3=GEM01
 ";
         let ini: IniFile = IniFile::from_str(text);
-        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini);
+        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini, None);
         assert_eq!(reg.len(), 4);
         assert_eq!(reg.name(0), Some("GASAND"));
         assert_eq!(reg.name(1), Some("INTREE01"));
@@ -359,7 +395,7 @@ mod tests {
 10=BIGFENCE
 ";
         let ini: IniFile = IniFile::from_str(text);
-        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini);
+        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini, None);
         // Keys sorted by numeric value, compacted to 0-based sequential indices.
         assert_eq!(reg.len(), 4);
         assert_eq!(reg.name(0), Some("GASAND"));
@@ -373,7 +409,7 @@ mod tests {
     fn test_empty_registry() {
         let text: &str = "[General]\nKey=Value\n";
         let ini: IniFile = IniFile::from_str(text);
-        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini);
+        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini, None);
         assert!(reg.is_empty());
         assert_eq!(reg.name(0), None);
     }
@@ -386,7 +422,7 @@ mod tests {
 2=GEM01
 ";
         let ini: IniFile = IniFile::from_str(text);
-        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini);
+        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini, None);
         // Keys sorted and compacted to 0-based — key numbers are ordering hints only.
         assert_eq!(reg.len(), 2);
         assert_eq!(reg.name(0), Some("GASAND"));
@@ -403,7 +439,7 @@ mod tests {
 11=BIGFENCE
 ";
         let ini: IniFile = IniFile::from_str(text);
-        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini);
+        let reg: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(&ini, None);
         assert_eq!(reg.len(), 4);
         assert_eq!(reg.name(0), Some("GASAND"));
         assert_eq!(reg.name(1), Some("GEM01"));

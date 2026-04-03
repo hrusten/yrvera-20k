@@ -303,7 +303,7 @@ pub(crate) fn build_overlay_atlas_from_map(
             HashMap::new(),
         );
     }
-    let overlay_registry: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(rules_ini);
+    let overlay_registry: OverlayTypeRegistry = OverlayTypeRegistry::from_ini(rules_ini, None);
 
     // Compute wall connectivity bitmasks on a mutable clone so the atlas
     // and AppState see correct auto-tiled frames (0–15 per wall type).

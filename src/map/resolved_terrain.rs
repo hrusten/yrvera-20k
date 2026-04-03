@@ -152,6 +152,12 @@ impl ResolvedTerrainGrid {
         self.index(rx, ry).and_then(|i| self.cells.get(i))
     }
 
+    /// Mutable access to a cell by map coordinates.
+    pub fn cell_mut(&mut self, rx: u16, ry: u16) -> Option<&mut ResolvedTerrainCell> {
+        let idx = self.index(rx, ry)?;
+        self.cells.get_mut(idx)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &ResolvedTerrainCell> {
         self.cells.iter()
     }
@@ -1302,7 +1308,7 @@ mod tests {
         }
         ini_str.push_str("24=BRIDGE1\n");
         let ini = IniFile::from_str(&ini_str);
-        let reg = OverlayTypeRegistry::from_ini(&ini);
+        let reg = OverlayTypeRegistry::from_ini(&ini, None);
         let effects = classify_overlay_effects(
             Some(&vec![&OverlayEntry {
                 rx: 0,

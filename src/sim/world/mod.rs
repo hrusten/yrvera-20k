@@ -183,6 +183,9 @@ pub struct Simulation {
     #[serde(skip)]
     pub resolved_terrain: Option<ResolvedTerrainGrid>,
     pub bridge_state: Option<BridgeRuntimeState>,
+    /// Per-cell mutable overlay state (ore density, wall damage, bridge frames).
+    /// Seeded from map [OverlayPack] at init, mutated during gameplay.
+    pub overlay_grid: Option<crate::sim::overlay_grid::OverlayGrid>,
     /// Persistent cell occupancy — tracks what entities occupy each cell.
     /// Maintained incrementally via add/remove at spawn, move, and death sites.
     /// Rebuilt from entities on deserialization.
@@ -285,6 +288,7 @@ impl Simulation {
             prev_path_grid: None,
             resolved_terrain: None,
             bridge_state: None,
+            overlay_grid: None,
             occupancy: OccupancyGrid::new(),
             bridge_explosions: Vec::new(),
             radar_events: RadarEventQueue::default(),
@@ -1252,6 +1256,7 @@ impl Simulation {
                 &mut self.production.ore_growth_state,
                 &mut self.production.resource_nodes,
                 path_grid,
+                self.overlay_grid.as_mut(),
                 &mut self.rng,
             );
             if spawned_entities {

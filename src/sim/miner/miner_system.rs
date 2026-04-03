@@ -632,14 +632,23 @@ pub(crate) fn extract_bale(
         ResourceType::Ore => (config.ore_bale_value, 120),
         ResourceType::Gem => (config.gem_bale_value, 180),
     };
+    let res_type = node.resource_type;
     node.remaining = node.remaining.saturating_sub(base);
     if node.remaining == 0 {
-        let res_type = node.resource_type;
         sim.production.resource_nodes.remove(&cell);
+        // Fully depleted — clear overlay so rendering skips this cell.
+        if let Some(grid) = &mut sim.overlay_grid {
+            grid.clear_overlay(cell.0, cell.1);
+        }
         return Some(CargoBale {
             resource_type: res_type,
             value,
         });
+    }
+    // Partial depletion — sync overlay frame to new density.
+    if let Some(grid) = &mut sim.overlay_grid {
+        let frame = (node.remaining / base).saturating_sub(1).min(11) as u8;
+        grid.set_overlay_data(cell.0, cell.1, frame);
     }
     Some(CargoBale {
         resource_type: node.resource_type,

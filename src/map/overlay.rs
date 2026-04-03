@@ -333,7 +333,7 @@ Wall=yes
 Tiberium=yes
 ";
         let ini: IniFile = IniFile::from_str(text);
-        OverlayTypeRegistry::from_ini(&ini)
+        OverlayTypeRegistry::from_ini(&ini, None)
     }
 
     #[test]

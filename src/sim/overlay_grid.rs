@@ -180,6 +180,100 @@ pub fn recalc_overlay_passability(
     old_blocks != new_blocks
 }
 
+/// Result of a wall damage attempt.
+#[derive(Debug, Clone, Default)]
+pub struct WallDamageResult {
+    /// Cells where overlay_data changed (need re-render).
+    pub changed_cells: Vec<(u16, u16)>,
+    /// Cells where wall was fully destroyed (need zone rebuild + render removal).
+    pub destroyed_cells: Vec<(u16, u16)>,
+}
+
+/// Damage a wall overlay, matching gamemd.exe CellClass::DestroyOverlay (0x00480CB0).
+///
+/// 1. Random damage check against Strength
+/// 2. Increment damage level (upper nibble of overlay_data)
+/// 3. At penultimate damage level: chain-damage cardinal neighbors
+/// 4. At full destruction: clear overlay, add to destroyed list
+///
+/// `damage == u16::MAX` bypasses the random check (forced destruction).
+pub fn damage_wall_overlay(
+    overlay_grid: &mut OverlayGrid,
+    registry: &OverlayTypeRegistry,
+    rx: u16,
+    ry: u16,
+    damage: u16,
+    rng: &mut crate::sim::rng::SimRng,
+) -> WallDamageResult {
+    let mut result = WallDamageResult::default();
+    damage_wall_recursive(overlay_grid, registry, rx, ry, damage, rng, &mut result);
+    result
+}
+
+fn damage_wall_recursive(
+    grid: &mut OverlayGrid,
+    registry: &OverlayTypeRegistry,
+    rx: u16,
+    ry: u16,
+    damage: u16,
+    rng: &mut crate::sim::rng::SimRng,
+    result: &mut WallDamageResult,
+) {
+    let cell = *grid.cell(rx, ry);
+    let Some(overlay_id) = cell.overlay_id else {
+        return;
+    };
+    let Some(flags) = registry.flags(overlay_id) else {
+        return;
+    };
+    if !flags.wall {
+        return;
+    }
+
+    // Random damage check: if damage < Strength && Random(0, Strength) > damage -> no effect.
+    if damage != u16::MAX && flags.strength > 0 && damage < flags.strength {
+        let roll = rng.next_range_u32(flags.strength as u32) as u16;
+        if roll > damage {
+            return;
+        }
+    }
+
+    // Increment damage level (upper nibble).
+    let new_data = cell.overlay_data.wrapping_add(0x10);
+    let damage_level = new_data >> 4;
+
+    // At penultimate damage level: chain-damage cardinal neighbors.
+    if flags.damage_levels > 2
+        && damage_level == (flags.damage_levels as u8).saturating_sub(1)
+    {
+        const CARDINAL: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+        for (dx, dy) in CARDINAL {
+            let nx = rx as i32 + dx;
+            let ny = ry as i32 + dy;
+            if nx < 0 || ny < 0 {
+                continue;
+            }
+            let (nx, ny) = (nx as u16, ny as u16);
+            let neighbor = *grid.cell(nx, ny);
+            if neighbor.overlay_id == Some(overlay_id) && (neighbor.overlay_data >> 4) == 0 {
+                damage_wall_recursive(grid, registry, nx, ny, 200, rng, result);
+            }
+        }
+    }
+
+    // Check if fully destroyed.
+    if damage != u16::MAX && (damage_level as u16) < flags.damage_levels {
+        // Not fully destroyed — just update damage level.
+        grid.set_overlay_data(rx, ry, new_data);
+        result.changed_cells.push((rx, ry));
+        return;
+    }
+
+    // Full destruction.
+    grid.clear_overlay(rx, ry);
+    result.destroyed_cells.push((rx, ry));
+}
+
 /// 8-direction offsets: N, NE, E, SE, S, SW, W, NW.
 const ADJACENT_8: [(i32, i32); 8] = [
     (0, -1),

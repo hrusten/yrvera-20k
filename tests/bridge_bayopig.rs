@@ -38,7 +38,7 @@ fn inspect_bayopig_bridges() {
 
     let rules_data = am.get("rulesmd.ini").unwrap();
     let rules_ini = IniFile::from_str(&String::from_utf8_lossy(&rules_data));
-    let reg = OverlayTypeRegistry::from_ini(&rules_ini);
+    let reg = OverlayTypeRegistry::from_ini(&rules_ini, None);
 
     // Try various name patterns
     let candidates = &[

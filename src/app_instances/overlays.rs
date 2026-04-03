@@ -218,10 +218,10 @@ pub(crate) fn build_overlay_instances(
             }
         }
 
-        // For ore/gem overlays: derive a live frame from current remaining stock
-        // so the patch visually shrinks as miners harvest it. Fully depleted
-        // nodes are skipped entirely (pop out of existence). Non-resource overlays
-        // use the static frame from the map file unchanged.
+        // Derive the live render frame for this overlay.
+        // If OverlayGrid is available, use its mutable state (handles ore density
+        // changes, wall damage, bridge frame stepping). Otherwise fall back to the
+        // old reverse-compute from ResourceNode for ore, or static map frame.
         let upper = name.to_ascii_uppercase();
         let overlay_flags = state
             .overlay_registry
@@ -229,36 +229,59 @@ pub(crate) fn build_overlay_instances(
             .and_then(|reg| reg.flags(entry.overlay_id));
         let is_wall: bool = overlay_flags.map(|f| f.wall).unwrap_or(false);
         let is_resource = upper.starts_with("TIB") || upper.starts_with("GEM");
-        let render_frame: u8 = if is_resource {
-            match state
-                .simulation
-                .as_ref()
-                .and_then(|sim| sim.production.resource_nodes.get(&(entry.rx, entry.ry)))
-            {
-                None => continue, // fully depleted — skip
-                Some(node) => {
-                    // Inverse of seed formula: richness = remaining/base, frame = richness-1.
-                    // base: ore=120, gem=180 (matches seed_resource_nodes_from_overlays).
-                    let base: u16 = match node.resource_type {
-                        ResourceType::Ore => 120,
-                        ResourceType::Gem => 180,
-                    };
-                    let richness = (node.remaining / base).max(1);
-                    (richness - 1).min(11) as u8
-                }
+
+        let render_frame: u8 = if let Some(overlay_grid) = state
+            .simulation
+            .as_ref()
+            .and_then(|sim| sim.overlay_grid.as_ref())
+        {
+            let live_cell = overlay_grid.cell(entry.rx, entry.ry);
+            if live_cell.overlay_id.is_none() && is_resource {
+                // Overlay cleared (fully depleted) — skip rendering.
+                continue;
             }
-        } else if !is_wall && (entry.frame == 0 || entry.frame == 9) {
-            // Healthy bridges (state 0=EW, 9=NS) get per-cell frame variation
-            // from a Latin square table. Only states 0 and 9 are varied — ramp/end/
-            // damaged frames (1-8, 10-17) are used as-is. Values cycle through 0-3.
-            // Walls are excluded: the engine gates this behind IsWall==false.
-            // Walls always use OverlayData directly.
-            const BRIDGE_FRAME_VARIATION: [u8; 16] =
-                [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
-            let idx: usize = ((entry.ry & 3) as usize) << 2 | (entry.rx & 3) as usize;
-            entry.frame + BRIDGE_FRAME_VARIATION[idx]
+            if live_cell.overlay_id.is_some() {
+                // Use live overlay_data for all overlay types.
+                let base_frame = live_cell.overlay_data;
+                // Healthy bridges (frame 0 or 9) get per-cell Latin square variation.
+                if !is_wall && (base_frame == 0 || base_frame == 9) {
+                    const BRIDGE_FRAME_VARIATION: [u8; 16] =
+                        [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
+                    let idx: usize = ((entry.ry & 3) as usize) << 2 | (entry.rx & 3) as usize;
+                    base_frame + BRIDGE_FRAME_VARIATION[idx]
+                } else {
+                    base_frame
+                }
+            } else {
+                // No overlay in grid — fall back to static map frame.
+                entry.frame
+            }
         } else {
-            entry.frame
+            // No OverlayGrid — fall back to old behavior.
+            if is_resource {
+                match state
+                    .simulation
+                    .as_ref()
+                    .and_then(|sim| sim.production.resource_nodes.get(&(entry.rx, entry.ry)))
+                {
+                    None => continue,
+                    Some(node) => {
+                        let base: u16 = match node.resource_type {
+                            ResourceType::Ore => 120,
+                            ResourceType::Gem => 180,
+                        };
+                        let richness = (node.remaining / base).max(1);
+                        (richness - 1).min(11) as u8
+                    }
+                }
+            } else if !is_wall && (entry.frame == 0 || entry.frame == 9) {
+                const BRIDGE_FRAME_VARIATION: [u8; 16] =
+                    [0, 1, 2, 3, 3, 2, 1, 0, 2, 3, 0, 1, 1, 0, 3, 2];
+                let idx: usize = ((entry.ry & 3) as usize) << 2 | (entry.rx & 3) as usize;
+                entry.frame + BRIDGE_FRAME_VARIATION[idx]
+            } else {
+                entry.frame
+            }
         };
 
         // Bridge overlay Y-offset. The direction-dependent values come from the
