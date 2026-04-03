@@ -135,6 +135,7 @@ impl Simulation {
                     None,
                     None,
                     self.resolved_terrain.as_ref(),
+                    None,
                 );
             }
         }

@@ -239,6 +239,7 @@ fn test_issue_move_command_sets_path() {
         false,
         None,
         None,
+        None,
     );
     assert!(result, "Should find a path on open grid");
 
@@ -275,6 +276,7 @@ fn test_issue_move_command_no_path() {
         false,
         None,
         None,
+        None,
     );
     assert!(!result, "Should fail with blocked path");
     let entity = entities.get(1).expect("entity exists");
@@ -301,6 +303,7 @@ fn test_issue_move_command_queue_appends_waypoint_path() {
         false,
         None,
         None,
+        None,
     ));
     assert!(issue_move_command(
         &mut entities,
@@ -309,6 +312,7 @@ fn test_issue_move_command_queue_appends_waypoint_path() {
         (12, 2),
         SimFixed::from_num(768),
         true,
+        None,
         None,
         None,
     ));
@@ -344,6 +348,7 @@ fn test_tick_movement_repaths_when_next_cell_becomes_blocked() {
         (5, 1),
         SimFixed::from_num(1024),
         false,
+        None,
         None,
         None,
     ));
@@ -451,6 +456,7 @@ fn test_repath_cooldown_prevents_thrashing_on_unrecoverable_block() {
         false,
         None,
         None,
+        None,
     ));
 
     // Make the route unreachable after order assignment.
@@ -529,6 +535,7 @@ fn test_dynamic_occupancy_repath_routes_around_stationary_blocker() {
         false,
         None,
         None,
+        None,
     ));
 
     // With blockage_path_delay_ticks=60, the mover must wait ~60 ticks after
@@ -591,6 +598,7 @@ fn test_stuck_recovery_clears_unreachable_movement_target() {
         (5, 3),
         SimFixed::from_num(1024),
         false,
+        None,
         None,
         None,
     ));
@@ -656,6 +664,7 @@ fn test_movement_tick_stats_report_blocked_attempts() {
         false,
         None,
         None,
+        None,
     ));
 
     let occupancy = OccupancyGrid::rebuild(&entities);
@@ -696,6 +705,7 @@ fn test_friendly_scatter_issues_move_command() {
         (4, 2),
         SimFixed::from_num(1024),
         false,
+        None,
         None,
         None,
     ));
@@ -759,7 +769,7 @@ fn test_friendly_passable_moving_unit_not_blocked() {
     entities.insert(b);
 
     let alliances = HouseAllianceMap::new();
-    let blocks =
+    let (blocks, _penalty) =
         bump_crush::build_entity_block_set(&entities, "Americans", &alliances, &test_interner());
 
     // Stationary friendly at (3,0) should be blocked.
@@ -793,7 +803,7 @@ fn test_enemy_unit_always_blocks_even_when_moving() {
     entities.insert(enemy);
 
     let alliances = HouseAllianceMap::new();
-    let blocks =
+    let (blocks, _penalty) =
         bump_crush::build_entity_block_set(&entities, "Americans", &alliances, &test_interner());
 
     // Enemy at (3,0) should block even though it's moving.
@@ -813,7 +823,7 @@ fn test_friendly_passable_path_goes_through_moving_friendly() {
     // (3,1) is a stationary friendly — in blocks.
     blocks.insert((3, 1));
 
-    let path = find_path_with_costs(&grid, (0, 0), (6, 0), None, Some(&blocks), None, None);
+    let path = find_path_with_costs(&grid, (0, 0), (6, 0), None, Some(&blocks), None, None, None);
     assert!(
         path.is_some(),
         "Should find path through moving-friendly cell"
@@ -841,6 +851,7 @@ fn test_short_path_no_truncation() {
         (5, 0),
         SimFixed::from_num(1024),
         false,
+        None,
         None,
         None,
     ));
@@ -871,6 +882,7 @@ fn test_long_path_truncated_to_24_steps() {
         (40, 0),
         SimFixed::from_num(1024),
         false,
+        None,
         None,
         None,
     ));
@@ -904,6 +916,7 @@ fn test_segment_exhaustion_triggers_auto_repath() {
         (30, 0),
         SimFixed::from_num(15360), // Very fast — finishes segment quickly.
         false,
+        None,
         None,
         None,
     ));
@@ -953,6 +966,7 @@ fn test_exact_24_step_path_no_repath_needed() {
         false,
         None,
         None,
+        None,
     ));
 
     let entity = entities.get(1).expect("entity exists");
@@ -999,6 +1013,7 @@ fn test_auto_repath_fails_entity_stops() {
         (40, 1),
         SimFixed::from_num(15360),
         false,
+        None,
         None,
         None,
     ));
@@ -1051,6 +1066,7 @@ fn test_blocked_repath_uses_final_goal_not_segment_end() {
         (40, 2),
         SimFixed::from_num(1024),
         false,
+        None,
         None,
         None,
     ));

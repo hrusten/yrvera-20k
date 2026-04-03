@@ -102,6 +102,7 @@ pub fn issue_tunnel_move_command(
         None,
         None,
         None,
+        None,
     ) {
         Some(p) => p,
         None => {
@@ -124,6 +125,7 @@ pub fn issue_tunnel_move_command(
             speed,
             false,
             terrain_costs,
+            None,
             None,
         )
     } else {

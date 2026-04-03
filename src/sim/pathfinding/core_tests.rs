@@ -358,6 +358,7 @@ fn test_layered_path_transitions_onto_bridge_and_stays_on_deck() {
         MovementLayer::Ground,
         (2, 0),
         None,
+        None,
     )
     .expect("bridge path should exist");
 
@@ -388,6 +389,7 @@ fn test_layered_path_stays_on_ground_when_bridge_not_needed() {
         (0, 0),
         MovementLayer::Ground,
         (2, 0),
+        None,
         None,
     )
     .expect("ground path should exist");
@@ -439,6 +441,7 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
             (0, 0),
             MovementLayer::Ground,
             (2, 0),
+            None,
             None
         )
         .is_some(),
@@ -464,6 +467,7 @@ fn test_layered_path_rebuild_blocks_destroyed_bridge_deck() {
             (0, 0),
             MovementLayer::Ground,
             (2, 0),
+            None,
             None
         )
         .is_none(),
@@ -522,7 +526,7 @@ fn test_entity_blocks_routes_around_blocked_cell() {
     let mut blocks: BTreeSet<(u16, u16)> = BTreeSet::new();
     blocks.insert((3, 0)); // Block cell (3,0) — directly on the straight path.
 
-    let path = find_path_with_costs(&grid, (0, 0), (5, 0), None, Some(&blocks), None, None);
+    let path = find_path_with_costs(&grid, (0, 0), (5, 0), None, Some(&blocks), None, None, None);
     assert!(path.is_some(), "Should find a path around the entity block");
     let path = path.unwrap();
     assert!(
@@ -539,7 +543,7 @@ fn test_entity_blocks_goal_cell_still_reachable() {
     let mut blocks: BTreeSet<(u16, u16)> = BTreeSet::new();
     blocks.insert((5, 0)); // Block the GOAL cell.
 
-    let path = find_path_with_costs(&grid, (0, 0), (5, 0), None, Some(&blocks), None, None);
+    let path = find_path_with_costs(&grid, (0, 0), (5, 0), None, Some(&blocks), None, None, None);
     assert!(
         path.is_some(),
         "Goal cell should always be reachable even if entity-blocked"
@@ -552,8 +556,8 @@ fn test_entity_blocks_empty_set_same_as_none() {
     let grid = PathGrid::new(10, 10);
     let empty: BTreeSet<(u16, u16)> = BTreeSet::new();
 
-    let path_none = find_path_with_costs(&grid, (0, 0), (5, 5), None, None, None, None);
-    let path_empty = find_path_with_costs(&grid, (0, 0), (5, 5), None, Some(&empty), None, None);
+    let path_none = find_path_with_costs(&grid, (0, 0), (5, 5), None, None, None, None, None);
+    let path_empty = find_path_with_costs(&grid, (0, 0), (5, 5), None, Some(&empty), None, None, None);
     assert_eq!(path_none, path_empty);
 }
 
@@ -570,7 +574,7 @@ fn test_entity_blocks_fully_surrounded_no_path() {
             blocks.insert(((5i32 + dx) as u16, (5i32 + dy) as u16));
         }
     }
-    let path = find_path_with_costs(&grid, (0, 0), (5, 5), None, Some(&blocks), None, None);
+    let path = find_path_with_costs(&grid, (0, 0), (5, 5), None, Some(&blocks), None, None, None);
     // Goal itself is reachable, but all approaches blocked → no path.
     assert!(
         path.is_none(),
@@ -735,7 +739,7 @@ fn test_float_unit_pathfinds_through_water() {
         TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Float);
 
     // Float unit paths along the water channel (row 1).
-    let path = find_path_with_costs(&grid, (0, 1), (6, 1), Some(&float_costs), None, None, None);
+    let path = find_path_with_costs(&grid, (0, 1), (6, 1), Some(&float_costs), None, None, None, None);
     assert!(path.is_some(), "Float unit should pathfind through water");
     let path: Vec<(u16, u16)> = path.unwrap();
     assert_eq!(path.first(), Some(&(0, 1)));
@@ -755,7 +759,7 @@ fn test_track_unit_cannot_pathfind_through_water() {
 
     // Track unit trying to cross from land (0,0) to land (6,2) — must go around water.
     // But with a full water channel blocking, there is no path.
-    let path = find_path_with_costs(&grid, (0, 0), (6, 2), Some(&track_costs), None, None, None);
+    let path = find_path_with_costs(&grid, (0, 0), (6, 2), Some(&track_costs), None, None, None, None);
     assert!(
         path.is_none(),
         "Track unit cannot cross water channel — no path should exist"
@@ -770,7 +774,7 @@ fn test_amphibious_unit_crosses_land_water_land() {
         TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Amphibious);
 
     // Amphibious unit crosses from land (0,0) through water (row 1) to land (0,2).
-    let path = find_path_with_costs(&grid, (0, 0), (0, 2), Some(&amphi_costs), None, None, None);
+    let path = find_path_with_costs(&grid, (0, 0), (0, 2), Some(&amphi_costs), None, None, None, None);
     assert!(path.is_some(), "Amphibious unit should cross water channel");
     let path: Vec<(u16, u16)> = path.unwrap();
     assert_eq!(path.first(), Some(&(0, 0)));
@@ -830,7 +834,7 @@ fn test_ground_unit_no_diagonal_through_water() {
     let foot_costs: TerrainCostGrid =
         TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Foot);
 
-    let path = find_path_with_costs(&grid, (1, 0), (2, 1), Some(&foot_costs), None, None, None);
+    let path = find_path_with_costs(&grid, (1, 0), (2, 1), Some(&foot_costs), None, None, None, None);
     assert!(path.is_some(), "Foot unit should find a path around water");
     let path: Vec<(u16, u16)> = path.unwrap();
     // The direct diagonal (1,0)→(2,1) is blocked because both cardinal

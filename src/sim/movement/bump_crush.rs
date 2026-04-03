@@ -96,16 +96,24 @@ const NEIGHBOR_OFFSETS: [(i32, i32); 8] = [
 /// This enables units to coexist above and below a bridge simultaneously,
 /// matching the original engine's `FirstObject`/`AltObject` dual-layer system.
 ///
-/// RA2 key optimization: **moving friendly units are treated as passable terrain**
-/// during path calculation. Only stationary units/buildings and enemy units block.
+/// RA2 cooperative pathfinding: moving friendly units' path cells get a 4x cost
+/// penalty instead of being fully blocked. Stationary units/buildings and enemies
+/// hard-block. Verified from gamemd.exe AStar_compute_edge_cost (0x00429830).
+///
+/// Returns `(ground_blocks, bridge_blocks, penalty_cells)`.
 pub fn build_entity_block_sets(
     entities: &EntityStore,
     mover_owner: &str,
     alliances: &crate::map::houses::HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
-) -> (BTreeSet<(u16, u16)>, BTreeSet<(u16, u16)>) {
+) -> (BTreeSet<(u16, u16)>, BTreeSet<(u16, u16)>, BTreeSet<(u16, u16)>) {
+    /// Max path steps to include in penalty set per friendly mover.
+    /// Matches gamemd.exe PathfinderClass::UpdateBridgePassability loop limit (24).
+    const COOPERATIVE_PATH_LOOKAHEAD: usize = 24;
+
     let mut ground_blocked: BTreeSet<(u16, u16)> = BTreeSet::new();
     let mut bridge_blocked: BTreeSet<(u16, u16)> = BTreeSet::new();
+    let mut penalty_cells: BTreeSet<(u16, u16)> = BTreeSet::new();
     for entity in entities.values() {
         // Entities inside transports don't occupy cells.
         if entity.passenger_role.is_inside_transport() {
@@ -134,26 +142,32 @@ pub fn build_entity_block_sets(
             target_set.insert(pos);
             continue;
         }
-        // Friendly units that are currently moving are passable — skip them.
-        if entity.movement_target.is_some() {
+        // Friendly moving units: collect their upcoming path cells as penalty cells
+        // (4x cost in A*) instead of hard-blocking.
+        if let Some(ref mt) = entity.movement_target {
+            penalty_cells.insert(pos);
+            for &cell in mt.path[mt.next_index..].iter().take(COOPERATIVE_PATH_LOOKAHEAD) {
+                penalty_cells.insert(cell);
+            }
             continue;
         }
         // Stationary friendly unit — blocks on its layer.
         target_set.insert(pos);
     }
-    (ground_blocked, bridge_blocked)
+    (ground_blocked, bridge_blocked, penalty_cells)
 }
 
 /// Build a combined block set (both layers merged) for the flat A* pathfinder
-/// which doesn't distinguish layers.
+/// which doesn't distinguish layers. Returns `(blocks, penalty_cells)`.
 pub fn build_entity_block_set(
     entities: &EntityStore,
     mover_owner: &str,
     alliances: &crate::map::houses::HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
-) -> BTreeSet<(u16, u16)> {
-    let (ground, bridge) = build_entity_block_sets(entities, mover_owner, alliances, interner);
-    ground.union(&bridge).copied().collect()
+) -> (BTreeSet<(u16, u16)>, BTreeSet<(u16, u16)>) {
+    let (ground, bridge, penalty) =
+        build_entity_block_sets(entities, mover_owner, alliances, interner);
+    (ground.union(&bridge).copied().collect(), penalty)
 }
 
 // ---------------------------------------------------------------------------

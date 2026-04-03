@@ -42,9 +42,13 @@ const MAX_SEARCH_NODES: u32 = 65_527;
 pub const MAX_PATH_SEGMENT_STEPS: usize = 24;
 
 /// Cost multiplier for cells with height transitions (ramps, slopes).
-/// Original engine applies 4.0x base cost for cliff cells (0x007e37bc = 4.0).
 /// With CARDINAL_COST=10, a height step costs 40 instead of 10.
 const CLIFF_COST_MULTIPLIER: i32 = 4;
+
+/// Cost multiplier for cells occupied by friendly moving units.
+/// Matches gamemd.exe DAT_007e37bc = 4.0f, applied in AStar_compute_edge_cost
+/// when cell.flags & 0x40000 (toggled by PathfinderClass::UpdateBridgePassability).
+const COOPERATIVE_COST_MULTIPLIER: i32 = 4;
 
 /// Per-direction tie-breaker offsets added to g-cost.
 /// Original engine adds tiny floats (0.001–0.008) from table at 0x0081872c.
@@ -728,6 +732,7 @@ pub fn find_path_with_costs(
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<(u16, u16)>> {
     // Delegate to base find_path when no cost grid and no entity blocks.
     if entity_blocks.is_none() || entity_blocks.is_some_and(|s| s.is_empty()) {
@@ -749,6 +754,7 @@ pub fn find_path_with_costs(
             None,
             movement_zone,
             resolved_terrain,
+            penalty_cells,
         );
     }
     let Some(cost_grid) = costs else {
@@ -769,6 +775,7 @@ pub fn find_path_with_costs(
         entity_blocks,
         movement_zone,
         resolved_terrain,
+        penalty_cells,
     )
 }
 
@@ -784,6 +791,7 @@ pub fn find_path_with_costs_corridor(
     allowed_zones: &BTreeSet<super::zone_map::ZoneId>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<(u16, u16)>> {
     let cost_grid = costs?;
     find_path_with_costs_corridor_inner(
@@ -796,6 +804,7 @@ pub fn find_path_with_costs_corridor(
         allowed_zones,
         movement_zone,
         resolved_terrain,
+        penalty_cells,
     )
 }
 
@@ -811,6 +820,7 @@ fn find_path_with_costs_corridor_inner(
     allowed_zones: &BTreeSet<super::zone_map::ZoneId>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<(u16, u16)>> {
     let is_water_mover = movement_zone.is_some_and(|mz| mz.is_water_mover());
     if !is_cell_passable_for_mover(grid, start.0, start.1, movement_zone, resolved_terrain)
@@ -937,6 +947,13 @@ fn find_path_with_costs_corridor_inner(
                 }
             }
 
+            // Cooperative pathfinding: friendly movers' path cells cost 4× more.
+            if let Some(penalties) = penalty_cells {
+                if penalties.contains(&(nx, ny)) {
+                    step_cost *= COOPERATIVE_COST_MULTIPLIER;
+                }
+            }
+
             let tentative_g: i32 = current.g_cost + step_cost + DIR_TIEBREAK[dir_index];
 
             if tentative_g < g_cost[n_idx] {
@@ -964,6 +981,7 @@ fn find_path_with_costs_inner(
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<(u16, u16)>> {
     let is_water_mover = movement_zone.is_some_and(|mz| mz.is_water_mover());
     if !is_cell_passable_for_mover(grid, start.0, start.1, movement_zone, resolved_terrain)
@@ -1077,12 +1095,18 @@ fn find_path_with_costs_inner(
             let mut step_cost: i32 = base_cost * 100 / terrain_cost as i32;
 
             // Cliff ramp cost: cells with height transitions cost 4× more.
-            // Original engine checks cell.Flags & 0x40000 and multiplies by 4.0.
             if let Some(rt) = resolved_terrain {
                 if let (Some(cur), Some(nxt)) = (rt.cell(cx, cy), rt.cell(nx, ny)) {
                     if cur.level != nxt.level {
                         step_cost *= CLIFF_COST_MULTIPLIER;
                     }
+                }
+            }
+
+            // Cooperative pathfinding: friendly movers' path cells cost 4× more.
+            if let Some(penalties) = penalty_cells {
+                if penalties.contains(&(nx, ny)) {
+                    step_cost *= COOPERATIVE_COST_MULTIPLIER;
                 }
             }
 
@@ -1365,6 +1389,7 @@ pub fn find_layered_path(
     start_layer: MovementLayer,
     goal: (u16, u16),
     terrain_costs: Option<&TerrainCostGrid>,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<LayeredPathStep>> {
     if !matches!(start_layer, MovementLayer::Ground | MovementLayer::Bridge) {
         return None;
@@ -1519,6 +1544,12 @@ pub fn find_layered_path(
                     if h_diff > 0 {
                         step_cost *= CLIFF_COST_MULTIPLIER;
                     }
+                }
+            }
+            // Cooperative pathfinding: friendly movers' path cells cost 4× more.
+            if let Some(penalties) = penalty_cells {
+                if penalties.contains(&(nx, ny)) {
+                    step_cost *= COOPERATIVE_COST_MULTIPLIER;
                 }
             }
             let tentative_g = g_cost[state_idx] + step_cost;

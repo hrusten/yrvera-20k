@@ -70,6 +70,7 @@ pub fn find_path_zoned(
     zone_cat: ZoneCategory,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<(u16, u16)>> {
     if !can_use_reduced_zone_precheck(movement_zone) {
         return find_path_with_costs(
@@ -80,6 +81,7 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
+            penalty_cells,
         );
     }
 
@@ -92,6 +94,7 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
+            penalty_cells,
         );
     };
 
@@ -121,6 +124,7 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
+            penalty_cells,
         );
     };
     let Some(adjacency) = zg.adjacency_for(zone_cat) else {
@@ -132,6 +136,7 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
+            penalty_cells,
         );
     };
 
@@ -148,6 +153,7 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
+            penalty_cells,
         );
     }
 
@@ -169,6 +175,7 @@ pub fn find_path_zoned(
                 &allowed,
                 movement_zone,
                 resolved_terrain,
+                penalty_cells,
             ) {
                 return Some(path);
             }
@@ -193,6 +200,7 @@ pub fn find_path_zoned(
         entity_blocks,
         movement_zone,
         resolved_terrain,
+        penalty_cells,
     )
 }
 
@@ -216,6 +224,7 @@ pub fn find_layered_path_zoned(
     zone_cat: ZoneCategory,
     terrain_costs: Option<&TerrainCostGrid>,
     movement_zone: Option<MovementZone>,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<Vec<LayeredPathStep>> {
     if !can_use_reduced_zone_precheck(movement_zone) {
         return find_layered_path(
@@ -226,6 +235,7 @@ pub fn find_layered_path_zoned(
             start_layer,
             goal,
             terrain_costs,
+            penalty_cells,
         );
     }
 
@@ -255,6 +265,7 @@ pub fn find_layered_path_zoned(
         start_layer,
         goal,
         terrain_costs,
+        penalty_cells,
     )
 }
 

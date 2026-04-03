@@ -572,6 +572,7 @@ pub fn tick_production(
                         cost_grid,
                         None,
                         sim.resolved_terrain.as_ref(),
+                        None,
                     );
                 }
             }

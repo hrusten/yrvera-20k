@@ -132,7 +132,7 @@ impl Simulation {
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
                 // Build entity block set for friendly-passable pathfinding.
-                let entity_blocks: BTreeSet<(u16, u16)> = bump_crush::build_entity_block_set(
+                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -188,6 +188,7 @@ impl Simulation {
                                 cost_grid,
                                 Some(&entity_blocks),
                                 self.resolved_terrain.as_ref(),
+                                Some(&penalty_cells),
                             );
                         }
                     }
@@ -223,6 +224,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
+                        Some(&penalty_cells),
                     )
                 };
                 // Stamp acceleration/deceleration parameters onto the newly created
@@ -341,7 +343,7 @@ impl Simulation {
                 let use_teleport_move = !info.is_harvester
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
-                let entity_blocks: BTreeSet<(u16, u16)> = bump_crush::build_entity_block_set(
+                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -387,6 +389,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
+                        Some(&penalty_cells),
                     )
                 };
                 if issued {
@@ -551,7 +554,7 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                let entity_blocks: BTreeSet<(u16, u16)> = bump_crush::build_entity_block_set(
+                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -569,6 +572,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
+                        Some(&penalty_cells),
                     );
                 }
                 true
@@ -630,7 +634,7 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                let entity_blocks: BTreeSet<(u16, u16)> = bump_crush::build_entity_block_set(
+                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -648,6 +652,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
+                        Some(&penalty_cells),
                     );
                 }
                 true
@@ -747,7 +752,7 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot);
-                let entity_blocks: BTreeSet<(u16, u16)> =
+                let (entity_blocks, penalty_cells) =
                     crate::sim::movement::bump_crush::build_entity_block_set(
                         &self.entities,
                         command_owner,
@@ -766,6 +771,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
+                        Some(&penalty_cells),
                     );
                 }
                 true

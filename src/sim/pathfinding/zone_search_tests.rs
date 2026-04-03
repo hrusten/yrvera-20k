@@ -30,7 +30,7 @@ fn zoned_path_reachable_returns_path() {
     let zg = ZoneGrid::build(&grid, None, &BTreeMap::new(), 5, 3);
     let path = find_path_zoned(
         &grid, (0, 0), (4, 2), None, None,
-        Some(&zg), ZoneCategory::Land, None, None,
+        Some(&zg), ZoneCategory::Land, None, None, None,
     );
     assert!(path.is_some());
     let path = path.unwrap();
@@ -49,7 +49,7 @@ fn zoned_path_unreachable_returns_none_instantly() {
     // (0,0) and (4,0) are in different disconnected zones.
     let path = find_path_zoned(
         &grid, (0, 0), (4, 0), None, None,
-        Some(&zg), ZoneCategory::Land, None, None,
+        Some(&zg), ZoneCategory::Land, None, None, None,
     );
     assert!(path.is_none());
 }
@@ -63,7 +63,7 @@ fn zoned_path_no_zone_grid_falls_through() {
     // Without zone grid, should just run normal A*.
     let path = find_path_zoned(
         &grid, (0, 0), (4, 1), None, None,
-        None, ZoneCategory::Land, None, None,
+        None, ZoneCategory::Land, None, None, None,
     );
     assert!(path.is_some());
 }
@@ -76,7 +76,7 @@ fn zoned_path_same_cell() {
     let zg = ZoneGrid::build(&grid, None, &BTreeMap::new(), 5, 1);
     let path = find_path_zoned(
         &grid, (2, 0), (2, 0), None, None,
-        Some(&zg), ZoneCategory::Land, None, None,
+        Some(&zg), ZoneCategory::Land, None, None, None,
     );
     assert!(path.is_some());
     assert_eq!(path.unwrap(), vec![(2, 0)]);
@@ -99,7 +99,7 @@ fn zoned_path_entity_blocks_respected() {
     // A* should still find no path since the wall of entities cuts off (2,x).
     let path = find_path_zoned(
         &grid, (0, 0), (2, 0), None, Some(&blocks),
-        Some(&zg), ZoneCategory::Land, None, None,
+        Some(&zg), ZoneCategory::Land, None, None, None,
     );
     // Path exists because goal cell is always reachable even if entity-blocked.
     // But the path would need to go around — with a 3x3 grid fully blocked

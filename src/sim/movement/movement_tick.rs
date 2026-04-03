@@ -155,6 +155,7 @@ fn handle_path_exhaustion(
                 seg_zone_cat,
                 Some(snap.movement_zone),
                 snap.too_big_to_fit_under_bridge,
+                None, // penalty_cells — not available in per-tick repath
             ) {
                 if new_path.len() >= 2 {
                     // DIAGNOSTIC: detect layer mismatch after repath
@@ -347,7 +348,7 @@ pub fn tick_movement_with_grids(
             .iter()
             .map(|&owner_id| {
                 let owner_str = interner.resolve(owner_id);
-                let blocks =
+                let (blocks, _penalty_cells) =
                     bump_crush::build_entity_block_set(entities, owner_str, alliances, interner);
                 (owner_id, blocks)
             })

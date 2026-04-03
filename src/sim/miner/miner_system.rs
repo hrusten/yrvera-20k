@@ -906,7 +906,7 @@ fn issue_move_if_idle(
         .is_some_and(|goal| goal == target);
     if !already {
         let _ = movement::issue_move_command(
-            entities, grid, entity_id, target, speed, false, None, None,
+            entities, grid, entity_id, target, speed, false, None, None, None,
         );
     }
 }

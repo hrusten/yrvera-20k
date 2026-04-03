@@ -163,6 +163,7 @@ pub(super) fn find_move_path(
     zone_cat: ZoneCategory,
     movement_zone: Option<MovementZone>,
     too_big_to_fit_under_bridge: bool,
+    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
 ) -> Option<(Vec<(u16, u16)>, Vec<MovementLayer>)> {
     let grid = ctx.path_grid?;
     let zone_grid = ctx.zone_grid;
@@ -186,6 +187,7 @@ pub(super) fn find_move_path(
             zone_cat,
             terrain_costs,
             movement_zone,
+            penalty_cells,
         );
         if let Some(path) = layered_result {
             log::trace!(
@@ -236,6 +238,7 @@ pub(super) fn find_move_path(
         zone_cat,
         movement_zone,
         resolved_terrain,
+        penalty_cells,
     )?;
 
     let smooth_walkable = |x: u16, y: u16| -> bool {
@@ -362,6 +365,7 @@ pub(super) fn try_repath_after_block(
         zone_cat,
         movement_zone,
         too_big_to_fit_under_bridge,
+        None, // penalty_cells — not available in repath context
     );
     let Some((new_path, new_layers)) = path_result else {
         target.movement_delay = mcfg.path_delay_ticks;
