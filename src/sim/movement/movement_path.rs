@@ -296,7 +296,6 @@ pub(super) fn try_repath_after_block(
     current_layer: MovementLayer,
     layered_pathing: bool,
     ctx: PathfindingContext<'_>,
-    reserved_destinations: &BTreeSet<(MovementLayer, u16, u16)>,
     terrain_costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     _rng: &mut SimRng,
@@ -321,12 +320,6 @@ pub(super) fn try_repath_after_block(
         movement_zone,
         too_big_to_fit_under_bridge,
     );
-    for &(layer, ox, oy) in reserved_destinations {
-        if layer == MovementLayer::Ground && (ox, oy) != current && (ox, oy) != goal {
-            combined_blocks.insert((ox, oy));
-        }
-    }
-
     let Some(effective_goal) = resolve_requested_move_goal(
         grid,
         goal,

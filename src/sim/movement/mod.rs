@@ -188,13 +188,13 @@ pub fn tick_movement(
     let empty_costs: BTreeMap<SpeedType, TerrainCostGrid> = BTreeMap::new();
     let empty_alliances: HouseAllianceMap = HouseAllianceMap::new();
     let mut rng: SimRng = SimRng::new(0);
-    let empty_occupancy = crate::sim::occupancy::OccupancyGrid::new();
+    let mut empty_occupancy = crate::sim::occupancy::OccupancyGrid::new();
     let _ = tick_movement_with_grid(
         entities,
         None,
         &empty_costs,
         &empty_alliances,
-        &empty_occupancy,
+        &mut empty_occupancy,
         &mut rng,
         tick_ms,
         0, // sim_tick not available in test-only wrapper
@@ -212,7 +212,7 @@ pub fn tick_movement_with_grid(
     path_grid: Option<&PathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     alliances: &HouseAllianceMap,
-    occupancy: &crate::sim::occupancy::OccupancyGrid,
+    occupancy: &mut crate::sim::occupancy::OccupancyGrid,
     rng: &mut SimRng,
     tick_ms: u32,
     sim_tick: u64,

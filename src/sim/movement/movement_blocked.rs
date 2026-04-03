@@ -1,6 +1,6 @@
 //! Blocked movement handling — repath attempts when a mover's next cell is occupied or impassable.
 //!
-//! Called from movement_tick when terrain, cliff, or reserved-destination checks fail.
+//! Called from movement_tick when terrain, cliff, or occupancy checks fail.
 //! Manages the blocked_delay timer and path_stuck_counter to prevent thrashing.
 
 use std::collections::BTreeSet;
@@ -35,7 +35,6 @@ pub(super) fn handle_blocked_tick(
     finished_entities: &mut Vec<u64>,
     aborted_for_stuck: &mut bool,
     ctx: PathfindingContext<'_>,
-    reserved_destinations: &BTreeSet<(MovementLayer, u16, u16)>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     too_big_to_fit_under_bridge: bool,
@@ -105,7 +104,6 @@ pub(super) fn handle_blocked_tick(
             active_layer,
             layered_pathing_for_repath,
             ctx,
-            reserved_destinations,
             entity_cost_grid,
             entity_blocks,
             rng,

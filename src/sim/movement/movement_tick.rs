@@ -283,7 +283,7 @@ pub fn tick_movement_with_grids(
     path_grid: Option<&PathGrid>,
     terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     alliances: &HouseAllianceMap,
-    occupancy: &OccupancyGrid,
+    occupancy: &mut OccupancyGrid,
     rng: &mut SimRng,
     tick_ms: u32,
     sim_tick: u64,
@@ -312,12 +312,6 @@ pub fn tick_movement_with_grids(
     let dt: SimFixed = dt_from_tick_ms(tick_ms);
     // Collect entities that have finished their paths (need movement_target removal after loop).
     let mut finished_entities: Vec<u64> = Vec::new();
-    let mut reserved_destinations: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
-    // Per-cell sub-cell reservations for infantry. Tracks which sub-cell spots have
-    // been claimed by earlier movers this tick, preventing duplicate sub-cell assignment
-    // and allowing up to 3 infantry to enter the same cell without false blocking.
-    let mut reserved_infantry_sub_cells: BTreeMap<(MovementLayer, u16, u16), Vec<u8>> =
-        BTreeMap::new();
     // Deferred effects — applied after the movement loop to avoid borrow conflicts.
     let mut crush_kills: Vec<u64> = Vec::new();
     // Track which blockers have already been told to scatter this tick,
@@ -554,6 +548,8 @@ pub fn tick_movement_with_grids(
                             );
                         }
                         // Update cell coordinates.
+                        let old_rx = entity.position.rx;
+                        let old_ry = entity.position.ry;
                         entity.position.rx = nx;
                         entity.position.ry = ny;
                         // Bridge/layer resolution.
@@ -576,6 +572,11 @@ pub fn tick_movement_with_grids(
                             }
                             entity.on_bridge = resolved_layer == MovementLayer::Bridge;
                         }
+                        // Update occupancy grid: move entity from old cell to new cell.
+                        occupancy.move_entity(
+                            old_rx, old_ry, nx, ny,
+                            entity_id, active_layer, entity.sub_cell,
+                        );
                         // Reserve destination cell.
                         super::movement_reservation::reserve_destination_after_transition(
                             entity.category,
@@ -588,10 +589,12 @@ pub fn tick_movement_with_grids(
                             nx,
                             ny,
                             occupancy,
-                            &mut reserved_infantry_sub_cells,
-                            &mut reserved_destinations,
                             rng,
                         );
+                        // After reservation, infantry sub_cell may have changed.
+                        if entity.category == EntityCategory::Infantry {
+                            occupancy.update_sub_cell(nx, ny, entity_id, entity.sub_cell);
+                        }
                         stats.moved_steps = stats.moved_steps.saturating_add(1);
                         // Advance next_index and update move_dir for after track finishes.
                         // Don't initiate a new drive track — current one is still active.
@@ -642,11 +645,11 @@ pub fn tick_movement_with_grids(
                                 // Can_Enter_Cell — terrain + not reserved).
                                 let next_walkable =
                                     path_grid.map_or(true, |g| g.is_walkable(after.0, after.1));
-                                let not_reserved = !reserved_destinations.contains(&(
-                                    active_layer,
+                                let not_reserved = occupancy.is_empty_on_layer(
                                     after.0,
                                     after.1,
-                                ));
+                                    active_layer,
+                                );
                                 if next_walkable && not_reserved {
                                     if let Some(sel) = super::drive_track::select_drive_track(
                                         cur_face, next_face, false,
@@ -694,8 +697,6 @@ pub fn tick_movement_with_grids(
                 entity_cost_grid,
                 mover_entity_blocks,
                 occupancy,
-                &mut reserved_destinations,
-                &mut reserved_infantry_sub_cells,
                 &mut stats,
                 &mut finished_entities,
                 rng,
@@ -841,7 +842,6 @@ pub fn tick_movement_with_grids(
                 &mut finished_entities,
                 &mut crush_kills,
                 &mut already_scattered,
-                &reserved_destinations,
                 blockage_path_delay_ticks,
                 sim_tick,
                 interner,
@@ -862,6 +862,7 @@ pub fn tick_movement_with_grids(
     sync_formation_speeds(entities);
 
     // Apply deferred crush kills (instant death, then remove from EntityStore).
+    // Occupancy entries were already removed in handle_deferred_occupancy.
     for &victim_id in &crush_kills {
         if let Some(victim) = entities.get_mut(victim_id) {
             victim.health.current = 0;

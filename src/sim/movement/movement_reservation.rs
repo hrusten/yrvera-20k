@@ -1,9 +1,6 @@
-//! Destination reservation — claims the target cell after a successful cell transition
-//! to prevent multiple movers from entering the same cell in the same tick.
-//!
-//! Handles infantry sub-cell allocation (up to 3 per cell) and vehicle exclusive reservation.
-
-use std::collections::{BTreeMap, BTreeSet};
+//! Destination commitment — allocates infantry sub-cell or vehicle cell-center dest
+//! after a successful cell transition. Previously also wrote to local reservation sets;
+//! now the live OccupancyGrid is the single source of truth.
 
 use crate::map::entities::EntityCategory;
 use crate::sim::components::{MovementTarget, Position};
@@ -24,18 +21,13 @@ pub(super) fn reserve_destination_after_transition(
     nx: u16,
     ny: u16,
     occupancy: &OccupancyGrid,
-    reserved_infantry_sub_cells: &mut BTreeMap<(MovementLayer, u16, u16), Vec<u8>>,
-    reserved_destinations: &mut BTreeSet<(MovementLayer, u16, u16)>,
     rng: &mut SimRng,
 ) -> bool {
     if category == EntityCategory::Infantry {
-        let reserved = reserved_infantry_sub_cells
-            .get(&(next_layer, nx, ny))
-            .map(Vec::as_slice);
         let Some(sub) = bump_crush::allocate_sub_cell_with_preference(
             occupancy.get(nx, ny),
             next_layer,
-            reserved,
+            None,
             position.sub_x,
             position.sub_y,
             rng,
@@ -51,10 +43,6 @@ pub(super) fn reserve_destination_after_transition(
             let (dest_x, dest_y) = crate::util::lepton::subcell_lepton_offset(Some(sub));
             loco.subcell_dest = Some((dest_x, dest_y));
         }
-        reserved_infantry_sub_cells
-            .entry((next_layer, nx, ny))
-            .or_default()
-            .push(sub);
     } else {
         if let Some(loco) = locomotor {
             loco.subcell_dest = Some((
@@ -62,7 +50,6 @@ pub(super) fn reserve_destination_after_transition(
                 crate::util::lepton::CELL_CENTER_LEPTON,
             ));
         }
-        reserved_destinations.insert((next_layer, nx, ny));
     }
 
     true

@@ -468,8 +468,8 @@ pub fn cell_passable_after_crush(
 ///
 /// Matches the original engine's movement scatter (Branch A — NullCoord):
 /// search 8 neighbors starting from a random direction, pick the first
-/// walkable + unoccupied + unreserved cell, issue the blocker a movement
-/// order to walk there.
+/// walkable + unoccupied cell, issue the blocker a movement order to walk
+/// there.
 ///
 /// Returns `true` if the blocker was given a scatter movement command.
 pub fn scatter_blocker(
@@ -477,7 +477,6 @@ pub fn scatter_blocker(
     blocker_id: u64,
     path_grid: Option<&PathGrid>,
     occupancy: &OccupancyGrid,
-    reserved: &BTreeSet<(MovementLayer, u16, u16)>,
     layer: MovementLayer,
     rng: &mut SimRng,
 ) -> bool {
@@ -521,10 +520,6 @@ pub fn scatter_blocker(
             if occ.has_blockers_on(layer) {
                 continue;
             }
-        }
-        // Must not be reserved by another mover this tick.
-        if reserved.contains(&(layer, nx, ny)) {
-            continue;
         }
         target = Some((nx, ny));
         break;
@@ -767,7 +762,6 @@ mod tests {
     fn test_scatter_blocker_issues_movement() {
         let grid = PathGrid::new(10, 10);
         let occupancy = OccupancyGrid::new();
-        let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
         let mut rng = SimRng::new(42);
 
         let mut store = EntityStore::new();
@@ -779,7 +773,6 @@ mod tests {
             1,
             Some(&grid),
             &occupancy,
-            &reserved,
             MovementLayer::Ground,
             &mut rng,
         );
@@ -805,7 +798,6 @@ mod tests {
             let ny = (1 + dy) as u16;
             occupancy.add(nx, ny, 100, MovementLayer::Ground, None);
         }
-        let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
         let mut rng = SimRng::new(42);
 
         let mut store = EntityStore::new();
@@ -817,7 +809,6 @@ mod tests {
             1,
             Some(&grid),
             &occupancy,
-            &reserved,
             MovementLayer::Ground,
             &mut rng,
         );
@@ -829,7 +820,6 @@ mod tests {
     fn test_scatter_blocker_skips_already_moving() {
         let grid = PathGrid::new(10, 10);
         let occupancy = OccupancyGrid::new();
-        let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
         let mut rng = SimRng::new(42);
 
         let mut store = EntityStore::new();
@@ -848,7 +838,6 @@ mod tests {
             1,
             Some(&grid),
             &occupancy,
-            &reserved,
             MovementLayer::Ground,
             &mut rng,
         );
@@ -862,7 +851,6 @@ mod tests {
     fn test_scatter_deterministic() {
         let grid = PathGrid::new(10, 10);
         let occupancy = OccupancyGrid::new();
-        let reserved: BTreeSet<(MovementLayer, u16, u16)> = BTreeSet::new();
 
         let mut store1 = EntityStore::new();
         store1.insert(vehicle(1, 5, 5));
@@ -872,7 +860,6 @@ mod tests {
             1,
             Some(&grid),
             &occupancy,
-            &reserved,
             MovementLayer::Ground,
             &mut rng1,
         );
@@ -885,7 +872,6 @@ mod tests {
             1,
             Some(&grid),
             &occupancy,
-            &reserved,
             MovementLayer::Ground,
             &mut rng2,
         );

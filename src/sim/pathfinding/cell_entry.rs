@@ -17,8 +17,6 @@
 //! - Part of sim/ — depends on sim/bump_crush, sim/entity_store, sim/locomotor,
 //!   sim/pathfinding, map/entities, map/houses, rules/locomotor_type.
 
-use std::collections::BTreeSet;
-
 use super::PathGrid;
 use super::terrain_cost::TerrainCostGrid;
 use crate::map::entities::EntityCategory;
@@ -70,8 +68,6 @@ pub enum TerrainCheckResult {
     Clear,
     /// Terrain impassable for this unit type.
     Impassable,
-    /// Reserved by another mover this tick.
-    Reserved,
     /// Cell has occupants — needs Phase 2 EntityStore lookup to classify.
     NeedsBlockerCheck,
 }
@@ -92,9 +88,7 @@ pub fn check_terrain(
     mover_category: EntityCategory,
     path_grid: Option<&PathGrid>,
     cost_grid: Option<&TerrainCostGrid>,
-    reserved_destinations: &BTreeSet<(MovementLayer, u16, u16)>,
     occupancy: &OccupancyGrid,
-    reserved_sub_cells: Option<&[u8]>,
 ) -> TerrainCheckResult {
     let (nx, ny) = target;
 
@@ -114,18 +108,12 @@ pub fn check_terrain(
         return TerrainCheckResult::Impassable;
     }
 
-    // --- Reserved destination ---
-    if reserved_destinations.contains(&(target_layer, nx, ny)) {
-        return TerrainCheckResult::Reserved;
-    }
-
     // --- Occupancy ---
     let occ = occupancy.get(nx, ny);
 
     if mover_category == EntityCategory::Infantry {
         // Infantry: check sub-cell availability.
-        let sub =
-            bump_crush::allocate_sub_cell_with_reserved(occ, target_layer, reserved_sub_cells);
+        let sub = bump_crush::allocate_sub_cell_with_reserved(occ, target_layer, None);
         if sub.is_some() {
             return TerrainCheckResult::Clear;
         }
@@ -264,8 +252,6 @@ fn apply_overrides(result: CellEntryResult, locomotor: LocomotorKind) -> CellEnt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeSet;
-
     fn empty_occ() -> OccupancyGrid {
         OccupancyGrid::new()
     }
@@ -278,9 +264,7 @@ mod tests {
             EntityCategory::Unit,
             None,
             None,
-            &BTreeSet::new(),
             &empty_occ(),
-            None,
         );
         assert_eq!(result, TerrainCheckResult::Clear);
     }
@@ -296,28 +280,9 @@ mod tests {
             EntityCategory::Unit,
             Some(&grid),
             None,
-            &BTreeSet::new(),
             &empty_occ(),
-            None,
         );
         assert_eq!(result, TerrainCheckResult::Impassable);
-    }
-
-    #[test]
-    fn test_reserved_cell() {
-        let mut reserved = BTreeSet::new();
-        reserved.insert((MovementLayer::Ground, 5, 5));
-        let result = check_terrain(
-            (5, 5),
-            MovementLayer::Ground,
-            EntityCategory::Unit,
-            None,
-            None,
-            &reserved,
-            &empty_occ(),
-            None,
-        );
-        assert_eq!(result, TerrainCheckResult::Reserved);
     }
 
     #[test]
@@ -330,9 +295,7 @@ mod tests {
             EntityCategory::Unit,
             None,
             None,
-            &BTreeSet::new(),
             &occ,
-            None,
         );
         assert_eq!(result, TerrainCheckResult::NeedsBlockerCheck);
     }
@@ -347,9 +310,7 @@ mod tests {
             EntityCategory::Infantry,
             None,
             None,
-            &BTreeSet::new(),
             &occ,
-            None,
         );
         assert_eq!(result, TerrainCheckResult::Clear);
     }
@@ -366,9 +327,7 @@ mod tests {
             EntityCategory::Infantry,
             None,
             None,
-            &BTreeSet::new(),
             &occ,
-            None,
         );
         assert_eq!(result, TerrainCheckResult::NeedsBlockerCheck);
     }

@@ -5,7 +5,7 @@
 //! to this module (outside the mutable entity borrow) so that immutable EntityStore lookups
 //! can classify blockers and decide between crush, scatter, attack, or wait.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
@@ -42,7 +42,6 @@ pub(super) fn detect_deferred_cell_check(
     current_cell: (u16, u16),
     active_layer: MovementLayer,
     occupancy: &OccupancyGrid,
-    reserved_infantry_sub_cells: &BTreeMap<(MovementLayer, u16, u16), Vec<u8>>,
 ) -> Option<DeferredCellCheck> {
     let is_self_cell =
         (next_cell.0, next_cell.1, next_layer) == (current_cell.0, current_cell.1, active_layer);
@@ -52,10 +51,7 @@ pub(super) fn detect_deferred_cell_check(
 
     let cell_occ = occupancy.get(next_cell.0, next_cell.1);
     if mover_category == EntityCategory::Infantry {
-        let reserved = reserved_infantry_sub_cells
-            .get(&(next_layer, next_cell.0, next_cell.1))
-            .map(Vec::as_slice);
-        if bump_crush::allocate_sub_cell_with_reserved(cell_occ, next_layer, reserved).is_none() {
+        if bump_crush::allocate_sub_cell_with_reserved(cell_occ, next_layer, None).is_none() {
             return Some(DeferredCellCheck::Infantry(next_cell, next_layer));
         }
     } else if cell_occ
@@ -128,7 +124,7 @@ pub(super) fn handle_deferred_occupancy(
     mcfg: MovementConfig,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    occupancy: &OccupancyGrid,
+    occupancy: &mut OccupancyGrid,
     alliances: &HouseAllianceMap,
     path_grid: Option<&PathGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
@@ -137,7 +133,6 @@ pub(super) fn handle_deferred_occupancy(
     finished_entities: &mut Vec<u64>,
     crush_kills: &mut Vec<u64>,
     already_scattered: &mut BTreeSet<u64>,
-    reserved_destinations: &BTreeSet<(MovementLayer, u16, u16)>,
     blockage_path_delay_ticks: u16,
     sim_tick: u64,
     interner: &crate::sim::intern::StringInterner,
@@ -201,6 +196,13 @@ pub(super) fn handle_deferred_occupancy(
             }
         }
         CellEntryResult::Crushable { victims } => {
+            // Remove crush victims from occupancy immediately (matches gamemd's
+            // PerCellProcess which calls RemoveFromGame before continuing).
+            for &vid in &victims {
+                if let Some(v) = entities.get(vid) {
+                    occupancy.remove(v.position.rx, v.position.ry, vid);
+                }
+            }
             crush_kills.extend(victims);
             if let Some(entity) = entities.get_mut(entity_id) {
                 snap_motion_to_cell_center(&mut entity.position, &mut entity.drive_track);
@@ -222,7 +224,6 @@ pub(super) fn handle_deferred_occupancy(
                     blocker_id,
                     path_grid,
                     occupancy,
-                    reserved_destinations,
                     next_layer,
                     rng,
                 );
@@ -258,7 +259,6 @@ pub(super) fn handle_deferred_occupancy(
                             finished_entities,
                             &mut aborted_for_stuck,
                             ctx,
-                            reserved_destinations,
                             entity_cost_grid,
                             mover_entity_blocks,
                             snap.too_big_to_fit_under_bridge,
@@ -294,7 +294,6 @@ pub(super) fn handle_deferred_occupancy(
                         finished_entities,
                         &mut aborted_for_stuck,
                         ctx,
-                        reserved_destinations,
                         entity_cost_grid,
                         mover_entity_blocks,
                         snap.too_big_to_fit_under_bridge,
@@ -329,7 +328,6 @@ pub(super) fn handle_deferred_occupancy(
                                 blocker_id,
                                 path_grid,
                                 occupancy,
-                                reserved_destinations,
                                 next_layer,
                                 rng,
                             );
@@ -356,7 +354,6 @@ pub(super) fn handle_deferred_occupancy(
                                     finished_entities,
                                     &mut aborted_for_stuck,
                                     ctx,
-                                    reserved_destinations,
                                     entity_cost_grid,
                                     mover_entity_blocks,
                                     snap.too_big_to_fit_under_bridge,
@@ -391,7 +388,6 @@ pub(super) fn handle_deferred_occupancy(
                         finished_entities,
                         &mut aborted_for_stuck,
                         ctx,
-                        reserved_destinations,
                         entity_cost_grid,
                         mover_entity_blocks,
                         snap.too_big_to_fit_under_bridge,
