@@ -166,18 +166,57 @@ pub fn recalc_overlay_passability(
     rx: u16,
     ry: u16,
 ) -> bool {
+    use crate::map::resolved_terrain::zone_class;
+
     let cell = overlay_grid.cell(rx, ry);
-    let new_blocks = match cell.overlay_id {
-        Some(id) => registry.flags(id).is_some_and(|f| f.wall || f.tiberium),
-        None => false,
+    let (new_blocks, new_zone_type) = match cell.overlay_id {
+        Some(id) => {
+            let flags = registry.flags(id);
+            let blocks = flags.is_some_and(|f| f.wall || f.tiberium);
+            // Mirror RecalcZoneType priority for overlay-driven zone classification.
+            let zt = match flags {
+                Some(f) if f.crate_type => zone_class::ROAD,
+                Some(f) if f.wall => zone_class::WALL,
+                Some(f) if f.tiberium => zone_class::IMPASSABLE,
+                Some(f) if f.is_gate => zone_class::IMPASSABLE,
+                _ => zone_class::GROUND, // Fallback — refined below from base terrain
+            };
+            (blocks, zt)
+        }
+        None => (false, zone_class::GROUND), // No overlay — refined below
     };
 
     let Some(terrain_cell) = resolved_terrain.cell_mut(rx, ry) else {
         return false;
     };
+
     let old_blocks = terrain_cell.overlay_blocks;
     terrain_cell.overlay_blocks = new_blocks;
-    old_blocks != new_blocks
+
+    // If the overlay didn't determine a specific zone_type (GROUND fallback),
+    // re-derive from base terrain, matching the init-time logic.
+    // Uses `base_ground_walk_blocked` (terrain-only) to avoid the conflated
+    // `ground_walk_blocked` which includes stale overlay/terrain-object contributions.
+    let final_zone_type = if new_zone_type != zone_class::GROUND {
+        new_zone_type
+    } else if terrain_cell.is_water {
+        zone_class::WATER
+    } else if terrain_cell.land_type
+        == crate::sim::pathfinding::passability::LandType::Beach.as_index()
+    {
+        zone_class::BEACH
+    } else if terrain_cell.base_ground_walk_blocked {
+        zone_class::IMPASSABLE
+    } else if terrain_cell.terrain_object_blocks {
+        zone_class::BUILDING
+    } else {
+        zone_class::GROUND
+    };
+
+    let old_zone = terrain_cell.zone_type;
+    terrain_cell.zone_type = final_zone_type;
+
+    old_blocks != new_blocks || old_zone != final_zone_type
 }
 
 /// Result of a wall damage attempt.

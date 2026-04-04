@@ -13,7 +13,7 @@ use super::PathGrid;
 use super::passability;
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneId, ZoneInfo, ZoneMap};
-use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::map::resolved_terrain::{ResolvedTerrainGrid, zone_class};
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::movement::locomotor::MovementLayer;
 
@@ -50,11 +50,6 @@ const MOVEMENT_CLASS_PASSABILITY: [[u8; 8]; 13] = [
     [1, 1, 1, 2, 2, 2, 2, 3], // CrusherAll
 ];
 
-const MOVEMENT_CLASS_OPEN: u8 = 0;
-const MOVEMENT_CLASS_BEACH: u8 = 3;
-const MOVEMENT_CLASS_WATER: u8 = 4;
-const MOVEMENT_CLASS_BLOCKED: u8 = 6;
-const MOVEMENT_CLASS_OUTSIDE: u8 = 7;
 
 /// Build a zone map and adjacency graph for one MovementZone.
 #[cfg(test)]
@@ -216,27 +211,17 @@ fn movement_class_for_cell(
     y: u16,
 ) -> u8 {
     let Some(cell) = resolved_terrain.cell(x, y) else {
-        return MOVEMENT_CLASS_OUTSIDE;
+        return zone_class::OUTSIDE;
     };
 
-    if cell.overlay_blocks || cell.terrain_object_blocks {
-        // TODO(RE): exact TerrainType occupation-bit decoding is not wired into the map model
-        // yet, so we cannot distinguish partial-occupancy class 5 from full blockers here.
-        return MOVEMENT_CLASS_BLOCKED;
-    }
-    if (cell.ground_walk_blocked && !cell.is_water)
-        || (!path_grid.is_walkable(x, y) && !cell.is_water)
-    {
-        return MOVEMENT_CLASS_BLOCKED;
-    }
-    if cell.is_water {
-        return MOVEMENT_CLASS_WATER;
-    }
-    if cell.land_type == passability::LandType::Beach.as_index() {
-        return MOVEMENT_CLASS_BEACH;
+    // Buildings are entity-based, not stored on ResolvedTerrainCell.
+    // Check PathGrid for building footprints → class 5 (Building).
+    // Only override if the cached zone_type isn't already a stronger blocker.
+    if cell.zone_type < zone_class::BUILDING && !path_grid.is_walkable(x, y) && !cell.is_water {
+        return zone_class::BUILDING;
     }
 
-    MOVEMENT_CLASS_OPEN
+    cell.zone_type
 }
 
 fn rebuild_node_indices(
@@ -251,7 +236,7 @@ fn rebuild_node_indices(
     for ry in 0..height {
         for rx in 0..width {
             let idx = ry as usize * width as usize + rx as usize;
-            if movement_classes[idx] == MOVEMENT_CLASS_OUTSIDE || node_indices[idx] != 0 {
+            if movement_classes[idx] == zone_class::OUTSIDE || node_indices[idx] != 0 {
                 continue;
             }
             flood_fill_node_index(
@@ -306,7 +291,7 @@ fn flood_fill_node_index(
                 continue;
             }
 
-            if movement_class != MOVEMENT_CLASS_BLOCKED {
+            if movement_class != zone_class::IMPASSABLE {
                 let Some(cur) = path_grid.cell(cx, cy) else {
                     continue;
                 };
@@ -377,9 +362,9 @@ fn rebuild_zone_ids_for_movement_zone(
     node_adj: &[Vec<u16>],
     movement_zone: MovementZone,
 ) -> Vec<u16> {
-    let mut node_movement_classes = vec![MOVEMENT_CLASS_OUTSIDE; node_count as usize + 1];
+    let mut node_movement_classes = vec![zone_class::OUTSIDE; node_count as usize + 1];
     for (&node, &movement_class) in node_indices.iter().zip(movement_classes.iter()) {
-        if node != 0 && node_movement_classes[node as usize] == MOVEMENT_CLASS_OUTSIDE {
+        if node != 0 && node_movement_classes[node as usize] == zone_class::OUTSIDE {
             node_movement_classes[node as usize] = movement_class;
         }
     }
