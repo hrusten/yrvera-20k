@@ -118,6 +118,8 @@ impl LocomotorKind {
 ///
 /// Parsed from rules.ini `SpeedType=` key. Controls terrain legality in the
 /// pathfinder — a cell is only enterable if the SpeedType allows it.
+///
+/// Variant order matches the binary enum table at 0x81DA58 in gamemd.exe.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -128,16 +130,16 @@ pub enum SpeedType {
     Track,
     /// Wheeled vehicles. Slower on rough terrain than Track.
     Wheel,
+    /// Jumpjet hover movement type.
+    Hover,
+    /// Aircraft. Ignores terrain entirely.
+    Winged,
     /// Hover units. Can cross water and land.
     Float,
     /// Amphibious units. Can traverse both land and water.
     Amphibious,
-    /// Aircraft. Ignores terrain entirely.
-    Winged,
     /// Hover that can go on beaches (specific to certain hover units).
     FloatBeach,
-    /// Jumpjet hover movement type.
-    Hover,
 }
 
 impl Default for SpeedType {
@@ -148,13 +150,14 @@ impl Default for SpeedType {
 
 impl SpeedType {
     /// All SpeedTypes that have terrain cost grids (excludes Winged which ignores terrain).
+    /// Order matches the binary enum table.
     pub const ALL_WITH_COSTS: &[SpeedType] = &[
         SpeedType::Foot,
         SpeedType::Track,
         SpeedType::Wheel,
+        SpeedType::Hover,
         SpeedType::Float,
         SpeedType::Amphibious,
-        SpeedType::Hover,
         SpeedType::FloatBeach,
     ];
 

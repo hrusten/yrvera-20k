@@ -23,9 +23,18 @@ use crate::sim::game_entity::GameEntity;
 /// Uses `BTreeMap<u64, GameEntity>` for deterministic sorted iteration
 /// and O(log n) lookup. All iteration methods return entities in
 /// ascending stable_id order, which is critical for lockstep multiplayer.
+///
+/// Maintains a secondary per-owner index (`by_owner`) so that queries like
+/// "all buildings owned by house X" are O(that house's entities) instead of
+/// O(total entities). The index is kept in sync automatically by `insert()`
+/// and `remove()`. Equivalent to gamemd.exe's per-HouseClass object arrays.
 pub struct EntityStore {
     /// Primary storage: stable_id -> GameEntity.
     entities: BTreeMap<u64, GameEntity>,
+    /// Per-owner index: owner InternedId -> sorted Vec of stable_ids.
+    /// Maintained automatically on insert/remove. Deterministic iteration
+    /// via BTreeMap key order + sorted Vecs.
+    by_owner: BTreeMap<crate::sim::intern::InternedId, Vec<u64>>,
 }
 
 impl EntityStore {
@@ -33,6 +42,7 @@ impl EntityStore {
     pub fn new() -> Self {
         Self {
             entities: BTreeMap::new(),
+            by_owner: BTreeMap::new(),
         }
     }
 
@@ -107,6 +117,26 @@ impl EntityStore {
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut GameEntity> {
         self.entities.values_mut()
     }
+
+    /// Stable IDs owned by the given owner, in sorted order.
+    /// Returns an empty slice if the owner has no entities.
+    /// O(1) lookup + O(n) iteration where n = that owner's entity count.
+    pub fn ids_for_owner(&self, owner: crate::sim::intern::InternedId) -> &[u64] {
+        self.by_owner
+            .get(&owner)
+            .map_or(&[], |ids| ids.as_slice())
+    }
+
+    /// Rebuild the per-owner index from primary storage.
+    /// Called after deserialization or any bulk mutation that bypasses insert/remove.
+    pub fn rebuild_owner_index(&mut self) {
+        self.by_owner.clear();
+        for (&id, entity) in &self.entities {
+            self.by_owner.entry(entity.owner).or_default().push(id);
+        }
+        // BTreeMap iteration is already sorted by key; Vecs are sorted because
+        // entities BTreeMap iterates in ascending stable_id order.
+    }
 }
 
 impl serde::Serialize for EntityStore {
@@ -118,7 +148,12 @@ impl serde::Serialize for EntityStore {
 impl<'de> serde::Deserialize<'de> for EntityStore {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let entities = BTreeMap::<u64, GameEntity>::deserialize(deserializer)?;
-        Ok(Self { entities })
+        let mut store = Self {
+            entities,
+            by_owner: BTreeMap::new(),
+        };
+        store.rebuild_owner_index();
+        Ok(store)
     }
 }
 
@@ -295,5 +330,101 @@ mod tests {
         }
 
         assert_eq!(store.get(1).expect("should exist").facing, 128);
+    }
+
+    #[test]
+    fn test_per_owner_index() {
+        use crate::sim::intern::StringInterner;
+
+        let mut interner = StringInterner::new();
+        let americans = interner.intern("Americans");
+        let soviets = interner.intern("Russians");
+
+        let mut store = EntityStore::new();
+
+        let mut e1 = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
+        e1.owner = americans;
+        let mut e2 = GameEntity::test_default(2, "MTNK", "Americans", 6, 6);
+        e2.owner = americans;
+        let mut e3 = GameEntity::test_default(3, "RHNO", "Russians", 10, 10);
+        e3.owner = soviets;
+
+        store.insert(e1);
+        store.insert(e3);
+        store.insert(e2);
+        store.rebuild_owner_index();
+
+        // Americans should have [1, 2] sorted.
+        assert_eq!(store.ids_for_owner(americans), &[1, 2]);
+        // Russians should have [3].
+        assert_eq!(store.ids_for_owner(soviets), &[3]);
+
+        // Remove one American entity, rebuild.
+        store.remove(1);
+        store.rebuild_owner_index();
+        assert_eq!(store.ids_for_owner(americans), &[2]);
+        assert_eq!(store.ids_for_owner(soviets), &[3]);
+
+        // Remove all American entities, rebuild.
+        store.remove(2);
+        store.rebuild_owner_index();
+        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
+
+        // Unknown owner returns empty slice.
+        let unknown = interner.intern("Yuri");
+        assert_eq!(store.ids_for_owner(unknown), &[] as &[u64]);
+    }
+
+    #[test]
+    fn test_owner_transfer_captured_by_rebuild() {
+        use crate::sim::intern::StringInterner;
+
+        let mut interner = StringInterner::new();
+        let americans = interner.intern("Americans");
+        let soviets = interner.intern("Russians");
+
+        let mut store = EntityStore::new();
+        let mut e1 = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
+        e1.owner = americans;
+        store.insert(e1);
+        store.rebuild_owner_index();
+
+        assert_eq!(store.ids_for_owner(americans), &[1]);
+        assert_eq!(store.ids_for_owner(soviets), &[] as &[u64]);
+
+        // Simulate engineer capture: mutate owner via get_mut().
+        store.get_mut(1).unwrap().owner = soviets;
+
+        // Index is stale until rebuild.
+        assert_eq!(store.ids_for_owner(americans), &[1]); // still old
+        store.rebuild_owner_index();
+
+        // After rebuild, entity moved to new owner.
+        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
+        assert_eq!(store.ids_for_owner(soviets), &[1]);
+    }
+
+    #[test]
+    fn test_rebuild_owner_index() {
+        use crate::sim::intern::StringInterner;
+
+        let mut interner = StringInterner::new();
+        let americans = interner.intern("Americans");
+
+        let mut store = EntityStore::new();
+        let mut e1 = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
+        e1.owner = americans;
+        let mut e2 = GameEntity::test_default(2, "MTNK", "Americans", 6, 6);
+        e2.owner = americans;
+        store.insert(e1);
+        store.insert(e2);
+
+        // Manually clear the index to simulate deserialization state.
+        store.by_owner.clear();
+        assert_eq!(store.ids_for_owner(americans), &[] as &[u64]);
+
+        // Rebuild should restore the index.
+        store.rebuild_owner_index();
+        assert_eq!(store.ids_for_owner(americans), &[1, 2]);
     }
 }

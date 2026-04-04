@@ -971,6 +971,9 @@ impl Simulation {
         tick_ms: u32,
     ) -> TickResult {
         let execute_tick = self.tick.saturating_add(1);
+        // Rebuild per-owner entity index. Cheap linear scan; captures any
+        // owner mutations from the previous tick (engineer capture, mind control).
+        self.entities.rebuild_owner_index();
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;
         let mut destroyed_structure = false;
