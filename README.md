@@ -12,7 +12,7 @@ Those who contribute the most get to decide the most. As long as it aligns with 
 
 Main repository for the **vera20k Engine** and **vera20k: Allied Uprising**, a standalone game built on RA2:YR game assets.
 
-This project stands on the shoulders of giants. Thanks to OpenRA team, XCC mixer, ModEnc team, PPM team, EA for open source RA1, Modders, World Altering Editor, Final Alert,YRpp, Ares, Phobos and much more.
+This project stands on the shoulders of giants. Thanks to OpenRA, XCC mixer, ModEnc website, PPM website, EA for open source RA1, World Altering Editor, Final Alert,YRpp, Ares, Phobos and much more.
 
 ---
 
