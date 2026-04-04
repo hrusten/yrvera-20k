@@ -39,6 +39,7 @@ pub const ZONE_INVALID: ZoneId = 0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ZoneCategory {
     /// Ground-only units (Normal, Crusher, Destroyer, CrusherAll, Subterranean).
+    /// Uses Destroyer as representative — most permissive standard ground profile.
     Land,
     /// Water-only units.
     Water,
@@ -97,9 +98,16 @@ impl ZoneCategory {
     /// Critical distinction from `representative_speed_type()`:
     /// - SpeedType::Float → zone 9 (hover — passable everywhere except rock)
     /// - MovementZone::Water → zone 10 (water only — ships confined to water)
+    ///
+    /// Land uses Destroyer (row 2) as representative — most permissive standard
+    /// ground profile (Ground + Road + WaterOverlay). This avoids false negatives
+    /// for Crusher/Destroyer/CrusherAll units on road cells. Normal units get
+    /// false positives on road overlay cells, which A* handles gracefully.
+    /// Subterranean has a more exotic profile (can pass Impassable cells) but
+    /// is too permissive as a shared representative.
     pub(crate) fn representative_movement_zone(self) -> MovementZone {
         match self {
-            ZoneCategory::Land => MovementZone::Normal,
+            ZoneCategory::Land => MovementZone::Destroyer,
             ZoneCategory::Water => MovementZone::Water,
             ZoneCategory::WaterBeach => MovementZone::WaterBeach,
             ZoneCategory::Amphibious => MovementZone::Amphibious,

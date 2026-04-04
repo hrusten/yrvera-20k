@@ -68,9 +68,14 @@ impl LandType {
 /// | 7-8      | Rock      | Rock (7)  |
 /// | 9        | Water     | Water (4) |
 /// | 10       | Beach     | Beach (3) |
-/// | 11-12    | Road      | Road (1)  |
+/// | 11-12    | Road      | Clear (0) |
 /// | 14       | Rough     | Rough (2) |
 /// | 15       | Cliff     | Rock (7)  |
+///
+/// Road TMP terrain (11-12) maps to Clear, not Road. In the original engine,
+/// RecalcZoneType (0x483C80) classifies road terrain without a road overlay
+/// as ZoneType 0 (Ground). The Road column (1) is reserved for road *overlay*
+/// cells, which are set separately in resolved terrain overlay processing.
 pub fn tmp_terrain_to_land_type(tmp_terrain_type: u8) -> LandType {
     match tmp_terrain_type {
         0..=4 | 13 => LandType::Clear,
@@ -78,7 +83,7 @@ pub fn tmp_terrain_to_land_type(tmp_terrain_type: u8) -> LandType {
         7 | 8 => LandType::Rock,
         9 => LandType::Water,
         10 => LandType::Beach,
-        11 | 12 => LandType::Road,
+        11 | 12 => LandType::Clear,
         14 => LandType::Rough,
         15 => LandType::Rock,
         // Unknown TMP bytes default to Clear (passable by all ground units).
@@ -344,9 +349,11 @@ mod tests {
     }
 
     #[test]
-    fn tmp_road_variants_map_to_road() {
-        assert_eq!(tmp_terrain_to_land_type(11), LandType::Road);
-        assert_eq!(tmp_terrain_to_land_type(12), LandType::Road);
+    fn tmp_road_variants_map_to_clear() {
+        // Road TMP terrain maps to Clear (Ground) for passability — the Road
+        // column is only for road overlay cells, set by resolved terrain.
+        assert_eq!(tmp_terrain_to_land_type(11), LandType::Clear);
+        assert_eq!(tmp_terrain_to_land_type(12), LandType::Clear);
     }
 
     #[test]
@@ -404,10 +411,10 @@ mod tests {
             SpeedType::Track
         ));
 
-        // Road cells (TMP byte 11 → LandType::Road = 1) should be passable for wheels.
-        let road = tmp_terrain_to_land_type(11);
+        // Road TMP terrain (byte 11) → Clear (Ground). Passable for all ground units.
+        let road_tmp = tmp_terrain_to_land_type(11);
         assert!(is_passable_for_speed_type(
-            road.as_index(),
+            road_tmp.as_index(),
             SpeedType::Wheel
         ));
 
