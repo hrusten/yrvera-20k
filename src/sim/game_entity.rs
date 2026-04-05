@@ -36,6 +36,7 @@ use crate::sim::movement::teleport_movement::TeleportState;
 use crate::sim::movement::tunnel_movement::TunnelState;
 use crate::sim::passenger::PassengerRole;
 use crate::sim::slave_miner::SlaveHarvester;
+use crate::sim::superweapon::invulnerability::InvulnerabilityState;
 
 /// Unified entity struct — replaces all hecs ECS components.
 ///
@@ -128,6 +129,11 @@ pub struct GameEntity {
     pub rocket_state: Option<RocketState>,
     /// Drop pod descent state machine (falling/landing).
     pub droppod_state: Option<DropPodState>,
+    /// Active IronCurtain or ForceShield invulnerability timer.
+    /// `None` = entity is vulnerable to damage. `Some` = all damage is nullified
+    /// (except healing) until the timer expires. Applied by superweapon launch handlers.
+    #[serde(default)]
+    pub invulnerability: Option<InvulnerabilityState>,
     /// Active drive track curve state — present when a Drive vehicle is
     /// following a pre-computed curved path between cells.
     pub drive_track: Option<DriveTrackState>,
@@ -267,6 +273,7 @@ impl GameEntity {
             tunnel_state: None,
             rocket_state: None,
             droppod_state: None,
+            invulnerability: None,
             drive_track: None,
             dock_state: None,
             aircraft_ammo: None,

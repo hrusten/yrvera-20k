@@ -8,6 +8,7 @@
 //! - Part of sim/ — depends on rules/, sim/power_system, sim/components.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+pub mod invulnerability;
 pub mod lightning_storm;
 
 use crate::rules::ruleset::RuleSet;
