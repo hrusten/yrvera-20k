@@ -9,6 +9,7 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 pub mod cell_grid;
+pub mod force_shield;
 pub mod invulnerability;
 pub mod iron_curtain;
 pub mod lightning_storm;
