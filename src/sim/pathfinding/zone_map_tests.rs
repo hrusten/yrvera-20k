@@ -25,9 +25,9 @@ fn grid_from_str(s: &str) -> PathGrid {
     grid
 }
 
-// Helper: build zones for Land category with no cost grid (PathGrid only).
+// Helper: build zones for Normal movement zone with no cost grid (PathGrid only).
 fn land_zones(grid: &PathGrid) -> (ZoneMap, ZoneAdjacency) {
-    build_zone_map(grid, None, ZoneCategory::Land, grid.width(), grid.height())
+    build_zone_map(grid, None, MovementZone::Normal, grid.width(), grid.height())
 }
 
 fn water_row_terrain(width: u16) -> ResolvedTerrainGrid {
@@ -60,6 +60,8 @@ fn water_row_terrain(width: u16) -> ResolvedTerrainGrid {
             ground_walk_blocked: false,
             terrain_object_blocks: false,
             overlay_blocks: false,
+            zone_type: 4,
+            base_ground_walk_blocked: false,
             base_build_blocked: false,
             build_blocked: false,
             has_bridge_deck: false,
@@ -119,6 +121,12 @@ fn clear_beach_water_row_terrain() -> ResolvedTerrainGrid {
             ground_walk_blocked: false,
             terrain_object_blocks: false,
             overlay_blocks: false,
+            zone_type: match land_type {
+                x if x == crate::sim::pathfinding::passability::LandType::Water.as_index() => 4,
+                x if x == crate::sim::pathfinding::passability::LandType::Beach.as_index() => 3,
+                _ => 0,
+            },
+            base_ground_walk_blocked: false,
             base_build_blocked: false,
             build_blocked: false,
             has_bridge_deck: false,
@@ -284,34 +292,6 @@ fn different_zones_same_zone_check() {
 }
 
 #[test]
-fn zone_category_from_movement_zone() {
-    assert_eq!(
-        ZoneCategory::from_movement_zone(MovementZone::Normal),
-        ZoneCategory::Land
-    );
-    assert_eq!(
-        ZoneCategory::from_movement_zone(MovementZone::Crusher),
-        ZoneCategory::Land
-    );
-    assert_eq!(
-        ZoneCategory::from_movement_zone(MovementZone::Infantry),
-        ZoneCategory::Infantry
-    );
-    assert_eq!(
-        ZoneCategory::from_movement_zone(MovementZone::Fly),
-        ZoneCategory::Fly
-    );
-    assert_eq!(
-        ZoneCategory::from_movement_zone(MovementZone::Water),
-        ZoneCategory::Water
-    );
-    assert_eq!(
-        ZoneCategory::from_movement_zone(MovementZone::AmphibiousCrusher),
-        ZoneCategory::Amphibious
-    );
-}
-
-#[test]
 fn deterministic_zone_ids() {
     let grid = grid_from_str(
         "
@@ -346,7 +326,7 @@ fn zone_grid_can_reach_same_zone() {
     );
     let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 2);
     assert!(zg.can_reach(
-        ZoneCategory::Land,
+        MovementZone::Normal,
         (0, 0),
         MovementLayer::Ground,
         (4, 1),
@@ -364,7 +344,7 @@ fn zone_grid_cannot_reach_disconnected() {
     );
     let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 2);
     assert!(!zg.can_reach(
-        ZoneCategory::Land,
+        MovementZone::Normal,
         (0, 0),
         MovementLayer::Ground,
         (4, 0),
@@ -382,7 +362,7 @@ fn zone_grid_fly_always_reachable() {
     );
     let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 2);
     assert!(zg.can_reach(
-        ZoneCategory::Fly,
+        MovementZone::Fly,
         (0, 0),
         MovementLayer::Ground,
         (4, 0),
@@ -396,7 +376,7 @@ fn water_zone_grid_uses_resolved_land_type_directly() {
     let grid = PathGrid::from_resolved_terrain(&terrain);
     let zg = ZoneGrid::build_with_terrain(&grid, &BTreeMap::new(), Some(&terrain), &[], 5, 1);
     assert!(zg.can_reach(
-        ZoneCategory::Water,
+        MovementZone::Water,
         (0, 0),
         MovementLayer::Ground,
         (4, 0),
@@ -410,14 +390,14 @@ fn waterbeach_zone_grid_connects_beach_to_water_with_resolved_terrain() {
     let grid = PathGrid::from_resolved_terrain(&terrain);
     let zg = ZoneGrid::build_with_terrain(&grid, &BTreeMap::new(), Some(&terrain), &[], 3, 1);
     assert!(zg.can_reach(
-        ZoneCategory::WaterBeach,
+        MovementZone::WaterBeach,
         (1, 0),
         MovementLayer::Ground,
         (2, 0),
         MovementLayer::Ground,
     ));
     assert!(zg.can_reach(
-        ZoneCategory::Amphibious,
+        MovementZone::Amphibious,
         (0, 0),
         MovementLayer::Ground,
         (2, 0),
@@ -447,7 +427,7 @@ fn path_grid_from_heights(heights: &[u8], width: u16, height: u16) -> PathGrid {
 
 /// Build zones for Land category with height data (from PathGrid cells).
 fn land_zones_with_height(grid: &PathGrid) -> (ZoneMap, ZoneAdjacency) {
-    build_zone_map(grid, None, ZoneCategory::Land, grid.width(), grid.height())
+    build_zone_map(grid, None, MovementZone::Normal, grid.width(), grid.height())
 }
 
 #[test]
@@ -525,7 +505,7 @@ fn incremental_block_cell_splits_zone() {
     let grid = grid_from_str(".....");
     let mut zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 1);
     assert!(zg.can_reach(
-        ZoneCategory::Land,
+        MovementZone::Normal,
         (0, 0),
         MovementLayer::Ground,
         (4, 0),
@@ -549,7 +529,7 @@ fn incremental_block_cell_splits_zone() {
     assert!(result, "Incremental update should succeed");
     assert!(
         !zg.can_reach(
-            ZoneCategory::Land,
+            MovementZone::Normal,
             (0, 0),
             MovementLayer::Ground,
             (4, 0),
@@ -559,7 +539,7 @@ fn incremental_block_cell_splits_zone() {
     );
     // Left side still connected within itself.
     assert!(zg.can_reach(
-        ZoneCategory::Land,
+        MovementZone::Normal,
         (0, 0),
         MovementLayer::Ground,
         (1, 0),
@@ -567,7 +547,7 @@ fn incremental_block_cell_splits_zone() {
     ));
     // Right side still connected within itself.
     assert!(zg.can_reach(
-        ZoneCategory::Land,
+        MovementZone::Normal,
         (3, 0),
         MovementLayer::Ground,
         (4, 0),
@@ -582,7 +562,7 @@ fn incremental_unblock_cell_merges_zones() {
     let grid1 = grid_from_str("..#..");
     let mut zg = ZoneGrid::build(&grid1, &BTreeMap::new(), 5, 1);
     assert!(!zg.can_reach(
-        ZoneCategory::Land,
+        MovementZone::Normal,
         (0, 0),
         MovementLayer::Ground,
         (4, 0),
@@ -605,7 +585,7 @@ fn incremental_unblock_cell_merges_zones() {
     assert!(result);
     assert!(
         zg.can_reach(
-            ZoneCategory::Land,
+            MovementZone::Normal,
             (0, 0),
             MovementLayer::Ground,
             (4, 0),
@@ -642,7 +622,7 @@ fn incremental_fallback_on_large_change() {
 fn incremental_no_change_is_noop() {
     let grid = grid_from_str(".....");
     let mut zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 1);
-    let original_zone_count = zg.map_for(ZoneCategory::Land).unwrap().zone_count;
+    let original_zone_count = zg.map_for(MovementZone::Normal).unwrap().zone_count;
 
     let result = crate::sim::pathfinding::zone_incremental::try_incremental_update(
         &mut zg,
@@ -654,7 +634,7 @@ fn incremental_no_change_is_noop() {
     );
     assert!(result);
     assert_eq!(
-        zg.map_for(ZoneCategory::Land).unwrap().zone_count,
+        zg.map_for(MovementZone::Normal).unwrap().zone_count,
         original_zone_count,
     );
 }
@@ -697,4 +677,47 @@ fn terrain_aware_incremental_update_requests_full_rebuild() {
         !result,
         "terrain-aware zoning should currently force a full rebuild on dynamic updates"
     );
+}
+
+#[test]
+fn per_movement_zone_grids_are_separate() {
+    // Verify that the ZoneCategory collapse is truly gone —
+    // each MovementZone variant gets its own independent zone grid.
+    let grid = grid_from_str(
+        "
+        .....
+        .....
+    ",
+    );
+    let zg = ZoneGrid::build(&grid, &BTreeMap::new(), 5, 2);
+    // Normal and Crusher should each have their own zone map.
+    assert!(
+        zg.map_for(MovementZone::Normal).is_some(),
+        "Normal should have a zone map"
+    );
+    assert!(
+        zg.map_for(MovementZone::Crusher).is_some(),
+        "Crusher should have a zone map"
+    );
+    assert!(
+        zg.map_for(MovementZone::Infantry).is_some(),
+        "Infantry should have a zone map"
+    );
+    assert!(
+        zg.map_for(MovementZone::Water).is_some(),
+        "Water should have a zone map"
+    );
+    // Fly should NOT have a zone map (excluded from all_ground).
+    assert!(
+        zg.map_for(MovementZone::Fly).is_none(),
+        "Fly should not have a zone map"
+    );
+    // All 12 ground movement zones should have maps.
+    for &mz in MovementZone::all_ground() {
+        assert!(
+            zg.map_for(mz).is_some(),
+            "MovementZone {:?} should have a zone map",
+            mz
+        );
+    }
 }

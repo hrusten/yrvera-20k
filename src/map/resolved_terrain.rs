@@ -5,6 +5,19 @@
 //! data while attaching resolved per-cell metadata such as final LAT-adjusted
 //! tile choice, land/slope bytes from TMP, and coarse blocking/buildability flags.
 
+/// Zone classification constants matching gamemd.exe RecalcZoneType output.
+/// These index columns of `MOVEMENT_CLASS_PASSABILITY` in zone_build.rs.
+pub mod zone_class {
+    pub const GROUND: u8 = 0;
+    pub const ROAD: u8 = 1;
+    pub const WALL: u8 = 2;
+    pub const BEACH: u8 = 3;
+    pub const WATER: u8 = 4;
+    pub const BUILDING: u8 = 5;
+    pub const IMPASSABLE: u8 = 6;
+    pub const OUTSIDE: u8 = 7;
+}
+
 use crate::assets::tmp_file::{TmpFile, TmpTile};
 use crate::map::lat;
 use crate::map::map_file::{MapCell, MapFile};
@@ -85,6 +98,21 @@ pub struct ResolvedTerrainCell {
     pub ground_walk_blocked: bool,
     pub terrain_object_blocks: bool,
     pub overlay_blocks: bool,
+    /// Cached zone classification (0-7) matching gamemd.exe RecalcZoneType (0x483C80).
+    /// Indexes columns of `MOVEMENT_CLASS_PASSABILITY` in zone_build.rs.
+    ///
+    /// 0=Ground, 1=Road(crate), 2=Wall, 3=Beach, 4=Water,
+    /// 5=Building/TerrainObject, 6=Impassable, 7=Outside.
+    ///
+    /// Does NOT include building footprints (those are entity-based, checked via
+    /// PathGrid at zone-build time). Updated by `recalc_overlay_passability` on
+    /// overlay mutation.
+    pub zone_type: u8,
+    /// Terrain-only walk block flag — true when the base terrain (rock, cliff) is
+    /// impassable, EXCLUDING overlay and terrain-object contributions.
+    /// Needed by `recalc_overlay_passability` to re-derive zone_type after overlay
+    /// removal without the conflated `ground_walk_blocked` field.
+    pub base_ground_walk_blocked: bool,
     pub base_build_blocked: bool,
     pub build_blocked: bool,
     pub has_bridge_deck: bool,
@@ -283,6 +311,32 @@ impl ResolvedTerrainGrid {
                 }
                 let base_ground_walk_blocked = canonical_ramp.is_none() && metadata.ground_blocked;
                 let is_cliff_like = metadata.is_cliff_like;
+                // Compute zone_type matching RecalcZoneType (0x483C80) priority chain.
+                // Must be computed BEFORE ground_walk_blocked is OR'd with overlay/terrain
+                // object flags, since we need the base terrain passability.
+                let zone_type = if overlay_effects.is_crate {
+                    zone_class::ROAD
+                } else if overlay_effects.is_wall {
+                    zone_class::WALL
+                } else if overlay_effects.has_tiberium {
+                    zone_class::IMPASSABLE
+                } else if overlay_effects.is_gate {
+                    zone_class::IMPASSABLE
+                } else if overlay_effects.is_low_bridge {
+                    zone_class::GROUND
+                } else if metadata.is_water {
+                    zone_class::WATER
+                } else if metadata.land_type
+                    == crate::sim::pathfinding::passability::LandType::Beach.as_index()
+                {
+                    zone_class::BEACH
+                } else if base_ground_walk_blocked {
+                    zone_class::IMPASSABLE
+                } else if terrain_object_blocks {
+                    zone_class::BUILDING
+                } else {
+                    zone_class::GROUND
+                };
                 let ground_walk_blocked = base_ground_walk_blocked
                     || terrain_object_blocks
                     || overlay_effects.overlay_blocks;
@@ -330,6 +384,8 @@ impl ResolvedTerrainGrid {
                     ground_walk_blocked,
                     terrain_object_blocks,
                     overlay_blocks: overlay_effects.overlay_blocks,
+                    zone_type,
+                    base_ground_walk_blocked,
                     base_build_blocked,
                     build_blocked,
                     has_bridge_deck: overlay_effects.has_bridge_deck,
@@ -910,6 +966,12 @@ impl Default for TileMetadata {
 #[derive(Debug, Clone, Default)]
 struct OverlayEffects {
     overlay_blocks: bool,
+    /// Overlay is a crate (Crate=yes). RecalcZoneType → ZoneType 1 (Road).
+    is_crate: bool,
+    /// Overlay is a gate (Gate=yes). RecalcZoneType → ZoneType 6 (Impassable).
+    is_gate: bool,
+    /// Overlay is a wall (Wall=yes, NOT Land=Road). RecalcZoneType → ZoneType 2 (Wall).
+    is_wall: bool,
     has_bridge_deck: bool,
     bridge_layer: Option<BridgeLayer>,
     /// Low bridges override terrain to Road (NoUseTileLandType=true, Land=Road).
@@ -1125,24 +1187,20 @@ fn classify_overlay_effects(
         let name = overlay_registry
             .and_then(|reg| reg.name(overlay.overlay_id))
             .unwrap_or("");
-        let is_wall = overlay_registry
-            .and_then(|reg| reg.flags(overlay.overlay_id))
-            .map(|flags| flags.wall)
-            .unwrap_or(false);
         // Bridge overlays identified by hardcoded index, matching original engine.
         let is_bridge = crate::map::overlay_types::is_bridge_overlay_index(overlay.overlay_id);
 
-        let is_tiberium = overlay_registry
-            .and_then(|reg| reg.flags(overlay.overlay_id))
-            .map(|flags| flags.tiberium)
-            .unwrap_or(false);
+        let flags = overlay_registry.and_then(|reg| reg.flags(overlay.overlay_id));
+        let is_wall = flags.map(|f| f.wall).unwrap_or(false);
+        let is_tiberium = flags.map(|f| f.tiberium).unwrap_or(false);
+        let is_crate = flags.map(|f| f.crate_type).unwrap_or(false);
+        let is_gate = flags.map(|f| f.is_gate).unwrap_or(false);
 
         // Road/pavement overlays have Land=Road in rules.ini. In the original
         // engine, Wall=yes overlays with Land=Road act as road surfaces, not
         // movement blockers. Only walls WITHOUT Land=Road actually block.
-        let is_road_overlay = overlay_registry
-            .and_then(|reg| reg.flags(overlay.overlay_id))
-            .and_then(|flags| flags.land.as_deref())
+        let is_road_overlay = flags
+            .and_then(|f| f.land.as_deref())
             .map(|land| land.eq_ignore_ascii_case("Road"))
             .unwrap_or(false);
 
@@ -1150,9 +1208,16 @@ fn classify_overlay_effects(
             result.is_road = true;
         } else if is_wall {
             result.overlay_blocks = true;
+            result.is_wall = true;
         }
         if is_tiberium {
             result.has_tiberium = true;
+        }
+        if is_crate {
+            result.is_crate = true;
+        }
+        if is_gate {
+            result.is_gate = true;
         }
         if is_bridge && result.bridge_layer.is_none() {
             result.has_bridge_deck = true;
@@ -1471,6 +1536,8 @@ mod tests {
                 ground_walk_blocked: false,
                 terrain_object_blocks: false,
                 overlay_blocks: false,
+                zone_type: 0,
+                base_ground_walk_blocked: false,
                 base_build_blocked: true,
                 build_blocked: true,
                 has_bridge_deck: false,

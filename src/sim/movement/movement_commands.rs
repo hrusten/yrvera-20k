@@ -15,7 +15,6 @@ use crate::sim::components::MovementTarget;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
-use crate::sim::pathfinding::zone_map::ZoneCategory;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 use super::movement_path::{
@@ -218,9 +217,7 @@ pub fn issue_move_command_with_layered(
                     .last()
                     .copied()
                     .unwrap_or(current_layer);
-                let zone_cat = movement_zone.map_or(ZoneCategory::Land, |mz| {
-                    ZoneCategory::from_movement_zone(mz)
-                });
+                let zone_mz = movement_zone.unwrap_or(MovementZone::Normal);
                 let Some((appended, appended_layers)) = find_move_path(
                     PathfindingContext {
                         path_grid: Some(grid),
@@ -235,7 +232,7 @@ pub fn issue_move_command_with_layered(
                     merged_entity_blocks_ref,
                     None,
                     None, // Layer-separated blocks not available here
-                    zone_cat,
+                    zone_mz,
                     movement_zone,
                     too_big_to_fit_under_bridge,
                     penalty_cells,
@@ -260,9 +257,7 @@ pub fn issue_move_command_with_layered(
             }
         }
     }
-    let zone_cat = movement_zone.map_or(ZoneCategory::Land, |mz| {
-        ZoneCategory::from_movement_zone(mz)
-    });
+    let zone_mz = movement_zone.unwrap_or(MovementZone::Normal);
     let Some((path, path_layers)) = find_move_path(
         PathfindingContext {
             path_grid: Some(grid),
@@ -277,7 +272,7 @@ pub fn issue_move_command_with_layered(
         merged_entity_blocks_ref,
         None,
         None, // Layer-separated blocks not available here
-        zone_cat,
+        zone_mz,
         movement_zone,
         too_big_to_fit_under_bridge,
         penalty_cells,

@@ -223,7 +223,7 @@ impl SpeedType {
 ///
 /// Example: `MovementZone=Subterranean` enables dig-in/dig-out cell search
 /// logic that plain Drive does not have.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum MovementZone {
     /// Row 0: only movement class 0 is passable.
@@ -289,6 +289,50 @@ impl MovementZone {
     /// target redirect, and wake effects.
     pub fn is_water_mover(&self) -> bool {
         matches!(self, Self::Water | Self::WaterBeach)
+    }
+
+    /// All MovementZone variants that need computed zone grids.
+    /// Fly is excluded — airborne units trivially reach everywhere.
+    pub fn all_ground() -> &'static [MovementZone] {
+        &[
+            MovementZone::Normal,
+            MovementZone::Crusher,
+            MovementZone::Destroyer,
+            MovementZone::AmphibiousDestroyer,
+            MovementZone::AmphibiousCrusher,
+            MovementZone::Amphibious,
+            MovementZone::Subterranean,
+            MovementZone::Infantry,
+            MovementZone::InfantryDestroyer,
+            MovementZone::Water,
+            MovementZone::WaterBeach,
+            MovementZone::CrusherAll,
+        ]
+    }
+
+    /// Which SpeedType governs terrain cost for this movement zone.
+    /// Controls how fast a unit moves on passable cells (not which cells are passable).
+    pub fn speed_type(&self) -> SpeedType {
+        match self {
+            MovementZone::Normal
+            | MovementZone::Crusher
+            | MovementZone::Destroyer
+            | MovementZone::CrusherAll
+            | MovementZone::Subterranean => SpeedType::Track,
+            MovementZone::AmphibiousCrusher
+            | MovementZone::AmphibiousDestroyer
+            | MovementZone::Amphibious => SpeedType::Amphibious,
+            MovementZone::Infantry
+            | MovementZone::InfantryDestroyer => SpeedType::Foot,
+            MovementZone::Water => SpeedType::Float,
+            MovementZone::WaterBeach => SpeedType::FloatBeach,
+            MovementZone::Fly => SpeedType::Winged,
+        }
+    }
+
+    /// Whether this MovementZone can traverse bridges (ground-capable).
+    pub fn can_use_bridges(&self) -> bool {
+        !matches!(self, MovementZone::Water | MovementZone::WaterBeach | MovementZone::Fly)
     }
 }
 

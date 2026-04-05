@@ -12,7 +12,6 @@ use crate::sim::components::MovementTarget;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::pathfinding::path_smooth;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
-use crate::sim::pathfinding::zone_map::ZoneCategory;
 use crate::sim::pathfinding::zone_search;
 use crate::sim::pathfinding::{MAX_PATH_SEGMENT_STEPS, PathGrid, truncate_layered_path};
 use crate::sim::rng::SimRng;
@@ -160,7 +159,7 @@ pub(super) fn find_move_path(
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     ground_blocks: Option<&BTreeSet<(u16, u16)>>,
     bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
-    zone_cat: ZoneCategory,
+    zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
     too_big_to_fit_under_bridge: bool,
     penalty_cells: Option<&BTreeSet<(u16, u16)>>,
@@ -184,7 +183,7 @@ pub(super) fn find_move_path(
             start_layer,
             goal,
             zone_grid,
-            zone_cat,
+            zone_mz,
             terrain_costs,
             movement_zone,
             penalty_cells,
@@ -235,7 +234,7 @@ pub(super) fn find_move_path(
         terrain_costs,
         entity_blocks,
         zone_grid,
-        zone_cat,
+        zone_mz,
         movement_zone,
         resolved_terrain,
         penalty_cells,
@@ -342,9 +341,7 @@ pub(super) fn try_repath_after_block(
         target.final_goal = Some(effective_goal);
     }
 
-    let zone_cat = movement_zone.map_or(ZoneCategory::Land, |mz| {
-        ZoneCategory::from_movement_zone(mz)
-    });
+    let zone_mz = movement_zone.unwrap_or(MovementZone::Normal);
     let path_result = find_move_path(
         ctx,
         layered_pathing,
@@ -355,7 +352,7 @@ pub(super) fn try_repath_after_block(
         Some(&combined_blocks),
         None,
         None,
-        zone_cat,
+        zone_mz,
         movement_zone,
         too_big_to_fit_under_bridge,
         None, // penalty_cells — not available in repath context
@@ -427,6 +424,8 @@ mod tests {
             ground_walk_blocked: false,
             terrain_object_blocks: false,
             overlay_blocks: false,
+            zone_type: 0,
+            base_ground_walk_blocked: false,
             base_build_blocked: false,
             build_blocked: false,
             has_bridge_deck: false,

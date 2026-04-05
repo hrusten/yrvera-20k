@@ -12,8 +12,8 @@ use std::collections::VecDeque;
 use super::PathGrid;
 use super::passability;
 use super::terrain_cost::TerrainCostGrid;
-use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneCategory, ZoneId, ZoneInfo, ZoneMap};
-use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneId, ZoneInfo, ZoneMap};
+use crate::map::resolved_terrain::{ResolvedTerrainGrid, zone_class};
 use crate::rules::locomotor_type::MovementZone;
 use crate::sim::movement::locomotor::MovementLayer;
 
@@ -50,23 +50,18 @@ const MOVEMENT_CLASS_PASSABILITY: [[u8; 8]; 13] = [
     [1, 1, 1, 2, 2, 2, 2, 3], // CrusherAll
 ];
 
-const MOVEMENT_CLASS_OPEN: u8 = 0;
-const MOVEMENT_CLASS_BEACH: u8 = 3;
-const MOVEMENT_CLASS_WATER: u8 = 4;
-const MOVEMENT_CLASS_BLOCKED: u8 = 6;
-const MOVEMENT_CLASS_OUTSIDE: u8 = 7;
 
-/// Build a zone map and adjacency graph for one ZoneCategory.
+/// Build a zone map and adjacency graph for one MovementZone.
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) fn build_zone_map(
     path_grid: &PathGrid,
     cost_grid: Option<&TerrainCostGrid>,
-    cat: ZoneCategory,
+    mz: MovementZone,
     width: u16,
     height: u16,
 ) -> (ZoneMap, ZoneAdjacency) {
-    build_zone_map_with_terrain(path_grid, cost_grid, None, cat, width, height)
+    build_zone_map_with_terrain(path_grid, cost_grid, None, mz, width, height)
 }
 
 /// Build a zone map using recovered movement-class zoning when resolved terrain is available.
@@ -79,12 +74,12 @@ pub(crate) fn build_zone_map_with_terrain(
     path_grid: &PathGrid,
     cost_grid: Option<&TerrainCostGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    cat: ZoneCategory,
+    mz: MovementZone,
     width: u16,
     height: u16,
 ) -> (ZoneMap, ZoneAdjacency) {
     if let Some(terrain) = resolved_terrain {
-        return build_zone_map_with_movement_classes(path_grid, terrain, cat, width, height);
+        return build_zone_map_with_movement_classes(path_grid, terrain, mz, width, height);
     }
 
     let total = width as usize * height as usize;
@@ -103,7 +98,7 @@ pub(crate) fn build_zone_map_with_terrain(
             if !is_passable(
                 rx,
                 ry,
-                cat,
+                mz,
                 path_grid,
                 cost_grid,
                 resolved_terrain,
@@ -119,7 +114,7 @@ pub(crate) fn build_zone_map_with_terrain(
                 &mut zone_ids,
                 width,
                 height,
-                cat,
+                mz,
                 path_grid,
                 cost_grid,
                 resolved_terrain,
@@ -161,7 +156,7 @@ pub(crate) fn build_zone_map_with_terrain(
 fn build_zone_map_with_movement_classes(
     path_grid: &PathGrid,
     resolved_terrain: &ResolvedTerrainGrid,
-    cat: ZoneCategory,
+    mz: MovementZone,
     width: u16,
     height: u16,
 ) -> (ZoneMap, ZoneAdjacency) {
@@ -175,7 +170,7 @@ fn build_zone_map_with_movement_classes(
     let (node_indices, node_count) =
         rebuild_node_indices(&movement_classes, path_grid, width, height);
     let node_adj = build_node_adjacency(&node_indices, width, height);
-    let movement_zone = cat.representative_movement_zone();
+    let movement_zone = mz;
     let raw_zone_ids = rebuild_zone_ids_for_movement_zone(
         &movement_classes,
         &node_indices,
@@ -216,27 +211,17 @@ fn movement_class_for_cell(
     y: u16,
 ) -> u8 {
     let Some(cell) = resolved_terrain.cell(x, y) else {
-        return MOVEMENT_CLASS_OUTSIDE;
+        return zone_class::OUTSIDE;
     };
 
-    if cell.overlay_blocks || cell.terrain_object_blocks {
-        // TODO(RE): exact TerrainType occupation-bit decoding is not wired into the map model
-        // yet, so we cannot distinguish partial-occupancy class 5 from full blockers here.
-        return MOVEMENT_CLASS_BLOCKED;
-    }
-    if (cell.ground_walk_blocked && !cell.is_water)
-        || (!path_grid.is_walkable(x, y) && !cell.is_water)
-    {
-        return MOVEMENT_CLASS_BLOCKED;
-    }
-    if cell.is_water {
-        return MOVEMENT_CLASS_WATER;
-    }
-    if cell.land_type == passability::LandType::Beach.as_index() {
-        return MOVEMENT_CLASS_BEACH;
+    // Buildings are entity-based, not stored on ResolvedTerrainCell.
+    // Check PathGrid for building footprints → class 5 (Building).
+    // Only override if the cached zone_type isn't already a stronger blocker.
+    if cell.zone_type < zone_class::BUILDING && !path_grid.is_walkable(x, y) && !cell.is_water {
+        return zone_class::BUILDING;
     }
 
-    MOVEMENT_CLASS_OPEN
+    cell.zone_type
 }
 
 fn rebuild_node_indices(
@@ -251,7 +236,7 @@ fn rebuild_node_indices(
     for ry in 0..height {
         for rx in 0..width {
             let idx = ry as usize * width as usize + rx as usize;
-            if movement_classes[idx] == MOVEMENT_CLASS_OUTSIDE || node_indices[idx] != 0 {
+            if movement_classes[idx] == zone_class::OUTSIDE || node_indices[idx] != 0 {
                 continue;
             }
             flood_fill_node_index(
@@ -306,7 +291,7 @@ fn flood_fill_node_index(
                 continue;
             }
 
-            if movement_class != MOVEMENT_CLASS_BLOCKED {
+            if movement_class != zone_class::IMPASSABLE {
                 let Some(cur) = path_grid.cell(cx, cy) else {
                     continue;
                 };
@@ -377,9 +362,9 @@ fn rebuild_zone_ids_for_movement_zone(
     node_adj: &[Vec<u16>],
     movement_zone: MovementZone,
 ) -> Vec<u16> {
-    let mut node_movement_classes = vec![MOVEMENT_CLASS_OUTSIDE; node_count as usize + 1];
+    let mut node_movement_classes = vec![zone_class::OUTSIDE; node_count as usize + 1];
     for (&node, &movement_class) in node_indices.iter().zip(movement_classes.iter()) {
-        if node != 0 && node_movement_classes[node as usize] == MOVEMENT_CLASS_OUTSIDE {
+        if node != 0 && node_movement_classes[node as usize] == zone_class::OUTSIDE {
             node_movement_classes[node as usize] = movement_class;
         }
     }
@@ -447,7 +432,7 @@ fn compact_raw_zone_ids(
     (zone_ids, next_zone.saturating_sub(1))
 }
 
-/// Check if a cell is passable for a given ZoneCategory.
+/// Check if a cell is passable for a given MovementZone.
 ///
 /// This helper is still the direct passable-cell check used by the fallback and legacy
 /// incremental paths. Terrain-aware full rebuilds now go through `MovementClass8` +
@@ -455,7 +440,7 @@ fn compact_raw_zone_ids(
 pub(crate) fn is_passable(
     x: u16,
     y: u16,
-    cat: ZoneCategory,
+    mz: MovementZone,
     path_grid: &PathGrid,
     cost_grid: Option<&TerrainCostGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
@@ -464,8 +449,7 @@ pub(crate) fn is_passable(
     // Buildings and static obstacles block all ground movement regardless of
     // land type. PathGrid encodes this (set_blocked for building footprints).
     // Water zones skip this check since water cells are typically blocked in PathGrid.
-    let is_water_zone = matches!(cat, ZoneCategory::Water | ZoneCategory::WaterBeach);
-    if !is_water_zone && !path_grid.is_walkable(x, y) {
+    if !mz.is_water_mover() && !path_grid.is_walkable(x, y) {
         return false;
     }
 
@@ -477,7 +461,6 @@ pub(crate) fn is_passable(
     // but MovementZone::Water maps to zone 10 (water cells only).
     if let Some(terrain) = resolved_terrain {
         if let Some(cell) = terrain.cell(x, y) {
-            let mz = cat.representative_movement_zone();
             if mz.is_water_mover() {
                 return super::is_water_surface_cell_passable(cell, mz);
             }
@@ -486,20 +469,17 @@ pub(crate) fn is_passable(
     }
 
     // Fallback: TerrainCostGrid-based check (pre-matrix behavior).
-    match cat {
-        ZoneCategory::Water | ZoneCategory::WaterBeach => {
-            if let Some(cg) = cost_grid {
-                cg.cost_at(x, y) > 0
-            } else {
-                false
-            }
+    if mz.is_water_mover() {
+        if let Some(cg) = cost_grid {
+            cg.cost_at(x, y) > 0
+        } else {
+            false
         }
-        _ => {
-            if let Some(cg) = cost_grid {
-                cg.cost_at(x, y) > 0
-            } else {
-                true
-            }
+    } else {
+        if let Some(cg) = cost_grid {
+            cg.cost_at(x, y) > 0
+        } else {
+            true
         }
     }
 }
@@ -516,7 +496,7 @@ pub(crate) fn flood_fill(
     zone_ids: &mut [ZoneId],
     width: u16,
     height: u16,
-    cat: ZoneCategory,
+    mz: MovementZone,
     path_grid: &PathGrid,
     cost_grid: Option<&TerrainCostGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
@@ -541,7 +521,7 @@ pub(crate) fn flood_fill(
             if zone_ids[n_idx] != ZONE_INVALID {
                 continue;
             }
-            if !is_passable(nx, ny, cat, path_grid, cost_grid, resolved_terrain, layer) {
+            if !is_passable(nx, ny, mz, path_grid, cost_grid, resolved_terrain, layer) {
                 continue;
             }
 
@@ -551,8 +531,8 @@ pub(crate) fn flood_fill(
                 let ay = cy;
                 let bx = cx;
                 let by = (cy as i32 + dy) as u16;
-                if !is_passable(ax, ay, cat, path_grid, cost_grid, resolved_terrain, layer)
-                    || !is_passable(bx, by, cat, path_grid, cost_grid, resolved_terrain, layer)
+                if !is_passable(ax, ay, mz, path_grid, cost_grid, resolved_terrain, layer)
+                    || !is_passable(bx, by, mz, path_grid, cost_grid, resolved_terrain, layer)
                 {
                     continue;
                 }

@@ -1,7 +1,7 @@
 //! Zone-based connectivity map for hierarchical pathfinding.
 //!
 //! The map is partitioned into zones — connected regions of passable cells —
-//! per `ZoneCategory`. This enables:
+//! per `MovementZone`. This enables:
 //! - **O(1) reachability checks**: two cells are mutually reachable iff they
 //!   share the same zone ID (or zones are connected via the adjacency graph).
 //! - **Hierarchical search**: Dijkstra on the zone graph finds a corridor of
@@ -30,104 +30,6 @@ pub type ZoneId = u16;
 /// Sentinel for impassable or unassigned cells.
 pub const ZONE_INVALID: ZoneId = 0;
 
-/// Canonical passability class — groups MovementZone variants that share the
-/// same passability rules into a smaller set for zone computation.
-///
-/// TODO(RE): The recovered engine layout is per-MovementZone, not per reduced
-/// ZoneCategory. This canonicalization is a memory/runtime shortcut until the
-/// nodeIndex -> zoneIdByMovementZone tables and YR subzone tracking are wired in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ZoneCategory {
-    /// Ground-only units (Normal, Crusher, Destroyer, CrusherAll, Subterranean).
-    /// Uses Destroyer as representative — most permissive standard ground profile.
-    Land,
-    /// Water-only units.
-    Water,
-    /// Water + beach units.
-    WaterBeach,
-    /// Amphibious units (land + water).
-    Amphibious,
-    /// Infantry (slightly different passability than Land).
-    Infantry,
-    /// Airborne — trivially one zone (all cells reachable). Handled as special case.
-    Fly,
-}
-
-impl ZoneCategory {
-    /// Map a MovementZone to its canonical ZoneCategory.
-    pub fn from_movement_zone(mz: MovementZone) -> Self {
-        match mz {
-            MovementZone::Normal
-            | MovementZone::Crusher
-            | MovementZone::Destroyer
-            | MovementZone::CrusherAll
-            | MovementZone::Subterranean => ZoneCategory::Land,
-            MovementZone::Water => ZoneCategory::Water,
-            MovementZone::WaterBeach => ZoneCategory::WaterBeach,
-            MovementZone::AmphibiousCrusher
-            | MovementZone::AmphibiousDestroyer
-            | MovementZone::Amphibious => ZoneCategory::Amphibious,
-            MovementZone::Infantry | MovementZone::InfantryDestroyer => ZoneCategory::Infantry,
-            MovementZone::Fly => ZoneCategory::Fly,
-        }
-    }
-
-    /// Which SpeedType to use for cost grid selection (speed multipliers).
-    ///
-    /// Note: this is NOT used for passability checks — use
-    /// `representative_movement_zone()` for that. SpeedType controls how
-    /// *fast* a unit moves on passable cells, while MovementZone controls
-    /// *which* cells are passable at all.
-    pub(crate) fn representative_speed_type(self) -> SpeedType {
-        match self {
-            ZoneCategory::Land => SpeedType::Track,
-            ZoneCategory::Water => SpeedType::Float,
-            ZoneCategory::WaterBeach => SpeedType::FloatBeach,
-            ZoneCategory::Amphibious => SpeedType::Amphibious,
-            ZoneCategory::Infantry => SpeedType::Foot,
-            ZoneCategory::Fly => SpeedType::Winged,
-        }
-    }
-
-    /// Which MovementZone to use for passability checks during flood-fill.
-    ///
-    /// Maps each category to the correct passability matrix row via
-    /// `zone_layer_for_movement_zone()`. This is the authoritative passability
-    /// check matching the original engine's Can_Enter_Cell logic.
-    ///
-    /// Critical distinction from `representative_speed_type()`:
-    /// - SpeedType::Float → zone 9 (hover — passable everywhere except rock)
-    /// - MovementZone::Water → zone 10 (water only — ships confined to water)
-    ///
-    /// Land uses Destroyer (row 2) as representative — most permissive standard
-    /// ground profile (Ground + Road + WaterOverlay). This avoids false negatives
-    /// for Crusher/Destroyer/CrusherAll units on road cells. Normal units get
-    /// false positives on road overlay cells, which A* handles gracefully.
-    /// Subterranean has a more exotic profile (can pass Impassable cells) but
-    /// is too permissive as a shared representative.
-    pub(crate) fn representative_movement_zone(self) -> MovementZone {
-        match self {
-            ZoneCategory::Land => MovementZone::Destroyer,
-            ZoneCategory::Water => MovementZone::Water,
-            ZoneCategory::WaterBeach => MovementZone::WaterBeach,
-            ZoneCategory::Amphibious => MovementZone::Amphibious,
-            ZoneCategory::Infantry => MovementZone::Infantry,
-            ZoneCategory::Fly => MovementZone::Fly,
-        }
-    }
-
-    /// All categories that require zone computation (Fly is trivial).
-    pub fn all_nontrivial() -> &'static [ZoneCategory] {
-        &[
-            ZoneCategory::Land,
-            ZoneCategory::Water,
-            ZoneCategory::WaterBeach,
-            ZoneCategory::Amphibious,
-            ZoneCategory::Infantry,
-        ]
-    }
-}
-
 /// Per-zone metadata: centroid and cell count.
 /// Used by the hierarchical zone Dijkstra to estimate inter-zone distances.
 #[derive(Debug, Clone, Copy, Default)]
@@ -136,7 +38,7 @@ pub struct ZoneInfo {
     pub cell_count: u32,
 }
 
-/// Per-category cell-to-zone lookup.
+/// Per-movement-zone cell-to-zone lookup.
 #[derive(Debug, Clone)]
 pub struct ZoneMap {
     /// Zone ID per cell, indexed by `y * width + x`. ZONE_INVALID = impassable.
@@ -275,13 +177,13 @@ impl ZoneAdjacency {
     }
 }
 
-/// Complete zone system: zone maps + adjacency graphs for all categories.
+/// Complete zone system: zone maps + adjacency graphs for all movement zones.
 #[derive(Debug, Clone)]
 pub struct ZoneGrid {
-    maps: BTreeMap<ZoneCategory, ZoneMap>,
-    adjacency: BTreeMap<ZoneCategory, ZoneAdjacency>,
+    maps: BTreeMap<MovementZone, ZoneMap>,
+    adjacency: BTreeMap<MovementZone, ZoneAdjacency>,
     /// Connected-component labels for O(1) reachability checks.
-    super_zones: BTreeMap<ZoneCategory, SuperZoneMap>,
+    super_zones: BTreeMap<MovementZone, SuperZoneMap>,
     pub width: u16,
     pub height: u16,
 }
@@ -299,7 +201,7 @@ impl ZoneGrid {
 
     /// Build zone maps using resolved terrain passability when available.
     /// Bridge endpoint records inject cross-bridge adjacency edges for
-    /// land-capable categories (Land, Infantry, Amphibious).
+    /// ground-capable movement zones.
     pub fn build_with_terrain(
         path_grid: &PathGrid,
         terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
@@ -312,24 +214,20 @@ impl ZoneGrid {
         let mut adjacency = BTreeMap::new();
         let mut super_zones = BTreeMap::new();
 
-        for &cat in ZoneCategory::all_nontrivial() {
-            let speed_type = cat.representative_speed_type();
+        for &mz in MovementZone::all_ground() {
+            let speed_type = mz.speed_type();
             let cost_grid = terrain_costs.get(&speed_type);
 
             let (mut zone_map, mut adj) = zone_build::build_zone_map_with_terrain(
                 path_grid,
                 cost_grid,
                 resolved_terrain,
-                cat,
+                mz,
                 width,
                 height,
             );
 
-            // Inject bridge adjacency and redirect for land-capable categories.
-            if matches!(
-                cat,
-                ZoneCategory::Land | ZoneCategory::Infantry | ZoneCategory::Amphibious
-            ) {
+            if mz.can_use_bridges() {
                 zone_build::inject_bridge_adjacency(
                     &mut adj,
                     zone_map.zone_ids_slice(),
@@ -345,9 +243,9 @@ impl ZoneGrid {
             }
 
             let sz = SuperZoneMap::from_adjacency(&adj, zone_map.zone_count);
-            super_zones.insert(cat, sz);
-            maps.insert(cat, zone_map);
-            adjacency.insert(cat, adj);
+            super_zones.insert(mz, sz);
+            maps.insert(mz, zone_map);
+            adjacency.insert(mz, adj);
         }
 
         ZoneGrid {
@@ -359,49 +257,46 @@ impl ZoneGrid {
         }
     }
 
-    /// Get the zone map for a category.
-    pub fn map_for(&self, cat: ZoneCategory) -> Option<&ZoneMap> {
-        self.maps.get(&cat)
+    /// Get the zone map for a movement zone.
+    pub fn map_for(&self, mz: MovementZone) -> Option<&ZoneMap> {
+        self.maps.get(&mz)
     }
 
-    /// Get the adjacency graph for a category.
-    pub fn adjacency_for(&self, cat: ZoneCategory) -> Option<&ZoneAdjacency> {
-        self.adjacency.get(&cat)
+    /// Get the adjacency graph for a movement zone.
+    pub fn adjacency_for(&self, mz: MovementZone) -> Option<&ZoneAdjacency> {
+        self.adjacency.get(&mz)
     }
 
-    /// Mutable access to the zone map for a category (for incremental updates).
-    pub(crate) fn map_mut(&mut self, cat: ZoneCategory) -> Option<&mut ZoneMap> {
-        self.maps.get_mut(&cat)
+    /// Mutable access to the zone map for a movement zone (for incremental updates).
+    pub(crate) fn map_mut(&mut self, mz: MovementZone) -> Option<&mut ZoneMap> {
+        self.maps.get_mut(&mz)
     }
 
-    /// Mutable access to the adjacency graph for a category (for incremental updates).
-    pub(crate) fn adjacency_mut(&mut self, cat: ZoneCategory) -> Option<&mut ZoneAdjacency> {
-        self.adjacency.get_mut(&cat)
+    /// Mutable access to the adjacency graph for a movement zone (for incremental updates).
+    pub(crate) fn adjacency_mut(&mut self, mz: MovementZone) -> Option<&mut ZoneAdjacency> {
+        self.adjacency.get_mut(&mz)
     }
 
-    /// Replace the super-zone map for a category (after incremental adjacency update).
-    pub(crate) fn set_super_zone(&mut self, cat: ZoneCategory, sz: SuperZoneMap) {
-        self.super_zones.insert(cat, sz);
+    /// Replace the super-zone map for a movement zone (after incremental adjacency update).
+    pub(crate) fn set_super_zone(&mut self, mz: MovementZone, sz: SuperZoneMap) {
+        self.super_zones.insert(mz, sz);
     }
 
-    /// O(1) reachability check: can a unit of this category reach `to` from `from`?
+    /// O(1) reachability check: can a unit with this movement zone reach `to` from `from`?
     /// Returns true if both cells are in the same zone or connected via adjacency.
     /// For truly disconnected regions, this returns false without any A* search.
     pub fn can_reach(
         &self,
-        cat: ZoneCategory,
+        mz: MovementZone,
         from: (u16, u16),
         from_layer: MovementLayer,
         to: (u16, u16),
         to_layer: MovementLayer,
     ) -> bool {
-        if cat == ZoneCategory::Fly {
-            // TODO(RE): Air/jumpjet navigation is not just "one global zone". The RE queue
-            // still needs to close which movers bypass grid A*, which still do local tests,
-            // and how crowd/yield/replan interacts with those movers.
+        if mz == MovementZone::Fly {
             return true; // Fly units can reach anywhere
         }
-        let Some(zone_map) = self.maps.get(&cat) else {
+        let Some(zone_map) = self.maps.get(&mz) else {
             return true; // No zone data — assume reachable (conservative)
         };
         let za = zone_map.zone_at(from.0, from.1, from_layer);
@@ -413,11 +308,11 @@ impl ZoneGrid {
             return true;
         }
         // Different zones — O(1) super-zone check (union-find connected components).
-        if let Some(sz) = self.super_zones.get(&cat) {
+        if let Some(sz) = self.super_zones.get(&mz) {
             return sz.are_connected(za, zb);
         }
         // Fallback to BFS if super-zones not available (should not happen).
-        let Some(adj) = self.adjacency.get(&cat) else {
+        let Some(adj) = self.adjacency.get(&mz) else {
             return false;
         };
         zone_graph_connected(adj, za, zb, zone_map.zone_count)

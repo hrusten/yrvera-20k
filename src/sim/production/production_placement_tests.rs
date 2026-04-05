@@ -61,6 +61,8 @@ fn resolved_clear_grid_with_override(
                 ground_walk_blocked: false,
                 terrain_object_blocks: false,
                 overlay_blocks: false,
+                zone_type: 0,
+                base_ground_walk_blocked: false,
                 base_build_blocked: false,
                 build_blocked: false,
                 has_bridge_deck: false,

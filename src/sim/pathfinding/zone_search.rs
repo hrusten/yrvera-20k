@@ -21,7 +21,7 @@ use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
 
 use super::terrain_cost::TerrainCostGrid;
-use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneCategory, ZoneGrid, ZoneId, ZoneMap};
+use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneGrid, ZoneId, ZoneMap};
 use super::{
     LayeredPathStep, PathGrid, find_layered_path, find_path_with_costs,
     find_path_with_costs_corridor,
@@ -67,7 +67,7 @@ pub fn find_path_zoned(
     costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     zone_grid: Option<&ZoneGrid>,
-    zone_cat: ZoneCategory,
+    mz: MovementZone,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     penalty_cells: Option<&BTreeSet<(u16, u16)>>,
@@ -100,7 +100,7 @@ pub fn find_path_zoned(
 
     // Zone pre-check: instant unreachability detection.
     if !zg.can_reach(
-        zone_cat,
+        mz,
         start,
         MovementLayer::Ground,
         goal,
@@ -108,14 +108,14 @@ pub fn find_path_zoned(
     ) {
         log::trace!(
             "zone_search: unreachable {:?} ({:?}→{:?}), skipping A*",
-            zone_cat,
+            mz,
             start,
             goal,
         );
         return None;
     }
 
-    let Some(zone_map) = zg.map_for(zone_cat) else {
+    let Some(zone_map) = zg.map_for(mz) else {
         return find_path_with_costs(
             grid,
             start,
@@ -127,7 +127,7 @@ pub fn find_path_zoned(
             penalty_cells,
         );
     };
-    let Some(adjacency) = zg.adjacency_for(zone_cat) else {
+    let Some(adjacency) = zg.adjacency_for(mz) else {
         return find_path_with_costs(
             grid,
             start,
@@ -217,7 +217,7 @@ pub fn find_layered_path_zoned(
     start_layer: MovementLayer,
     goal: (u16, u16),
     zone_grid: Option<&ZoneGrid>,
-    zone_cat: ZoneCategory,
+    mz: MovementZone,
     terrain_costs: Option<&TerrainCostGrid>,
     movement_zone: Option<MovementZone>,
     penalty_cells: Option<&BTreeSet<(u16, u16)>>,
@@ -238,10 +238,10 @@ pub fn find_layered_path_zoned(
     // Zone pre-check: bridge cells redirect to ground endpoint zones,
     // so a single ground-layer check covers cross-bridge reachability.
     if let Some(zg) = zone_grid {
-        if !zg.can_reach(zone_cat, start, start_layer, goal, MovementLayer::Ground) {
+        if !zg.can_reach(mz, start, start_layer, goal, MovementLayer::Ground) {
             log::trace!(
                 "zone_search: layered unreachable {:?} ({:?} layer={:?} -> {:?}), skipping A*",
-                zone_cat,
+                mz,
                 start,
                 start_layer,
                 goal,

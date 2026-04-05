@@ -22,6 +22,7 @@ use crate::map::terrain;
 use crate::render::sprite_atlas;
 use crate::render::unit_atlas;
 use crate::sim::animation::{self, SequenceSet};
+use crate::sim::overlay_grid::{recalc_overlay_passability, OverlayGrid};
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production;
 use crate::sim::replay::{ReplayHeader, ReplayLog};
@@ -415,6 +416,40 @@ pub(crate) fn advance_fixed_simulation(state: &mut AppState, elapsed_ms: u64) {
             Vec::new()
         };
         apply_trigger_effects(state, &trigger_effects);
+
+        // Drain overlay dirty cells and recompute passability. If any cell's
+        // passability flipped, trigger zone rebuild via `refresh_after_tick`.
+        // Uses the existing `rebuild_dynamic_path_grid` → `rebuild_zone_grid`
+        // path; no new zone-rebuild plumbing.
+        if let (Some(sim), Some(registry)) =
+            (state.simulation.as_mut(), state.overlay_registry.as_ref())
+        {
+            if let (Some(overlay_grid), Some(terrain)) =
+                (sim.overlay_grid.as_mut(), sim.resolved_terrain.as_mut())
+            {
+                let dirty = overlay_grid.take_dirty_cells();
+                if !dirty.is_empty() {
+                    // Downgrade mutable borrow so we can pass &OverlayGrid alongside
+                    // &mut ResolvedTerrainGrid to recalc_overlay_passability.
+                    let overlay_ref: &OverlayGrid = overlay_grid;
+                    let mut passability_changed = false;
+                    for (rx, ry) in dirty {
+                        if recalc_overlay_passability(
+                            overlay_ref,
+                            terrain,
+                            registry,
+                            rx,
+                            ry,
+                        ) {
+                            passability_changed = true;
+                        }
+                    }
+                    if passability_changed {
+                        refresh_after_tick = true;
+                    }
+                }
+            }
+        }
     }
 
     // Trigger one-shot crane animations for owners that placed buildings this frame.

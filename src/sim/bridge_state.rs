@@ -330,6 +330,8 @@ mod tests {
                 ground_walk_blocked: on_bridge,
                 terrain_object_blocks: false,
                 overlay_blocks: false,
+                zone_type: if on_bridge { 6 } else { 0 },
+                base_ground_walk_blocked: false,
                 base_build_blocked: false,
                 build_blocked: on_bridge,
                 has_bridge_deck: on_bridge,

@@ -1,7 +1,7 @@
 //! Incremental zone updates — avoids full map rebuild when few cells change.
 //!
 //! When a building is placed or sold, only a small region of cells changes
-//! walkability. Instead of rebuilding all 5 zone categories from scratch, this
+//! walkability. Instead of rebuilding all 12 non-Fly movement zones from scratch, this
 //! module:
 //! 1. Identifies which zone IDs are affected (have cells in the changed region).
 //! 2. Clears those zone IDs everywhere on the map.
@@ -24,9 +24,9 @@ use super::zone_build::{
     inject_bridge_adjacency, is_passable,
 };
 use super::zone_hierarchy::SuperZoneMap;
-use super::zone_map::{ZONE_INVALID, ZoneCategory, ZoneGrid, ZoneId};
+use super::zone_map::{ZONE_INVALID, ZoneGrid, ZoneId};
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use crate::rules::locomotor_type::SpeedType;
+use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::sim::movement::locomotor::MovementLayer;
 
 /// Maximum changed cells before falling back to full rebuild.
@@ -72,10 +72,10 @@ pub(crate) fn try_incremental_update(
     // Process each category. We do two passes per category:
     // Pass 1 (mutable): clear + re-flood-fill zone IDs.
     // Pass 2 (immutable reads, then mutable writes): rebuild adjacency/info/super-zones.
-    for &cat in ZoneCategory::all_nontrivial() {
+    for &mz in MovementZone::all_ground() {
         if !update_category(
             zone_grid,
-            cat,
+            mz,
             &bbox,
             changed_cells,
             path_grid,
@@ -91,10 +91,10 @@ pub(crate) fn try_incremental_update(
     true
 }
 
-/// Update one category incrementally. Returns false if full rebuild needed.
+/// Update one movement zone incrementally. Returns false if full rebuild needed.
 fn update_category(
     zone_grid: &mut ZoneGrid,
-    cat: ZoneCategory,
+    mz: MovementZone,
     bbox: &(u16, u16, u16, u16),
     changed_cells: &[(u16, u16)],
     path_grid: &PathGrid,
@@ -103,12 +103,12 @@ fn update_category(
     width: u16,
     height: u16,
 ) -> bool {
-    let speed_type = cat.representative_speed_type();
+    let speed_type = mz.speed_type();
     let cost_grid = terrain_costs.get(&speed_type);
     let w = width as usize;
     let (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y) = *bbox;
 
-    let Some(zone_map) = zone_grid.map_mut(cat) else {
+    let Some(zone_map) = zone_grid.map_mut(mz) else {
         return true;
     };
 
@@ -137,7 +137,7 @@ fn update_category(
             is_passable(
                 cx,
                 cy,
-                cat,
+                mz,
                 path_grid,
                 cost_grid,
                 None,
@@ -145,7 +145,7 @@ fn update_category(
             )
         });
         if !any_new_passable {
-            return true; // nothing to do for this category
+            return true; // nothing to do for this movement zone
         }
     }
 
@@ -168,7 +168,7 @@ fn update_category(
             if !is_passable(
                 rx,
                 ry,
-                cat,
+                mz,
                 path_grid,
                 cost_grid,
                 None,
@@ -183,7 +183,7 @@ fn update_category(
                 ground_ids,
                 width,
                 height,
-                cat,
+                mz,
                 path_grid,
                 cost_grid,
                 None,
@@ -197,7 +197,7 @@ fn update_category(
     zone_map.set_zone_count(new_zone_count);
 
     // --- Pass 2: Rebuild adjacency, zone_info, super-zones ---
-    let Some(zone_map) = zone_grid.map_for(cat) else {
+    let Some(zone_map) = zone_grid.map_for(mz) else {
         return false;
     };
     let ground_slice = zone_map.zone_ids_slice();
@@ -209,11 +209,8 @@ fn update_category(
         new_zone_count,
     );
 
-    // Inject bridge adjacency for land-capable categories.
-    if matches!(
-        cat,
-        ZoneCategory::Land | ZoneCategory::Infantry | ZoneCategory::Amphibious
-    ) {
+    // Inject bridge adjacency for ground-capable movement zones.
+    if mz.can_use_bridges() {
         inject_bridge_adjacency(&mut new_adj, ground_slice, bridge_records, width);
     }
 
@@ -221,26 +218,23 @@ fn update_category(
     let new_sz = SuperZoneMap::from_adjacency(&new_adj, new_zone_count);
 
     // Rebuild bridge redirect.
-    let bridge_redirect = if matches!(
-        cat,
-        ZoneCategory::Land | ZoneCategory::Infantry | ZoneCategory::Amphibious
-    ) {
+    let bridge_redirect = if mz.can_use_bridges() {
         build_bridge_redirect(path_grid, bridge_records, width, height)
     } else {
         None
     };
 
     // Apply computed results back.
-    let Some(zone_map) = zone_grid.map_mut(cat) else {
+    let Some(zone_map) = zone_grid.map_mut(mz) else {
         return false;
     };
     zone_map.set_zone_info(new_info);
     zone_map.set_bridge_redirect(bridge_redirect);
 
-    if let Some(adj) = zone_grid.adjacency_mut(cat) {
+    if let Some(adj) = zone_grid.adjacency_mut(mz) {
         *adj = new_adj;
     }
-    zone_grid.set_super_zone(cat, new_sz);
+    zone_grid.set_super_zone(mz, new_sz);
 
     true
 }

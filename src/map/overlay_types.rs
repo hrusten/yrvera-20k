@@ -58,6 +58,9 @@ pub struct OverlayTypeFlags {
     pub is_veins: bool,
     /// IsVeinholeMonster=yes — rendered with unit palette.
     pub is_veinhole_monster: bool,
+    /// Gate=yes — overlay acts as a gate (impassable for zone classification).
+    /// No standard YR overlay uses this; included for binary fidelity with RecalcZoneType.
+    pub is_gate: bool,
     /// Crate=yes — gets -12px Y offset.
     pub crate_type: bool,
     /// Overlay name identifies a bridge deck/high-bridge overlay.
@@ -82,6 +85,7 @@ impl Default for OverlayTypeFlags {
             wall: false,
             is_veins: false,
             is_veinhole_monster: false,
+            is_gate: false,
             crate_type: false,
             bridge_deck: false,
             track: false,
@@ -196,6 +200,7 @@ impl OverlayTypeRegistry {
                     is_veinhole_monster: type_section
                         .get_bool("IsVeinholeMonster")
                         .unwrap_or(false),
+                    is_gate: type_section.get_bool("Gate").unwrap_or(false),
                     crate_type: type_section.get_bool("Crate").unwrap_or(false),
                     bridge_deck,
                     track,

@@ -26,7 +26,7 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::terrain_speed::{self, TerrainSpeedConfig};
-use crate::sim::pathfinding::zone_map::{ZoneCategory, ZoneGrid};
+use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::rng::SimRng;
 use crate::util::fixed_math::{
     SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, dt_from_tick_ms, fixed_distance,
@@ -136,11 +136,11 @@ fn handle_path_exhaustion(
                 fg.1,
             );
         }
-        let seg_zone_cat = snap
+        let seg_zone_mz = snap
             .locomotor
             .as_ref()
-            .map(|l| ZoneCategory::from_movement_zone(l.movement_zone))
-            .unwrap_or(ZoneCategory::Land);
+            .map(|l| l.movement_zone)
+            .unwrap_or(MovementZone::Normal);
         if ctx.path_grid.is_some() {
             if let Some((new_path, new_layers)) = find_move_path(
                 ctx,
@@ -152,7 +152,7 @@ fn handle_path_exhaustion(
                 mover_entity_blocks,
                 None,
                 None, // layer-separated entity blocks not yet wired
-                seg_zone_cat,
+                seg_zone_mz,
                 Some(snap.movement_zone),
                 snap.too_big_to_fit_under_bridge,
                 None, // penalty_cells — not available in per-tick repath

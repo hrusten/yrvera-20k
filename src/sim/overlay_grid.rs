@@ -41,6 +41,11 @@ pub struct OverlayGrid {
     width: u16,
     height: u16,
     cells: Vec<OverlayCell>,
+    /// Cells mutated this tick — drained by the app layer to trigger
+    /// `recalc_overlay_passability`. Not part of game state; never serialized.
+    /// Always empty at tick boundaries (drained every tick after `advance_tick`).
+    #[serde(skip, default)]
+    dirty_cells: Vec<(u16, u16)>,
 }
 
 impl OverlayGrid {
@@ -51,6 +56,7 @@ impl OverlayGrid {
             width,
             height,
             cells: vec![OverlayCell::default(); count],
+            dirty_cells: Vec::new(),
         }
     }
 
@@ -88,6 +94,7 @@ impl OverlayGrid {
         let idx = index_of(self.width, self.height, rx, ry)?;
         let prev = self.cells[idx].overlay_id;
         self.cells[idx] = OverlayCell::default();
+        self.dirty_cells.push((rx, ry));
         prev
     }
 
@@ -98,6 +105,7 @@ impl OverlayGrid {
                 overlay_id: Some(overlay_id),
                 overlay_data: data,
             };
+            self.dirty_cells.push((rx, ry));
         }
     }
 
@@ -107,6 +115,7 @@ impl OverlayGrid {
         if let Some(idx) = index_of(self.width, self.height, rx, ry) {
             if self.cells[idx].overlay_id.is_some() {
                 self.cells[idx].overlay_data = data;
+                self.dirty_cells.push((rx, ry));
             }
         }
     }
@@ -150,6 +159,14 @@ impl OverlayGrid {
     pub fn height(&self) -> u16 {
         self.height
     }
+
+    /// Drain the list of cells mutated since last call. Consumer (app layer)
+    /// calls `recalc_overlay_passability` for each and may trigger a zone rebuild.
+    ///
+    /// MUST be called every tick to keep the list empty at snapshot boundaries.
+    pub fn take_dirty_cells(&mut self) -> Vec<(u16, u16)> {
+        std::mem::take(&mut self.dirty_cells)
+    }
 }
 
 /// Recompute overlay_blocks on ResolvedTerrainCell after an overlay mutation.
@@ -166,18 +183,57 @@ pub fn recalc_overlay_passability(
     rx: u16,
     ry: u16,
 ) -> bool {
+    use crate::map::resolved_terrain::zone_class;
+
     let cell = overlay_grid.cell(rx, ry);
-    let new_blocks = match cell.overlay_id {
-        Some(id) => registry.flags(id).is_some_and(|f| f.wall || f.tiberium),
-        None => false,
+    let (new_blocks, new_zone_type) = match cell.overlay_id {
+        Some(id) => {
+            let flags = registry.flags(id);
+            let blocks = flags.is_some_and(|f| f.wall || f.tiberium);
+            // Mirror RecalcZoneType priority for overlay-driven zone classification.
+            let zt = match flags {
+                Some(f) if f.crate_type => zone_class::ROAD,
+                Some(f) if f.wall => zone_class::WALL,
+                Some(f) if f.tiberium => zone_class::IMPASSABLE,
+                Some(f) if f.is_gate => zone_class::IMPASSABLE,
+                _ => zone_class::GROUND, // Fallback — refined below from base terrain
+            };
+            (blocks, zt)
+        }
+        None => (false, zone_class::GROUND), // No overlay — refined below
     };
 
     let Some(terrain_cell) = resolved_terrain.cell_mut(rx, ry) else {
         return false;
     };
+
     let old_blocks = terrain_cell.overlay_blocks;
     terrain_cell.overlay_blocks = new_blocks;
-    old_blocks != new_blocks
+
+    // If the overlay didn't determine a specific zone_type (GROUND fallback),
+    // re-derive from base terrain, matching the init-time logic.
+    // Uses `base_ground_walk_blocked` (terrain-only) to avoid the conflated
+    // `ground_walk_blocked` which includes stale overlay/terrain-object contributions.
+    let final_zone_type = if new_zone_type != zone_class::GROUND {
+        new_zone_type
+    } else if terrain_cell.is_water {
+        zone_class::WATER
+    } else if terrain_cell.land_type
+        == crate::sim::pathfinding::passability::LandType::Beach.as_index()
+    {
+        zone_class::BEACH
+    } else if terrain_cell.base_ground_walk_blocked {
+        zone_class::IMPASSABLE
+    } else if terrain_cell.terrain_object_blocks {
+        zone_class::BUILDING
+    } else {
+        zone_class::GROUND
+    };
+
+    let old_zone = terrain_cell.zone_type;
+    terrain_cell.zone_type = final_zone_type;
+
+    old_blocks != new_blocks || old_zone != final_zone_type
 }
 
 /// Result of a wall damage attempt.
@@ -376,5 +432,66 @@ mod tests {
         assert_eq!(occupied[0].1, 0); // ry
         assert_eq!(occupied[1].0, 2);
         assert_eq!(occupied[1].1, 2);
+    }
+
+    #[test]
+    fn place_overlay_pushes_dirty() {
+        let mut grid = OverlayGrid::new(10, 10);
+        assert!(grid.dirty_cells.is_empty());
+        grid.place_overlay(3, 4, 7, 0);
+        assert_eq!(grid.dirty_cells, vec![(3, 4)]);
+    }
+
+    #[test]
+    fn clear_overlay_pushes_dirty_when_in_bounds() {
+        let mut grid = OverlayGrid::new(10, 10);
+        grid.place_overlay(2, 2, 5, 0);
+        grid.dirty_cells.clear();
+        let prev = grid.clear_overlay(2, 2);
+        assert_eq!(prev, Some(5));
+        assert_eq!(grid.dirty_cells, vec![(2, 2)]);
+    }
+
+    #[test]
+    fn clear_overlay_no_push_when_out_of_bounds() {
+        let mut grid = OverlayGrid::new(10, 10);
+        let prev = grid.clear_overlay(100, 100);
+        assert_eq!(prev, None);
+        assert!(grid.dirty_cells.is_empty());
+    }
+
+    #[test]
+    fn set_overlay_data_pushes_only_when_cell_has_overlay() {
+        let mut grid = OverlayGrid::new(10, 10);
+        // No overlay → no push.
+        grid.set_overlay_data(1, 1, 42);
+        assert!(grid.dirty_cells.is_empty());
+        // With overlay → push.
+        grid.place_overlay(1, 1, 9, 0);
+        grid.dirty_cells.clear();
+        grid.set_overlay_data(1, 1, 42);
+        assert_eq!(grid.dirty_cells, vec![(1, 1)]);
+    }
+
+    #[test]
+    fn take_dirty_cells_returns_and_clears() {
+        let mut grid = OverlayGrid::new(10, 10);
+        grid.place_overlay(0, 0, 1, 0);
+        grid.place_overlay(1, 1, 2, 0);
+        let drained = grid.take_dirty_cells();
+        assert_eq!(drained, vec![(0, 0), (1, 1)]);
+        assert!(grid.dirty_cells.is_empty());
+        // Second take returns empty.
+        assert!(grid.take_dirty_cells().is_empty());
+    }
+
+    #[test]
+    fn dirty_cells_preserve_push_order() {
+        // Determinism: drain must iterate in push order.
+        let mut grid = OverlayGrid::new(10, 10);
+        grid.place_overlay(5, 5, 1, 0);
+        grid.place_overlay(0, 0, 2, 0);
+        grid.place_overlay(9, 3, 3, 0);
+        assert_eq!(grid.take_dirty_cells(), vec![(5, 5), (0, 0), (9, 3)]);
     }
 }
