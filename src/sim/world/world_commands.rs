@@ -819,6 +819,30 @@ impl Simulation {
                             self, rules, owner_iid, *target_rx, *target_ry,
                         )
                     }
+                    crate::rules::superweapon_type::SuperWeaponKind::IronCurtain => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::iron_curtain::launch(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
+                    crate::rules::superweapon_type::SuperWeaponKind::ForceShield => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::force_shield::launch(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
+                    crate::rules::superweapon_type::SuperWeaponKind::GeneticConverter => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::genetic_converter::launch(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
+                    crate::rules::superweapon_type::SuperWeaponKind::PsychicReveal => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::psychic_reveal::launch(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
                     other => {
                         log::warn!("SuperWeapon kind {:?} not yet implemented", other);
                         false
