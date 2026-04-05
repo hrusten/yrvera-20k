@@ -22,7 +22,7 @@ use crate::rules::locomotor_type::MovementZone;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::movement::locomotor::MovementLayer;
 use std::cmp::Reverse;
-use std::collections::{BTreeSet, BinaryHeap};
+use std::collections::{BTreeSet, BinaryHeap, HashMap};
 
 /// Movement cost for a cardinal step (N, E, S, W). Scaled by 10 for integer math.
 const CARDINAL_COST: i32 = 10;
@@ -45,10 +45,15 @@ pub const MAX_PATH_SEGMENT_STEPS: usize = 24;
 /// With CARDINAL_COST=10, a height step costs 40 instead of 10.
 const CLIFF_COST_MULTIPLIER: i32 = 4;
 
-/// Cost multiplier for cells occupied by friendly moving units.
-/// Matches gamemd.exe DAT_007e37bc = 4.0f, applied in AStar_compute_edge_cost
-/// when cell.flags & 0x40000 (toggled by PathfinderClass::UpdateBridgePassability).
-const COOPERATIVE_COST_MULTIPLIER: i32 = 4;
+/// Code-2 (friendly moving) cost multipliers. Matches gamemd.exe
+/// AStar_compute_edge_cost (0x00429830). See `compute_code2_multiplier`.
+const CODE2_MULT_CLEARING: i32 = 1; // chain clears within 10 hops → baseline
+const CODE2_MULT_JAM: i32 = 4; // urgency=1 OR full 10-step jam → traffic penalty
+const CODE2_MULT_ROUTE_AROUND: i32 = 1000; // urgency=2 → route around blocker
+
+/// Maximum hops in the code-2 blocker chain walk (urgency=0).
+/// Matches the binary's `for (i = 0; i < 10; i++)` at 0x00429830.
+const CODE2_CHAIN_MAX_HOPS: usize = 10;
 
 /// Per-direction tie-breaker offsets added to g-cost.
 /// Original engine adds tiny floats (0.001–0.008) from table at 0x0081872c.
@@ -146,8 +151,15 @@ pub struct AStarOptions<'a> {
     pub entity_blocks: Option<&'a BTreeSet<(u16, u16)>>,
     /// Hard-blocked cells on bridge layer. Goal exempt.
     pub bridge_blocks: Option<&'a BTreeSet<(u16, u16)>>,
-    /// Cells with 4x cooperative penalty (friendly movers' paths).
-    pub penalty_cells: Option<&'a BTreeSet<(u16, u16)>>,
+    /// Code-2 blocker map: friendly-moving blocker's current cell → that
+    /// blocker's next cell (movement_target.path[next_index]). Used by the
+    /// cost function for the 10-hop chain walk (matches gamemd.exe
+    /// AStar_compute_edge_cost). The map is denormalized so no EntityStore
+    /// lookup is required inside A*.
+    pub entity_block_map: Option<&'a HashMap<(u16, u16), (u16, u16)>>,
+    /// Code-2 urgency escalation (0 = look-ahead chain walk, 1 = traffic penalty,
+    /// 2 = route around). Matches gamemd.exe PathfinderClass+0x3C.
+    pub urgency: u8,
     /// Zone corridor restriction — only expand cells in these zones.
     pub corridor: Option<(
         &'a super::zone_map::ZoneMap,
@@ -339,6 +351,7 @@ pub fn astar_search(
         x: start.0,
         y: start.1,
         height: start_height,
+        on_bridge: start_on_bridge,
     }));
 
     let mut nodes_evaluated: u32 = 0;
@@ -349,7 +362,14 @@ pub fn astar_search(
         let cy = current.y;
         let c_idx = cy as usize * w + cx as usize;
         let cur_cell = grid.cell(cx, cy).unwrap_or(&DEFAULT_BLOCKED_CELL);
-        let on_bridge = is_at_bridge_level(current.height, cur_cell);
+        // Use the push-time layer flag carried on the node, matching gamemd.exe:
+        // the layer is decided once at push-time from predecessor.height vs this
+        // cell, never re-derived from the node's own height at pop. Re-derivation
+        // diverged at bridgehead transition cells when compute_neighbor_height
+        // collapsed to ground_level but the predecessor was still high enough to
+        // select the bridge arrays — causing reconstruct_path_dual to read
+        // usize::MAX from the wrong came_from array.
+        let on_bridge = current.on_bridge;
 
         // Skip if already closed on this list
         if on_bridge {
@@ -366,14 +386,14 @@ pub fn astar_search(
 
         // Goal check: cell AND height must match
         if (cx, cy) == goal && current.height == goal_height {
-            let goal_on_bridge = is_at_bridge_level(goal_height, goal_cell);
+            // Use the node's push-time layer flag (same value came_from was keyed on).
             return Some(reconstruct_path_dual(
                 &ground_from,
                 &bridge_from,
                 start_idx,
                 start_on_bridge,
                 c_idx,
-                goal_on_bridge,
+                on_bridge,
                 w,
             ));
         }
@@ -436,14 +456,15 @@ pub fn astar_search(
                 // path ending at the current node. This lets units route to the
                 // nearest passable cell when the goal itself is blocked.
                 if (nx, ny) == goal && start_height.abs_diff(goal_height) <= 1 {
-                    let goal_on_bridge = is_at_bridge_level(current.height, cur_cell);
+                    // Use the current node's push-time layer flag (same value
+                    // came_from was keyed on when the node was pushed).
                     return Some(reconstruct_path_dual(
                         &ground_from,
                         &bridge_from,
                         start_idx,
                         start_on_bridge,
                         c_idx,
-                        goal_on_bridge,
+                        on_bridge,
                         w,
                     ));
                 }
@@ -538,10 +559,13 @@ pub fn astar_search(
                 step_cost *= CLIFF_COST_MULTIPLIER;
             }
 
-            // Cooperative penalty
-            if let Some(penalties) = options.penalty_cells {
-                if penalties.contains(&(nx, ny)) {
-                    step_cost *= COOPERATIVE_COST_MULTIPLIER;
+            // Code-2 (friendly-moving blocker) dynamic cost. Goal cell is
+            // exempt — if the goal is occupied, we still want to reach it.
+            if (nx, ny) != goal {
+                if let Some(map) = options.entity_block_map {
+                    if map.contains_key(&(nx, ny)) {
+                        step_cost *= compute_code2_multiplier(options.urgency, (nx, ny), map);
+                    }
                 }
             }
 
@@ -564,6 +588,7 @@ pub fn astar_search(
                     x: nx,
                     y: ny,
                     height: neighbor_height,
+                    on_bridge: neighbor_use_bridge,
                 }));
             }
         }
@@ -1049,6 +1074,12 @@ struct AStarNode {
     /// Path height at this node — used for bridge-aware routing.
     /// Ground-only searches carry ground_level throughout.
     height: u8,
+    /// Layer flag decided at push-time from predecessor.height vs this cell,
+    /// matching gamemd.exe's push-time layer selection. Used at pop-time for
+    /// closed-list marking and for `reconstruct_path_dual` array selection
+    /// so storage and retrieval always agree (fixes bridgehead transition
+    /// cells where pop-time re-derivation from own height would diverge).
+    on_bridge: bool,
 }
 
 impl Ord for AStarNode {
@@ -1082,6 +1113,47 @@ fn octile_heuristic(ax: u16, ay: u16, bx: u16, by: u16) -> i32 {
     max_d * CARDINAL_COST + min_d * (DIAGONAL_COST - CARDINAL_COST)
 }
 
+/// Compute the code-2 cost multiplier for a friendly-moving blocker.
+///
+/// Matches gamemd.exe AStar_compute_edge_cost @ 0x00429830 — the dynamic
+/// cost computation for Can_Enter_Cell return code 2 (friendly moving).
+///
+/// - `urgency == 2` → `1000` (route around the blocker)
+/// - `urgency == 1` → `4`   (traffic penalty, no look-ahead)
+/// - `urgency == 0` → walk up to 10 hops along the blocker chain. Each hop
+///   reads `map[cur_cell]` which gives the blocker's next cell, then jumps
+///   to that cell and repeats. Returns `1` if the chain clears (next cell
+///   has no blocker) within 10 hops. Returns `4` if the chain lasts all
+///   10 hops.
+fn compute_code2_multiplier(
+    urgency: u8,
+    start_cell: (u16, u16),
+    map: &HashMap<(u16, u16), (u16, u16)>,
+) -> i32 {
+    if urgency >= 2 {
+        return CODE2_MULT_ROUTE_AROUND;
+    }
+    if urgency == 1 {
+        return CODE2_MULT_JAM;
+    }
+    // urgency == 0: chain walk.
+    let mut cur = start_cell;
+    for _ in 0..CODE2_CHAIN_MAX_HOPS {
+        let Some(&next) = map.get(&cur) else {
+            // Chain clears: no blocker at this cell → the blocker upstream
+            // will vacate into free space.
+            return CODE2_MULT_CLEARING;
+        };
+        if next == cur {
+            // Degenerate self-loop — treat as jam.
+            return CODE2_MULT_JAM;
+        }
+        cur = next;
+    }
+    // Full 10 hops still jammed.
+    CODE2_MULT_JAM
+}
+
 /// Find a path from start to goal using A* search.
 ///
 /// Returns `Some(path)` where path is a sequence of (rx, ry) cells from
@@ -1111,7 +1183,8 @@ pub fn find_path_with_costs(
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
+    urgency: u8,
 ) -> Option<Vec<(u16, u16)>> {
     let steps = astar_search(
         grid,
@@ -1121,7 +1194,8 @@ pub fn find_path_with_costs(
         &AStarOptions {
             terrain_costs: costs,
             entity_blocks,
-            penalty_cells,
+            entity_block_map,
+            urgency,
             movement_zone,
             resolved_terrain,
             ..Default::default()
@@ -1141,7 +1215,8 @@ pub fn find_path_with_costs_corridor(
     allowed_zones: &BTreeSet<super::zone_map::ZoneId>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
+    urgency: u8,
 ) -> Option<Vec<(u16, u16)>> {
     let steps = astar_search(
         grid,
@@ -1152,7 +1227,8 @@ pub fn find_path_with_costs_corridor(
             terrain_costs: costs,
             entity_blocks,
             corridor: Some((zone_map, allowed_zones)),
-            penalty_cells,
+            entity_block_map,
+            urgency,
             movement_zone,
             resolved_terrain,
             ..Default::default()
@@ -1221,7 +1297,8 @@ pub fn find_layered_path(
     start_layer: MovementLayer,
     goal: (u16, u16),
     terrain_costs: Option<&TerrainCostGrid>,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
+    urgency: u8,
 ) -> Option<Vec<LayeredPathStep>> {
     if !matches!(start_layer, MovementLayer::Ground | MovementLayer::Bridge) {
         return None;
@@ -1235,7 +1312,8 @@ pub fn find_layered_path(
             terrain_costs,
             entity_blocks: ground_blocks,
             bridge_blocks,
-            penalty_cells,
+            entity_block_map,
+            urgency,
             ..Default::default()
         },
     )

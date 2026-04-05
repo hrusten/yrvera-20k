@@ -14,7 +14,7 @@
 //! ## Dependency rules
 //! - Internal to sim/movement — called via re-export in mod.rs.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
@@ -101,6 +101,7 @@ fn handle_path_exhaustion(
     ctx: PathfindingContext<'_>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
+    mover_entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
     path_delay_ticks: u16,
     sim_tick: u64,
 ) -> PathExhaustionResult {
@@ -155,7 +156,8 @@ fn handle_path_exhaustion(
                 seg_zone_mz,
                 Some(snap.movement_zone),
                 snap.too_big_to_fit_under_bridge,
-                None, // penalty_cells — not available in per-tick repath
+                mover_entity_block_map,
+                0, // urgency=0: proactive segment repath, no block escalation
             ) {
                 if new_path.len() >= 2 {
                     // DIAGNOSTIC: detect layer mismatch after repath
@@ -335,18 +337,20 @@ pub fn tick_movement_with_grids(
         }
     }
     // Pre-build entity block sets per owner for friendly-passable pathfinding during repath.
-    // RA2 optimization: moving friendly units are passable; only stationary/enemy units block.
-    // InternedId is Copy, so keys are trivially cheap.
-    let entity_block_sets: BTreeMap<crate::sim::intern::InternedId, BTreeSet<(u16, u16)>> =
-        mover_owners
-            .iter()
-            .map(|&owner_id| {
-                let owner_str = interner.resolve(owner_id);
-                let (blocks, _penalty_cells) =
-                    bump_crush::build_entity_block_set(entities, owner_str, alliances, interner);
-                (owner_id, blocks)
-            })
-            .collect();
+    // RA2 optimization: moving friendly units are passable (code-2 dynamic cost);
+    // only stationary/enemy units hard-block. InternedId is Copy, so keys are cheap.
+    let entity_block_sets: BTreeMap<
+        crate::sim::intern::InternedId,
+        (BTreeSet<(u16, u16)>, HashMap<(u16, u16), (u16, u16)>),
+    > = mover_owners
+        .iter()
+        .map(|&owner_id| {
+            let owner_str = interner.resolve(owner_id);
+            let pair =
+                bump_crush::build_entity_block_set(entities, owner_str, alliances, interner);
+            (owner_id, pair)
+        })
+        .collect();
 
     for entity_id in movers {
         stats.movers_total = stats.movers_total.saturating_add(1);
@@ -358,7 +362,13 @@ pub fn tick_movement_with_grids(
         };
         let entity_cost_grid: Option<&TerrainCostGrid> =
             snap.speed_type.and_then(|st| terrain_costs.get(&st));
-        let mover_entity_blocks: Option<&BTreeSet<(u16, u16)>> = entity_block_sets.get(&snap.owner);
+        let (mover_entity_blocks, mover_entity_block_map): (
+            Option<&BTreeSet<(u16, u16)>>,
+            Option<&HashMap<(u16, u16), (u16, u16)>>,
+        ) = entity_block_sets
+            .get(&snap.owner)
+            .map(|(b, m)| (Some(b), Some(m)))
+            .unwrap_or((None, None));
 
         let aborted_for_stuck: bool;
         let mut active_layer: MovementLayer;
@@ -397,6 +407,7 @@ pub fn tick_movement_with_grids(
                 ctx,
                 entity_cost_grid,
                 mover_entity_blocks,
+                mover_entity_block_map,
                 path_delay_ticks,
                 sim_tick,
             ) {
@@ -696,6 +707,7 @@ pub fn tick_movement_with_grids(
                 resolved_terrain,
                 entity_cost_grid,
                 mover_entity_blocks,
+                mover_entity_block_map,
                 occupancy,
                 &mut stats,
                 &mut finished_entities,
@@ -833,6 +845,7 @@ pub fn tick_movement_with_grids(
                 mcfg,
                 entity_cost_grid,
                 mover_entity_blocks,
+                mover_entity_block_map,
                 occupancy,
                 alliances,
                 path_grid,

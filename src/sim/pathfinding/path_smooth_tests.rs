@@ -90,23 +90,20 @@ fn smooth_diagonal_path_unchanged() {
 }
 
 #[test]
-fn smooth_single_zigzag_n_then_e() {
-    // N then E (90-degree turn) should become NE.
-    // (5,5) → (5,4) → (6,4) becomes (5,5) → (6,4) via NE shortcut.
+fn smooth_cardinal_zigzag_n_then_e_unchanged() {
+    // N then E (cardinal→cardinal 90° turn) is NOT smoothed by gamemd.exe —
+    // Path_smooth_corners only anchors zigzags on diagonal directions.
     let path = vec![(5, 5), (5, 4), (6, 4)];
-    let result = smooth_path(path, &all_walkable);
-    // After smoothing, (5,4) is replaced with (6,4) which equals the next cell,
-    // so the path collapses to (5,5) → (6,4).
-    assert_eq!(result, vec![(5, 5), (6, 4)]);
+    let result = smooth_path(path.clone(), &all_walkable);
+    assert_eq!(result, path);
 }
 
 #[test]
-fn smooth_single_zigzag_e_then_s() {
-    // E(2) then S(4): diff = 2, midpoint = SE(3).
-    // (5,5) → (6,5) → (6,6) should become (5,5) → (6,6) via SE.
+fn smooth_cardinal_zigzag_e_then_s_unchanged() {
+    // E→S is also cardinal→cardinal — binary leaves it alone.
     let path = vec![(5, 5), (6, 5), (6, 6)];
-    let result = smooth_path(path, &all_walkable);
-    assert_eq!(result, vec![(5, 5), (6, 6)]);
+    let result = smooth_path(path.clone(), &all_walkable);
+    assert_eq!(result, path);
 }
 
 #[test]
@@ -134,17 +131,22 @@ fn smooth_zigzag_corner_cutting_blocked() {
 }
 
 #[test]
-fn smooth_multiple_zigzags() {
-    // N-E-N-E pattern: two zigzags.
+fn smooth_cardinal_alternation_unchanged() {
+    // N-E-N-E alternating cardinals — classic RA2 staircase pattern. gamemd.exe
+    // leaves this alone at Pass 1 (only Pass 2 drift correction can straighten it).
     let path = vec![(5, 5), (5, 4), (6, 4), (6, 3), (7, 3)];
+    let result = smooth_path(path.clone(), &all_walkable);
+    assert_eq!(result, path);
+}
+
+#[test]
+fn smooth_diagonal_zigzag_ne_then_se_smoothed() {
+    // NE(1) then SE(3): diff = 2, both diagonal — smoothed to midpoint E(2).
+    // (0,0) → (1,-1) → (2,0) becomes (0,0) → (1,0) → (2,0) via E shortcut.
+    // Use (5,5) base so we don't underflow u16.
+    let path = vec![(5, 5), (6, 4), (7, 5)];
     let result = smooth_path(path, &all_walkable);
-    // First zigzag (5,5)→(5,4)→(6,4) smooths: (5,4) replaced by (6,4) = next, remove dup.
-    // Second zigzag similarly.
-    // Should collapse toward NE diagonals.
-    // The result should be shorter than the original.
-    assert!(result.len() < 5);
-    assert_eq!(*result.first().unwrap(), (5, 5));
-    assert_eq!(*result.last().unwrap(), (7, 3));
+    assert_eq!(result, vec![(5, 5), (6, 5), (7, 5)]);
 }
 
 #[test]
@@ -180,16 +182,37 @@ fn smooth_single_cell_path_unchanged() {
 // ---- Layered path smoothing tests ----
 
 #[test]
-fn smooth_layered_same_layer() {
-    let path = vec![(5, 5), (5, 4), (6, 4)];
+fn smooth_layered_same_layer_diagonal_zigzag() {
+    // NE(1) then SE(3) — both diagonal — on a single layer, should smooth to E.
+    let path = vec![(5, 5), (6, 4), (7, 5)];
     let layers = vec![
         MovementLayer::Ground,
         MovementLayer::Ground,
         MovementLayer::Ground,
     ];
     let (coords, lyrs) = smooth_layered_path(path, layers, &|_x, _y, _l| true);
-    assert_eq!(coords, vec![(5, 5), (6, 4)]);
-    assert_eq!(lyrs, vec![MovementLayer::Ground, MovementLayer::Ground]);
+    assert_eq!(coords, vec![(5, 5), (6, 5), (7, 5)]);
+    assert_eq!(
+        lyrs,
+        vec![
+            MovementLayer::Ground,
+            MovementLayer::Ground,
+            MovementLayer::Ground
+        ]
+    );
+}
+
+#[test]
+fn smooth_layered_cardinal_unchanged() {
+    // Cardinal-cardinal zigzag on same layer — not smoothed (matches binary).
+    let path = vec![(5, 5), (5, 4), (6, 4)];
+    let layers = vec![
+        MovementLayer::Ground,
+        MovementLayer::Ground,
+        MovementLayer::Ground,
+    ];
+    let (coords, _lyrs) = smooth_layered_path(path.clone(), layers, &|_x, _y, _l| true);
+    assert_eq!(coords, path);
 }
 
 #[test]

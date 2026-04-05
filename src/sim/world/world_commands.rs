@@ -5,7 +5,7 @@
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::Simulation;
 use crate::map::houses::are_houses_friendly;
@@ -132,7 +132,7 @@ impl Simulation {
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
                 // Build entity block set for friendly-passable pathfinding.
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -188,7 +188,7 @@ impl Simulation {
                                 cost_grid,
                                 Some(&entity_blocks),
                                 self.resolved_terrain.as_ref(),
-                                Some(&penalty_cells),
+                                Some(&entity_block_map),
                             );
                         }
                     }
@@ -225,7 +225,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
                     )
                 };
                 // Stamp acceleration/deceleration parameters onto the newly created
@@ -344,7 +344,7 @@ impl Simulation {
                 let use_teleport_move = !info.is_harvester
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -391,7 +391,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
                     )
                 };
                 if issued {
@@ -556,7 +556,7 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -574,7 +574,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
                     );
                 }
                 true
@@ -636,7 +636,7 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -654,7 +654,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
                     );
                 }
                 true
@@ -754,7 +754,7 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot);
-                let (entity_blocks, penalty_cells) =
+                let (entity_blocks, entity_block_map) =
                     crate::sim::movement::bump_crush::build_entity_block_set(
                         &self.entities,
                         command_owner,
@@ -773,7 +773,7 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
                     );
                 }
                 true

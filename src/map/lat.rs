@@ -212,6 +212,8 @@ fn tile_matches_ground(tile_id: u16, ground: &LatGroundType, lookup: &TilesetLoo
 ///
 /// Cells are modified in-place. Only cells whose tile belongs to a
 /// LAT base tileset are candidates for replacement.
+// TODO: extract per-cell variant when a runtime terrain-tile rewriter
+// lands (bridge destruction, crater tiles, destructible cliffs).
 pub fn apply_lat(cells: &mut [MapCell], lat_config: &LatConfig, lookup: &TilesetLookup) {
     if lat_config.grounds.is_empty() {
         return;

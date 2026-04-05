@@ -4,7 +4,7 @@
 //! retries after blockages with zone-aware corridor search, and determines whether
 //! an entity's locomotor supports layered bridge pathing.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
@@ -162,7 +162,8 @@ pub(super) fn find_move_path(
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
     too_big_to_fit_under_bridge: bool,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
+    urgency: u8,
 ) -> Option<(Vec<(u16, u16)>, Vec<MovementLayer>)> {
     let grid = ctx.path_grid?;
     let zone_grid = ctx.zone_grid;
@@ -186,7 +187,8 @@ pub(super) fn find_move_path(
             zone_mz,
             terrain_costs,
             movement_zone,
-            penalty_cells,
+            entity_block_map,
+            urgency,
         );
         if let Some(path) = layered_result {
             log::trace!(
@@ -237,7 +239,8 @@ pub(super) fn find_move_path(
         zone_mz,
         movement_zone,
         resolved_terrain,
-        penalty_cells,
+        entity_block_map,
+        urgency,
     )?;
 
     let smooth_walkable = |x: u16, y: u16| -> bool {
@@ -301,6 +304,8 @@ pub(super) fn try_repath_after_block(
     movement_zone: Option<MovementZone>,
     too_big_to_fit_under_bridge: bool,
     mcfg: MovementConfig,
+    entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
+    urgency: u8,
 ) -> bool {
     let goal = target
         .final_goal
@@ -313,7 +318,7 @@ pub(super) fn try_repath_after_block(
         return false;
     };
 
-    let mut combined_blocks: BTreeSet<(u16, u16)> = merge_path_blocks(
+    let combined_blocks: BTreeSet<(u16, u16)> = merge_path_blocks(
         entity_blocks,
         ctx.resolved_terrain,
         movement_zone,
@@ -355,7 +360,8 @@ pub(super) fn try_repath_after_block(
         zone_mz,
         movement_zone,
         too_big_to_fit_under_bridge,
-        None, // penalty_cells — not available in repath context
+        entity_block_map,
+        urgency,
     );
     let Some((new_path, new_layers)) = path_result else {
         target.movement_delay = mcfg.path_delay_ticks;

@@ -459,15 +459,23 @@ fn test_repath_cooldown_prevents_thrashing_on_unrecoverable_block() {
         None,
     ));
 
-    // Make the route unreachable after order assignment.
-    grid.set_blocked(2, 1, true);
-    grid.set_blocked(2, 0, true);
-    grid.set_blocked(2, 2, true);
+    // Make the route truly unreachable — block the entire column 2 so no
+    // detour exists. (The previous 3-cell block left rows 3-7 open.)
+    for y in 0..8u16 {
+        grid.set_blocked(2, y, true);
+    }
 
-    // With blockage_path_delay_ticks=60, the first blocked tick sets
-    // blocked_delay=60. We must exhaust it before a repath is attempted.
-    // Run 61 ticks: 60 to count down blocked_delay, then 1 more for the
-    // repath attempt (which fails since route is fully blocked).
+    // Under binary-faithful semantics, the blocked entity repaths every tick
+    // while movement_delay is 0: urgency=1 during the blocked_delay grace
+    // period (first 60 ticks), then urgency=2 once blocked_delay hits 0.
+    // path_stuck_counter decrements once per urgency=2 failure. With
+    // path_stuck_init=10 and blocked_delay=60, the entity survives ~60 ticks
+    // before its first urgency=2 attempt, then aborts after ~10 more u2
+    // failures (each separated by another blocked_delay grace period).
+    //
+    // Run 61 ticks (up to and including the first urgency=2 failure). Verify
+    // the entity is still alive and that movement_delay has been set by the
+    // rate-limiter in try_repath_after_block.
     for _ in 0..61 {
         tick_movement_with_grid(
             &mut entities,
@@ -485,33 +493,20 @@ fn test_repath_cooldown_prevents_thrashing_on_unrecoverable_block() {
     let m1 = entity
         .movement_target
         .as_ref()
-        .expect("movement target should still exist");
-    // After failed repath, movement_delay should be set (PathDelay default=9).
+        .expect("movement target should still exist after 61 ticks");
     assert!(
         m1.movement_delay > 0,
         "movement_delay {} should be > 0 after failed repath",
         m1.movement_delay,
     );
-    let delay_after_fail = m1.movement_delay;
-
-    // Next tick: movement_delay decrements; no immediate repath retrigger.
-    tick_movement_with_grid(
-        &mut entities,
-        Some(&grid),
-        &Default::default(),
-        &Default::default(),
-        &mut OccupancyGrid::new(),
-        &mut SimRng::new(0),
-        250,
-        0,
-        &test_interner(),
+    // path_stuck_counter should have started decrementing once urgency=2
+    // failures began. With init=10 it must still be positive after one
+    // escalated failure (or zero if we've already exhausted it).
+    assert!(
+        m1.path_stuck_counter < 10,
+        "path_stuck_counter {} should have decremented after urgency=2 failure",
+        m1.path_stuck_counter,
     );
-    let entity = entities.get(1).expect("entity exists");
-    let m2 = entity
-        .movement_target
-        .as_ref()
-        .expect("movement target should still exist");
-    assert_eq!(m2.movement_delay, delay_after_fail - 1);
 }
 
 #[test]
@@ -823,7 +818,8 @@ fn test_friendly_passable_path_goes_through_moving_friendly() {
     // (3,1) is a stationary friendly — in blocks.
     blocks.insert((3, 1));
 
-    let path = find_path_with_costs(&grid, (0, 0), (6, 0), None, Some(&blocks), None, None, None);
+    let path =
+        find_path_with_costs(&grid, (0, 0), (6, 0), None, Some(&blocks), None, None, None, 0);
     assert!(
         path.is_some(),
         "Should find path through moving-friendly cell"

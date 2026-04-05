@@ -112,6 +112,15 @@ pub fn smooth_path(path: Vec<(u16, u16)>, walkable: &dyn Fn(u16, u16) -> bool) -
             continue;
         }
 
+        // Binary-fidelity: only diagonal directions anchor zigzags. gamemd.exe's
+        // Path_smooth_corners resets prev_dir to -1 after any cardinal step, so
+        // cardinal→cardinal 90° turns (e.g. N→E) are never smoothed. Only
+        // diagonal→diagonal pairs (e.g. NE→SE) collapse to a cardinal midpoint.
+        if !is_diagonal_dir(d0) {
+            i += 1;
+            continue;
+        }
+
         // Compute the diagonal shortcut direction.
         let shortcut_dir = midpoint_dir(d0, d1);
         let (sdx, sdy) = DIR_DELTAS[shortcut_dir as usize];
@@ -188,6 +197,12 @@ pub fn smooth_layered_path(
         let d1 = direction_between(coords[i + 1], coords[i + 2]);
 
         if d0 == DIR_INVALID || d1 == DIR_INVALID || dir_diff(d0, d1) != 2 {
+            i += 1;
+            continue;
+        }
+
+        // Binary-fidelity: only diagonal anchors trigger zigzag smoothing.
+        if !is_diagonal_dir(d0) {
             i += 1;
             continue;
         }

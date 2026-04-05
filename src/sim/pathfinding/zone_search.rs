@@ -18,7 +18,7 @@
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeSet, BinaryHeap};
+use std::collections::{BTreeSet, BinaryHeap, HashMap};
 
 use super::terrain_cost::TerrainCostGrid;
 use super::zone_map::{ZONE_INVALID, ZoneAdjacency, ZoneGrid, ZoneId, ZoneMap};
@@ -70,7 +70,8 @@ pub fn find_path_zoned(
     mz: MovementZone,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
+    urgency: u8,
 ) -> Option<Vec<(u16, u16)>> {
     if !can_use_reduced_zone_precheck(movement_zone) {
         return find_path_with_costs(
@@ -81,7 +82,8 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
-            penalty_cells,
+            entity_block_map,
+            urgency,
         );
     }
 
@@ -94,7 +96,8 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
-            penalty_cells,
+            entity_block_map,
+            urgency,
         );
     };
 
@@ -124,7 +127,8 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
-            penalty_cells,
+            entity_block_map,
+            urgency,
         );
     };
     let Some(adjacency) = zg.adjacency_for(mz) else {
@@ -136,7 +140,8 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
-            penalty_cells,
+            entity_block_map,
+            urgency,
         );
     };
 
@@ -153,7 +158,8 @@ pub fn find_path_zoned(
             entity_blocks,
             movement_zone,
             resolved_terrain,
-            penalty_cells,
+            entity_block_map,
+            urgency,
         );
     }
 
@@ -175,7 +181,8 @@ pub fn find_path_zoned(
                 &allowed,
                 movement_zone,
                 resolved_terrain,
-                penalty_cells,
+                entity_block_map,
+                urgency,
             ) {
                 return Some(path);
             }
@@ -200,7 +207,8 @@ pub fn find_path_zoned(
         entity_blocks,
         movement_zone,
         resolved_terrain,
-        penalty_cells,
+        entity_block_map,
+        urgency,
     )
 }
 
@@ -220,7 +228,8 @@ pub fn find_layered_path_zoned(
     mz: MovementZone,
     terrain_costs: Option<&TerrainCostGrid>,
     movement_zone: Option<MovementZone>,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&HashMap<(u16, u16), (u16, u16)>>,
+    urgency: u8,
 ) -> Option<Vec<LayeredPathStep>> {
     if !can_use_reduced_zone_precheck(movement_zone) {
         return find_layered_path(
@@ -231,7 +240,8 @@ pub fn find_layered_path_zoned(
             start_layer,
             goal,
             terrain_costs,
-            penalty_cells,
+            entity_block_map,
+            urgency,
         );
     }
 
@@ -258,7 +268,8 @@ pub fn find_layered_path_zoned(
         start_layer,
         goal,
         terrain_costs,
-        penalty_cells,
+        entity_block_map,
+        urgency,
     )
 }
 
