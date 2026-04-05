@@ -262,6 +262,7 @@ pub fn tick_combat(
     rules: &RuleSet,
     interner: &mut StringInterner,
     resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
+    current_tick: u64,
     tick_ms: u32,
 ) -> CombatTickResult {
     tick_combat_with_fog(
@@ -273,6 +274,7 @@ pub fn tick_combat(
         &BTreeMap::new(),
         None,
         resource_nodes,
+        current_tick,
         tick_ms,
     )
 }
@@ -358,6 +360,7 @@ fn handle_entity_deaths(
     dead_entities: &[u64],
     damage_events: &[(u64, u16, u64, InternedId)],
     resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
+    current_tick: u64,
 ) -> DeathEffects {
     let mut death_sounds: Vec<(InternedId, u16, u16)> = Vec::new();
     let mut death_aoe: Vec<(u16, u16, i32, InternedId, InternedId)> = Vec::new();
@@ -512,6 +515,12 @@ fn handle_entity_deaths(
             );
             for (target_id, aoe_dmg) in aoe_hits {
                 if let Some(target) = entities.get_mut(target_id) {
+                    if crate::sim::superweapon::invulnerability::is_invulnerable(
+                        target.invulnerability.as_ref(),
+                        current_tick as u32,
+                    ) {
+                        continue;
+                    }
                     target.health.current = target.health.current.saturating_sub(aoe_dmg);
                 }
             }
@@ -587,6 +596,7 @@ pub fn tick_combat_with_fog(
     power_states: &BTreeMap<InternedId, PowerState>,
     sound_sink: Option<&mut Vec<SimSoundEvent>>,
     resource_nodes: &mut BTreeMap<(u16, u16), ResourceNode>,
+    current_tick: u64,
     tick_ms: u32,
 ) -> CombatTickResult {
     if tick_ms == 0 {
@@ -1249,6 +1259,15 @@ pub fn tick_combat_with_fog(
     let mut dead_entities: Vec<u64> = Vec::new();
     for (target_id, damage, attacker_id, _wh_id) in &damage_events {
         if let Some(target) = entities.get_mut(*target_id) {
+            if crate::sim::superweapon::invulnerability::is_invulnerable(
+                target.invulnerability.as_ref(),
+                current_tick as u32,
+            ) {
+                // Damage fully nullified by IronCurtain/ForceShield.
+                // Flash-effect spawn deferred (see design doc Open Questions).
+                target.last_attacker_id = Some(*attacker_id);
+                continue;
+            }
             target.health.current = target.health.current.saturating_sub(*damage);
             if target.health.current == 0 {
                 dead_entities.push(*target_id);
@@ -1275,6 +1294,7 @@ pub fn tick_combat_with_fog(
         &dead_entities,
         &damage_events,
         resource_nodes,
+        current_tick,
     );
     bridge_damage_events.extend(death.bridge_damage_events);
 
