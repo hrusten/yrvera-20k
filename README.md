@@ -1,10 +1,10 @@
-# VERA20k 
+# VERA20k
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/4jTp4VcdY)![PRs Welcome](https://img.shields.io/badge/PRs-welcome-blue.svg)[![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-blue)](https://hrusten.github.io/vera20k/)
 
 **Early development**
 
 Red Alert 2: Yuri's Revenge — rebuilt from scratch in Rust for large multiplayer battles.
-
-[![Discord](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/4jTp4VcdY)![PRs Welcome](https://img.shields.io/badge/PRs-welcome-blue.svg)
 
 Those who contribute the most get to decide the most. As long as it aligns with projects vision described below.
 
@@ -80,6 +80,8 @@ Feature scope is still being defined:
    ```
 
 ## Contributing
+
+Read the [architecture overview](https://hrusten.github.io/vera20k/) before diving in.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
