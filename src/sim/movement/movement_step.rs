@@ -44,9 +44,14 @@ pub(super) fn apply_cell_transition_remainder(
     dy_cell: i32,
     nx: u16,
     ny: u16,
+    is_infantry: bool,
 ) {
-    target.blocked_delay = 0;
-    target.path_blocked = false;
+    // Infantry: clear blocking state on each cell arrival (fresh grace period).
+    // Vehicles: keep both flags — once blocked, urgency escalates permanently.
+    if is_infantry {
+        target.blocked_delay = 0;
+        target.path_blocked = false;
+    }
     if dx_cell > 0 {
         position.sub_x -= crate::util::lepton::LEPTONS_PER_CELL;
     } else if dx_cell < 0 {
@@ -376,6 +381,7 @@ pub(super) fn process_cell_crossings(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
+    mover_entity_block_map: Option<&std::collections::HashMap<(u16, u16), crate::sim::pathfinding::EntityBlockEntry>>,
     occupancy: &mut OccupancyGrid,
     stats: &mut MovementTickStats,
     finished_entities: &mut Vec<u64>,
@@ -485,6 +491,11 @@ pub(super) fn process_cell_crossings(
             // Terrain-blocked (building/cliff) — the path is stale.
             // Force immediate repath by clearing movement_delay.
             target.movement_delay = 0;
+            let mover_is_crusher = snap.omni_crusher
+                || matches!(
+                    snap.locomotor.as_ref().map(|l| l.movement_zone),
+                    Some(crate::rules::locomotor_type::MovementZone::Crusher | crate::rules::locomotor_type::MovementZone::AmphibiousCrusher | crate::rules::locomotor_type::MovementZone::CrusherAll)
+                );
             let evts = handle_blocked_tick(
                 target,
                 facing,
@@ -499,11 +510,14 @@ pub(super) fn process_cell_crossings(
                 ctx,
                 entity_cost_grid,
                 mover_entity_blocks,
+                mover_entity_block_map,
                 snap.too_big_to_fit_under_bridge,
                 mcfg,
                 rng,
                 sim_tick,
                 PATH_STUCK_INIT,
+                mover_is_crusher,
+                category == EntityCategory::Infantry,
             );
             debug_events.extend(evts);
             break;
@@ -524,6 +538,11 @@ pub(super) fn process_cell_crossings(
                     position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
                     *drive_track_state = None;
                     target.movement_delay = 0;
+                    let mover_is_crusher = snap.omni_crusher
+                        || matches!(
+                            snap.locomotor.as_ref().map(|l| l.movement_zone),
+                            Some(crate::rules::locomotor_type::MovementZone::Crusher | crate::rules::locomotor_type::MovementZone::AmphibiousCrusher | crate::rules::locomotor_type::MovementZone::CrusherAll)
+                        );
                     let evts = handle_blocked_tick(
                         target,
                         facing,
@@ -538,11 +557,14 @@ pub(super) fn process_cell_crossings(
                         ctx,
                         entity_cost_grid,
                         mover_entity_blocks,
+                        mover_entity_block_map,
                         snap.too_big_to_fit_under_bridge,
                         mcfg,
                         rng,
                         sim_tick,
                         PATH_STUCK_INIT,
+                        mover_is_crusher,
+                        category == EntityCategory::Infantry,
                     );
                     debug_events.extend(evts);
                     break;
@@ -571,7 +593,7 @@ pub(super) fn process_cell_crossings(
         // Do NOT snap the perpendicular axis to center — that causes
         // a visible position jump when transitioning from diagonal
         // to cardinal movement (e.g., sub_x=51 → 128 = ~9px snap).
-        apply_cell_transition_remainder(target, position, dx_cell, dy_cell, nx, ny);
+        apply_cell_transition_remainder(target, position, dx_cell, dy_cell, nx, ny, category == EntityCategory::Infantry);
         // Update occupancy grid: move entity from old cell to new cell.
         // Uses current sub_cell (from old cell). For infantry, reserve_destination
         // below may allocate a new sub-cell and correct it via update_sub_cell.

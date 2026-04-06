@@ -124,6 +124,7 @@ pub(super) fn handle_deferred_occupancy(
     mcfg: MovementConfig,
     entity_cost_grid: Option<&TerrainCostGrid>,
     mover_entity_blocks: Option<&BTreeSet<(u16, u16)>>,
+    mover_entity_block_map: Option<&std::collections::HashMap<(u16, u16), crate::sim::pathfinding::EntityBlockEntry>>,
     occupancy: &mut OccupancyGrid,
     alliances: &HouseAllianceMap,
     path_grid: Option<&PathGrid>,
@@ -146,6 +147,12 @@ pub(super) fn handle_deferred_occupancy(
         .locomotor
         .as_ref()
         .map_or(LocomotorKind::Drive, |l| l.kind);
+    let mover_is_crusher = snap.omni_crusher
+        || matches!(
+            snap.locomotor.as_ref().map(|l| l.movement_zone),
+            Some(crate::rules::locomotor_type::MovementZone::Crusher | crate::rules::locomotor_type::MovementZone::AmphibiousCrusher | crate::rules::locomotor_type::MovementZone::CrusherAll)
+        );
+    let is_infantry = snap.category == EntityCategory::Infantry;
     let entry_result = cell_entry::classify_occupied_cell(
         (nx, ny),
         next_layer,
@@ -261,11 +268,14 @@ pub(super) fn handle_deferred_occupancy(
                             ctx,
                             entity_cost_grid,
                             mover_entity_blocks,
+                            mover_entity_block_map,
                             snap.too_big_to_fit_under_bridge,
                             mcfg,
                             rng,
                             sim_tick,
                             PATH_STUCK_INIT,
+                            mover_is_crusher,
+                            is_infantry,
                         );
                         debug_events.extend(evts);
                     }
@@ -296,11 +306,14 @@ pub(super) fn handle_deferred_occupancy(
                         ctx,
                         entity_cost_grid,
                         mover_entity_blocks,
+                        mover_entity_block_map,
                         snap.too_big_to_fit_under_bridge,
                         mcfg,
                         rng,
                         sim_tick,
                         PATH_STUCK_INIT,
+                        mover_is_crusher,
+                        is_infantry,
                     );
                     debug_events.extend(evts);
                 }
@@ -356,11 +369,14 @@ pub(super) fn handle_deferred_occupancy(
                                     ctx,
                                     entity_cost_grid,
                                     mover_entity_blocks,
+                                    mover_entity_block_map,
                                     snap.too_big_to_fit_under_bridge,
                                     mcfg,
                                     rng,
                                     sim_tick,
                                     PATH_STUCK_INIT,
+                                    mover_is_crusher,
+                                    is_infantry,
                                 );
                                 debug_events.extend(evts);
                             }
@@ -390,11 +406,14 @@ pub(super) fn handle_deferred_occupancy(
                         ctx,
                         entity_cost_grid,
                         mover_entity_blocks,
+                        mover_entity_block_map,
                         snap.too_big_to_fit_under_bridge,
                         mcfg,
                         rng,
                         sim_tick,
                         PATH_STUCK_INIT,
+                        mover_is_crusher,
+                        is_infantry,
                     );
                     debug_events.extend(evts);
                 }

@@ -3,9 +3,10 @@
 //! Called from movement_tick when terrain, cliff, or occupancy checks fail.
 //! Manages the blocked_delay timer and path_stuck_counter to prevent thrashing.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::rules::locomotor_type::MovementZone;
+use crate::sim::pathfinding::EntityBlockEntry;
 use crate::sim::components::MovementTarget;
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
@@ -37,11 +38,14 @@ pub(super) fn handle_blocked_tick(
     ctx: PathfindingContext<'_>,
     entity_cost_grid: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&HashMap<(u16, u16), EntityBlockEntry>>,
     too_big_to_fit_under_bridge: bool,
     mcfg: MovementConfig,
     rng: &mut SimRng,
     sim_tick: u64,
     path_stuck_init: u8,
+    mover_is_crusher: bool,
+    is_infantry: bool,
 ) -> Vec<(u32, DebugEventKind)> {
     let mut deferred_events: Vec<(u32, DebugEventKind)> = Vec::new();
     stats.blocked_attempts = stats.blocked_attempts.saturating_add(1);
@@ -88,60 +92,78 @@ pub(super) fn handle_blocked_tick(
         return deferred_events;
     }
 
-    // Bridge movers also need to replan once blockage delay expires. Keeping the
-    // old ground-only gate can leave units permanently stalled on bridge cells.
-    if target.blocked_delay == 0 {
-        stats.repath_attempts = stats.repath_attempts.saturating_add(1);
-        let layered_pathing_for_repath = locomotor
-            .as_ref()
-            .zip(ctx.path_grid)
-            .is_some_and(|(loco, pg)| supports_layered_bridge_pathing(loco, pg, on_bridge));
-        let repath_mz: Option<MovementZone> = locomotor.as_ref().map(|l| l.movement_zone);
-        let repath_ok = try_repath_after_block(
-            target,
-            facing,
-            current_pos,
-            active_layer,
-            layered_pathing_for_repath,
-            ctx,
-            entity_cost_grid,
-            entity_blocks,
-            rng,
-            repath_mz,
-            too_big_to_fit_under_bridge,
-            mcfg,
-        );
-        if repath_ok {
-            stats.repath_successes = stats.repath_successes.saturating_add(1);
+    // Repath every tick while movement_delay == 0. Urgency escalates once the
+    // blocked_delay (BlockagePathDelay) timer has expired:
+    //   urgency=1 while blocked_delay > 0 → 4x traffic penalty
+    //   urgency=2 once blocked_delay == 0 → 1000x route-around
+    // Matches gamemd.exe DriveLocomotionClass::Process_Movement (LAB_004b3607).
+    stats.repath_attempts = stats.repath_attempts.saturating_add(1);
+    let urgency: u8 = if target.blocked_delay > 0 { 1 } else { 2 };
+    let layered_pathing_for_repath = locomotor
+        .as_ref()
+        .zip(ctx.path_grid)
+        .is_some_and(|(loco, pg)| supports_layered_bridge_pathing(loco, pg, on_bridge));
+    let repath_mz: Option<MovementZone> = locomotor.as_ref().map(|l| l.movement_zone);
+    let repath_ok = try_repath_after_block(
+        target,
+        facing,
+        current_pos,
+        active_layer,
+        layered_pathing_for_repath,
+        ctx,
+        entity_cost_grid,
+        entity_blocks,
+        rng,
+        repath_mz,
+        too_big_to_fit_under_bridge,
+        mcfg,
+        entity_block_map,
+        urgency,
+        mover_is_crusher,
+        is_infantry,
+    );
+    if repath_ok {
+        stats.repath_successes = stats.repath_successes.saturating_add(1);
+        if is_infantry {
             target.path_blocked = false;
-            target.path_stuck_counter = path_stuck_init;
+        }
+        target.path_stuck_counter = path_stuck_init;
+        deferred_events.push((
+            sim_tick as u32,
+            DebugEventKind::Repath {
+                reason: format!("blocked repath succeeded (urgency={})", urgency),
+                new_path_len: target.path.len(),
+            },
+        ));
+    } else if urgency >= 2 {
+        // Only escalated (urgency=2) repath failures count toward give-up.
+        // gamemd.exe decrements path_stuck_counter in a separate "no valid
+        // next cell" branch, not on every code-2 repath miss — so we don't
+        // decrement during the blocked_delay grace period (urgency=1).
+        target.path_stuck_counter = target.path_stuck_counter.saturating_sub(1);
+        if target.path_stuck_counter == 0 {
+            log::warn!(
+                "STUCK ABORT entity={} pos=({},{}) - path_stuck_counter exhausted",
+                entity_id,
+                current_pos.0,
+                current_pos.1,
+            );
             deferred_events.push((
                 sim_tick as u32,
-                DebugEventKind::Repath {
-                    reason: "blocked delay expired, repath succeeded".into(),
-                    new_path_len: target.path.len(),
-                },
+                DebugEventKind::StuckAbort { blocked_ticks: 0 },
             ));
+            stats.stuck_recoveries = stats.stuck_recoveries.saturating_add(1);
+            finished_entities.push(entity_id);
+            *aborted_for_stuck = true;
         } else {
-            target.path_stuck_counter = target.path_stuck_counter.saturating_sub(1);
-            if target.path_stuck_counter == 0 {
-                log::warn!(
-                    "STUCK ABORT entity={} pos=({},{}) - path_stuck_counter exhausted",
-                    entity_id,
-                    current_pos.0,
-                    current_pos.1,
-                );
-                deferred_events.push((
-                    sim_tick as u32,
-                    DebugEventKind::StuckAbort { blocked_ticks: 0 },
-                ));
-                stats.stuck_recoveries = stats.stuck_recoveries.saturating_add(1);
-                finished_entities.push(entity_id);
-                *aborted_for_stuck = true;
-            } else {
-                target.blocked_delay = mcfg.blockage_path_delay_ticks;
-            }
+            // Urgency=2 failed — restart blocked_delay so the next cycle
+            // begins a new grace period rather than thrashing.
+            target.blocked_delay = mcfg.blockage_path_delay_ticks;
         }
+    } else {
+        // urgency=1 grace-period failure: set a short movement_delay to
+        // rate-limit A* calls while the blocked_delay counter keeps ticking.
+        target.movement_delay = mcfg.path_delay_ticks;
     }
     deferred_events
 }

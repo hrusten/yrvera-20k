@@ -573,6 +573,7 @@ pub fn tick_production(
                         None,
                         sim.resolved_terrain.as_ref(),
                         None,
+                        false, // mover_is_crusher
                     );
                 }
             }

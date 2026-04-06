@@ -340,6 +340,7 @@ mod tests {
             factory: None,
             exit_coord: None,
             crushable: false,
+            no_force_shield: false,
             omni_crusher: false,
             omni_crush_resistant: false,
             engineer: false,

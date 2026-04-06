@@ -27,8 +27,10 @@ pub struct PowerState {
     pub total_drain: i32,
     /// True when `total_output < total_drain` (binary threshold).
     pub is_low_power: bool,
-    /// Remaining spy blackout frames. While > 0, `total_output` is forced to 0.
-    pub spy_blackout_remaining: u32,
+    /// Remaining power-blackout frames. While > 0, `total_output` is forced to 0.
+    /// Set by spy infiltration of power plants AND by ForceShield superweapon launch.
+    #[serde(rename = "spy_blackout_remaining")]
+    pub power_blackout_remaining: u32,
     /// Milliseconds accumulated toward the next degradation damage tick.
     pub degradation_accum_ms: u32,
     /// Whether the player was in low-power state on the previous tick.
@@ -96,7 +98,7 @@ fn recalculate_power_for_owner(
     }
 
     // Spy blackout forces output to zero.
-    if state.spy_blackout_remaining > 0 {
+    if state.power_blackout_remaining > 0 {
         produced = 0;
     }
 
@@ -136,8 +138,8 @@ pub fn tick_power_states(
         state.was_low_power = state.is_low_power;
 
         // Decrement spy blackout timer (1 tick = 1 frame at game speed).
-        if state.spy_blackout_remaining > 0 {
-            state.spy_blackout_remaining = state.spy_blackout_remaining.saturating_sub(1);
+        if state.power_blackout_remaining > 0 {
+            state.power_blackout_remaining = state.power_blackout_remaining.saturating_sub(1);
         }
 
         // Recalculate power totals with health scaling.
@@ -255,7 +257,7 @@ pub fn is_building_powered(
 
 /// Trigger a spy-infiltration power blackout for the target owner.
 ///
-/// Sets `spy_blackout_remaining` to the configured duration from `[General]`.
+/// Sets `power_blackout_remaining` to the configured duration from `[General]`.
 /// While active, the owner's power output is forced to 0.
 pub fn trigger_spy_blackout(
     power_states: &mut BTreeMap<InternedId, PowerState>,
@@ -263,7 +265,7 @@ pub fn trigger_spy_blackout(
     duration_frames: u32,
 ) {
     let state = power_states.entry(owner_id).or_default();
-    state.spy_blackout_remaining = duration_frames;
+    state.power_blackout_remaining = duration_frames;
 }
 
 /// Check if the given owner has at least one active (powered) radar building.
@@ -430,7 +432,7 @@ BuildSpeed=0.02
         store.insert(make_building(2, "GAPILE", "Allies", 500, 500));
 
         let mut state = PowerState::default();
-        state.spy_blackout_remaining = 100;
+        state.power_blackout_remaining = 100;
         let interner = test_interner();
         let allies = intern::test_intern("Allies");
         recalculate_power_for_owner(&mut state, &store, &rules, allies, &interner);
@@ -457,7 +459,7 @@ BuildSpeed=0.02
         }
 
         let state = states.get(&allies).expect("state should exist");
-        assert_eq!(state.spy_blackout_remaining, 0, "timer should reach 0");
+        assert_eq!(state.power_blackout_remaining, 0, "timer should reach 0");
         assert!(!state.is_low_power, "power restored after blackout");
     }
 

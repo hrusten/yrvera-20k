@@ -11,7 +11,9 @@
 //! - Part of sim/ — depends on sim/entity_store, sim/game_entity, sim/locomotor,
 //!   sim/pathfinding, sim/rng, rules/locomotor_type.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
+
+use crate::sim::pathfinding::EntityBlockEntry;
 
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::MovementZone;
@@ -95,11 +97,14 @@ const NEIGHBOR_OFFSETS: [(i32, i32); 8] = [
 /// This enables units to coexist above and below a bridge simultaneously,
 /// matching the original engine's `FirstObject`/`AltObject` dual-layer system.
 ///
-/// RA2 cooperative pathfinding: moving friendly units' path cells get a 4x cost
-/// penalty instead of being fully blocked. Stationary units/buildings and enemies
-/// hard-block. Verified from gamemd.exe AStar_compute_edge_cost (0x00429830).
+/// RA2 cooperative pathfinding: friendly-moving units are recorded in an
+/// `entity_block_map` keyed by the blocker's current cell, with value equal
+/// to the blocker's next cell (movement_target.path[next_index]). The A* cost
+/// function walks this map to compute the code-2 dynamic cost per gamemd.exe
+/// AStar_compute_edge_cost (0x00429830). Stationary units/buildings and
+/// enemies hard-block via the BTreeSet outputs.
 ///
-/// Returns `(ground_blocks, bridge_blocks, penalty_cells)`.
+/// Returns `(ground_blocks, bridge_blocks, entity_block_map)`.
 pub fn build_entity_block_sets(
     entities: &EntityStore,
     mover_owner: &str,
@@ -108,15 +113,11 @@ pub fn build_entity_block_sets(
 ) -> (
     BTreeSet<(u16, u16)>,
     BTreeSet<(u16, u16)>,
-    BTreeSet<(u16, u16)>,
+    HashMap<(u16, u16), EntityBlockEntry>,
 ) {
-    /// Max path steps to include in penalty set per friendly mover.
-    /// Matches gamemd.exe PathfinderClass::UpdateBridgePassability loop limit (24).
-    const COOPERATIVE_PATH_LOOKAHEAD: usize = 24;
-
     let mut ground_blocked: BTreeSet<(u16, u16)> = BTreeSet::new();
-    let mut bridge_blocked: BTreeSet<(u16, u16)> = BTreeSet::new();
-    let mut penalty_cells: BTreeSet<(u16, u16)> = BTreeSet::new();
+    let bridge_blocked: BTreeSet<(u16, u16)> = BTreeSet::new();
+    let mut entity_block_map: HashMap<(u16, u16), EntityBlockEntry> = HashMap::new();
     for entity in entities.values() {
         // Entities inside transports don't occupy cells.
         if entity.passenger_role.is_inside_transport() {
@@ -128,52 +129,48 @@ pub fn build_entity_block_sets(
             continue;
         }
         let pos = (entity.position.rx, entity.position.ry);
-        let target_set = match layer {
-            MovementLayer::Bridge => &mut bridge_blocked,
-            _ => &mut ground_blocked,
-        };
         // Buildings always block (they never move). Always ground layer.
         if entity.category == EntityCategory::Structure {
             ground_blocked.insert(pos);
             continue;
         }
-        // Enemy units always block (stationary or not).
+        // Enemy units: soft-block with code 5 (cost 20x).
         let entity_owner_str = interner.resolve(entity.owner);
         let is_friendly =
             crate::map::houses::are_houses_friendly(alliances, mover_owner, entity_owner_str);
         if !is_friendly {
-            target_set.insert(pos);
+            entity_block_map.insert(pos, EntityBlockEntry { next_cell: None, cost_code: 5 });
             continue;
         }
-        // Friendly moving units: collect their upcoming path cells as penalty cells
-        // (4x cost in A*) instead of hard-blocking.
+        // Friendly moving units: code-2 chain walk entry.
         if let Some(ref mt) = entity.movement_target {
-            penalty_cells.insert(pos);
-            for &cell in mt.path[mt.next_index..]
-                .iter()
-                .take(COOPERATIVE_PATH_LOOKAHEAD)
-            {
-                penalty_cells.insert(cell);
+            if let Some(&next_cell) = mt.path.get(mt.next_index) {
+                if next_cell != pos {
+                    entity_block_map.insert(pos, EntityBlockEntry {
+                        next_cell: Some(next_cell),
+                        cost_code: 2,
+                    });
+                    continue;
+                }
             }
-            continue;
         }
-        // Stationary friendly unit — blocks on its layer.
-        target_set.insert(pos);
+        // Stationary friendly: soft-block with code 6 (cost 8x).
+        entity_block_map.insert(pos, EntityBlockEntry { next_cell: None, cost_code: 6 });
     }
-    (ground_blocked, bridge_blocked, penalty_cells)
+    (ground_blocked, bridge_blocked, entity_block_map)
 }
 
 /// Build a combined block set (both layers merged) for the flat A* pathfinder
-/// which doesn't distinguish layers. Returns `(blocks, penalty_cells)`.
+/// which doesn't distinguish layers. Returns `(blocks, entity_block_map)`.
 pub fn build_entity_block_set(
     entities: &EntityStore,
     mover_owner: &str,
     alliances: &crate::map::houses::HouseAllianceMap,
     interner: &crate::sim::intern::StringInterner,
-) -> (BTreeSet<(u16, u16)>, BTreeSet<(u16, u16)>) {
-    let (ground, bridge, penalty) =
+) -> (BTreeSet<(u16, u16)>, HashMap<(u16, u16), EntityBlockEntry>) {
+    let (ground, bridge, entity_block_map) =
         build_entity_block_sets(entities, mover_owner, alliances, interner);
-    (ground.union(&bridge).copied().collect(), penalty)
+    (ground.union(&bridge).copied().collect(), entity_block_map)
 }
 
 // ---------------------------------------------------------------------------

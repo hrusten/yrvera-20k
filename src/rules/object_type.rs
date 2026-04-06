@@ -364,6 +364,9 @@ pub struct ObjectType {
     /// Only specific infantry (GI, GGI, SEAL, Rocketeer, Lunar) and some walls
     /// have this set to true.
     pub crushable: bool,
+    /// When true, this building cannot receive ForceShield invulnerability.
+    /// From `NoForceShield=yes` in rulesmd.ini.
+    pub no_force_shield: bool,
     /// Whether this unit can crush non-Crushable targets (only Battle Fortress).
     /// Default: false. Parsed from `OmniCrusher=` in rules.ini.
     pub omni_crusher: bool,
@@ -749,6 +752,7 @@ impl ObjectType {
 
             // Crush properties -- default false for all types.
             crushable: section.get_bool("Crushable").unwrap_or(false),
+            no_force_shield: section.get_bool("NoForceShield").unwrap_or(false),
             omni_crusher: section.get_bool("OmniCrusher").unwrap_or(false),
             omni_crush_resistant: section.get_bool("OmniCrushResistant").unwrap_or(false),
 
@@ -921,6 +925,23 @@ mod tests {
         assert_eq!(obj.adjacent, 6);
         assert!(obj.base_normal);
         assert!(obj.crewed);
+    }
+
+    #[test]
+    fn parse_no_force_shield_flag() {
+        let ini: IniFile = IniFile::from_str("[TST1]\nNoForceShield=yes\n[TST2]\n");
+        let obj_on: ObjectType = ObjectType::from_ini_section(
+            "TST1",
+            ini.section("TST1").unwrap(),
+            ObjectCategory::Building,
+        );
+        let obj_off: ObjectType = ObjectType::from_ini_section(
+            "TST2",
+            ini.section("TST2").unwrap(),
+            ObjectCategory::Building,
+        );
+        assert!(obj_on.no_force_shield);
+        assert!(!obj_off.no_force_shield);
     }
 
     #[test]

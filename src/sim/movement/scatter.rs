@@ -185,7 +185,8 @@ pub fn tick_idle_scatter(
             entities, grid, entity_id, dest, speed, false, cost_grid,
             None, // no entity blocks for 1-cell scatter
             None, // resolved_terrain
-            None, // penalty_cells
+            None, // entity_block_map
+            false, // mover_is_crusher — scatter doesn't need crusher logic
         );
     }
 }
@@ -289,7 +290,8 @@ pub fn scatter_units_from_cell(
             cost_grid,
             Some(&entity_blocks),
             None, // resolved_terrain
-            None, // penalty_cells
+            None, // entity_block_map
+            false, // mover_is_crusher
         );
 
         if success {

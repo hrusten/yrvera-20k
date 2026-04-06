@@ -103,6 +103,8 @@ pub fn issue_tunnel_move_command(
         None,
         None,
         None,
+        0,
+        false,
     ) {
         Some(p) => p,
         None => {
@@ -127,6 +129,7 @@ pub fn issue_tunnel_move_command(
             terrain_costs,
             None,
             None,
+            false, // mover_is_crusher
         )
     } else {
         // Long route: burrow underground.

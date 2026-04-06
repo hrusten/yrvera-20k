@@ -34,6 +34,29 @@ use crate::sim::movement::locomotor::{AirMovePhase, LocomotorState, MovementLaye
 use crate::util::fixed_math::{SIM_HALF, SIM_ONE, SIM_ZERO, SimFixed, sim_to_f32};
 use crate::util::lepton::CELL_CENTER_LEPTON as CELL_CENTER;
 
+/// Checked SimFixed multiply — logs a warning and saturates on overflow
+/// instead of panicking. Used to diagnose I16F16 overflows in air movement.
+#[inline]
+fn checked_mul_log(a: SimFixed, b: SimFixed, label: &str, entity_id: u64) -> SimFixed {
+    match a.checked_mul(b) {
+        Some(v) => v,
+        None => {
+            log::warn!(
+                "air_movement I16F16 overflow at {}: entity={} a={} b={} (saturating)",
+                label,
+                entity_id,
+                a,
+                b
+            );
+            if (a > SIM_ZERO) == (b > SIM_ZERO) {
+                SimFixed::MAX
+            } else {
+                SimFixed::MIN
+            }
+        }
+    }
+}
+
 /// Visual height offset per lepton of altitude.
 /// Calibrated so that cruise altitude (1500 leptons) produces ~90px vertical
 /// offset. KEPT as f32 — render-only visual scale.
@@ -232,10 +255,9 @@ pub fn tick_air_movement(
         let has_movement: bool = entity.movement_target.is_some();
 
         if has_movement {
-            let can_move: bool = entity
-                .locomotor
-                .as_ref()
-                .is_some_and(|l| l.altitude >= l.target_altitude * SIM_HALF);
+            let can_move: bool = entity.locomotor.as_ref().is_some_and(|l| {
+                l.altitude >= checked_mul_log(l.target_altitude, SIM_HALF, "target_alt*0.5", entity_id)
+            });
 
             if can_move {
                 let final_goal = entity
@@ -296,7 +318,12 @@ pub fn tick_air_movement(
                 // 4. Fine approach deceleration.
                 if dist_i32 < FINE_APPROACH_THRESHOLD {
                     if let Some(ref mut loco) = entity.locomotor {
-                        loco.fly_current_speed = loco.fly_current_speed * RAPID_DECEL_FACTOR;
+                        loco.fly_current_speed = checked_mul_log(
+                            loco.fly_current_speed,
+                            RAPID_DECEL_FACTOR,
+                            "fly_speed*rapid_decel",
+                            entity_id,
+                        );
                         if loco.fly_current_speed < MIN_CREEP_SPEED && dist_i32 > 0 {
                             loco.fly_current_speed = MIN_CREEP_SPEED;
                         }
@@ -309,7 +336,23 @@ pub fn tick_air_movement(
                     .as_ref()
                     .map_or(SIM_ZERO, |l| l.fly_current_speed);
                 if let Some(ref target) = entity.movement_target {
-                    let move_lep = target.speed * fly_speed * dt;
+                    log::debug!(
+                        "air_move entity={} type={} speed={} fly_speed={} dt={} alt={} dist_lep={} facing={}",
+                        entity_id,
+                        entity.type_ref,
+                        target.speed,
+                        fly_speed,
+                        dt,
+                        entity
+                            .locomotor
+                            .as_ref()
+                            .map(|l| l.altitude)
+                            .unwrap_or(SIM_ZERO),
+                        dist_i32,
+                        entity.facing
+                    );
+                    let sp_fly = checked_mul_log(target.speed, fly_speed, "speed*fly_speed", entity_id);
+                    let move_lep = checked_mul_log(sp_fly, dt, "(speed*fly_speed)*dt", entity_id);
                     if move_lep > SIM_ZERO {
                         let (step_x, step_y) =
                             crate::util::facing_table::facing_to_movement(entity.facing, move_lep);

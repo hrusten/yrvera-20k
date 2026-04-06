@@ -1150,6 +1150,7 @@ impl Simulation {
                 &self.power_states,
                 Some(&mut self.sound_events),
                 &mut self.production.resource_nodes,
+                self.tick,
                 tick_ms,
             );
             destroyed_structure |= combat_result.structure_destroyed;

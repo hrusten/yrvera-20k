@@ -148,7 +148,7 @@ impl Simulation {
             owner_id.hash(hasher);
             state.total_output.hash(hasher);
             state.total_drain.hash(hasher);
-            state.spy_blackout_remaining.hash(hasher);
+            state.power_blackout_remaining.hash(hasher);
             state.degradation_accum_ms.hash(hasher);
         }
     }
@@ -285,6 +285,19 @@ impl Simulation {
                 0u8.hash(hasher);
             }
             entity.on_bridge.hash(hasher);
+
+            if let Some(ref inv) = entity.invulnerability {
+                1u8.hash(hasher);
+                inv.start_frame.hash(hasher);
+                inv.duration_frames.hash(hasher);
+                let kind_byte: u8 = match inv.kind {
+                    crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain => 0,
+                    crate::sim::superweapon::invulnerability::InvulnKind::ForceShield => 1,
+                };
+                kind_byte.hash(hasher);
+            } else {
+                0u8.hash(hasher);
+            }
 
             if let Some(ref attack) = entity.attack_target {
                 1u8.hash(hasher);

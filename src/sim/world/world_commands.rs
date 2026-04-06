@@ -5,7 +5,7 @@
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::Simulation;
 use crate::map::houses::are_houses_friendly;
@@ -44,6 +44,7 @@ struct MoveInfo {
     slowdown_distance: SimFixed,
     movement_zone: MovementZone,
     position: (u16, u16),
+    mover_is_crusher: bool,
 }
 
 impl Simulation {
@@ -81,6 +82,11 @@ impl Simulation {
             slowdown_distance: obj.map_or(SIM_ZERO, |o| SimFixed::from_num(o.slowdown_distance)),
             movement_zone: obj.map_or(MovementZone::Normal, |o| o.movement_zone),
             position: (e.position.rx, e.position.ry),
+            mover_is_crusher: e.omni_crusher
+                || matches!(
+                    loco.map(|l| l.movement_zone),
+                    Some(MovementZone::Crusher | MovementZone::AmphibiousCrusher | MovementZone::CrusherAll)
+                ),
         })
     }
 
@@ -132,7 +138,7 @@ impl Simulation {
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
                 // Build entity block set for friendly-passable pathfinding.
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -188,7 +194,8 @@ impl Simulation {
                                 cost_grid,
                                 Some(&entity_blocks),
                                 self.resolved_terrain.as_ref(),
-                                Some(&penalty_cells),
+                                Some(&entity_block_map),
+                                info.mover_is_crusher,
                             );
                         }
                     }
@@ -225,7 +232,8 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
+                        info.mover_is_crusher,
                     )
                 };
                 // Stamp acceleration/deceleration parameters onto the newly created
@@ -344,7 +352,7 @@ impl Simulation {
                 let use_teleport_move = !info.is_harvester
                     && (info.loco_kind == Some(LocomotorKind::Teleport) || info.is_teleporter);
 
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -391,7 +399,8 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
+                        info.mover_is_crusher,
                     )
                 };
                 if issued {
@@ -556,7 +565,8 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let crusher = info.as_ref().map_or(false, |i| i.mover_is_crusher);
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -574,7 +584,8 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
+                        crusher,
                     );
                 }
                 true
@@ -636,7 +647,8 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(SpeedType::Track);
-                let (entity_blocks, penalty_cells) = bump_crush::build_entity_block_set(
+                let crusher = info.as_ref().map_or(false, |i| i.mover_is_crusher);
+                let (entity_blocks, entity_block_map) = bump_crush::build_entity_block_set(
                     &self.entities,
                     command_owner,
                     &self.house_alliances,
@@ -654,7 +666,8 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
+                        crusher,
                     );
                 }
                 true
@@ -754,7 +767,8 @@ impl Simulation {
                     .as_ref()
                     .map(|i| i.speed_type)
                     .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot);
-                let (entity_blocks, penalty_cells) =
+                let crusher = info.as_ref().map_or(false, |i| i.mover_is_crusher);
+                let (entity_blocks, entity_block_map) =
                     crate::sim::movement::bump_crush::build_entity_block_set(
                         &self.entities,
                         command_owner,
@@ -773,7 +787,8 @@ impl Simulation {
                         cost_grid,
                         Some(&entity_blocks),
                         self.resolved_terrain.as_ref(),
-                        Some(&penalty_cells),
+                        Some(&entity_block_map),
+                        crusher,
                     );
                 }
                 true
@@ -816,6 +831,30 @@ impl Simulation {
                     crate::rules::superweapon_type::SuperWeaponKind::LightningStorm => {
                         let rules = rules.unwrap();
                         crate::sim::superweapon::lightning_storm::start(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
+                    crate::rules::superweapon_type::SuperWeaponKind::IronCurtain => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::iron_curtain::launch(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
+                    crate::rules::superweapon_type::SuperWeaponKind::ForceShield => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::force_shield::launch(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
+                    crate::rules::superweapon_type::SuperWeaponKind::GeneticConverter => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::genetic_converter::launch(
+                            self, rules, owner_iid, *target_rx, *target_ry,
+                        )
+                    }
+                    crate::rules::superweapon_type::SuperWeaponKind::PsychicReveal => {
+                        let rules = rules.unwrap();
+                        crate::sim::superweapon::psychic_reveal::launch(
                             self, rules, owner_iid, *target_rx, *target_ry,
                         )
                     }

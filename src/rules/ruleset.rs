@@ -329,6 +329,33 @@ pub struct GeneralRules {
     pub lightning_separation: i32,
     /// Warhead ID for lightning bolt damage (LightningWarhead= in [General]). Default "IonWH".
     pub lightning_warhead: String,
+    // --- IronCurtain ([CombatDamage]) ---
+    /// IronCurtain invulnerability duration in frames (IronCurtainDuration= in [CombatDamage]).
+    pub iron_curtain_duration: u32,
+    // --- IronCurtain ([General]) ---
+    /// Animation played on IC target (IronCurtainInvokeAnim= in [General]). Default IRONBLST.
+    pub iron_curtain_invoke_anim: String,
+    // --- ForceShield ([General]) ---
+    /// Cell radius of ForceShield AoE (ForceShieldRadius= in [General]).
+    pub force_shield_radius: u32,
+    /// ForceShield invulnerability duration in frames (ForceShieldDuration= in [General]).
+    pub force_shield_duration: u32,
+    /// Power blackout duration triggered by ForceShield (ForceShieldBlackoutDuration= in [General]).
+    pub force_shield_blackout_duration: u32,
+    /// Frames before fade sound plays (ForceShieldPlayFadeSoundTime= in [General]).
+    pub force_shield_fade_sound_time: u32,
+    /// Animation played on FS target (ForceShieldInvokeAnim= in [General]). Default FORCSHLD.
+    pub force_shield_invoke_anim: String,
+    // --- PsychicReveal ([General]) ---
+    /// Cell radius revealed by PsychicReveal (PsychicRevealRadius= in [General]).
+    pub psychic_reveal_radius: u32,
+    // --- GeneticConverter ([CombatDamage] + [General]) ---
+    /// Warhead used for mutation (MutateWarhead= in [CombatDamage]). Default "Mutate".
+    pub mutate_warhead: String,
+    /// Warhead used for mutate explosion (MutateExplosionWarhead= in [CombatDamage]).
+    pub mutate_explosion_warhead: String,
+    /// Whether MutateExplosion is enabled (MutateExplosion= in [General]). Default true.
+    pub mutate_explosion: bool,
 }
 
 /// Default animation rate when art.ini section is missing.
@@ -425,6 +452,17 @@ impl Default for GeneralRules {
             lightning_cell_spread: 10,
             lightning_separation: 3,
             lightning_warhead: "IonWH".to_string(),
+            iron_curtain_duration: 750,
+            iron_curtain_invoke_anim: "IRONBLST".to_string(),
+            force_shield_radius: 4,
+            force_shield_duration: 500,
+            force_shield_blackout_duration: 1000,
+            force_shield_fade_sound_time: 75,
+            force_shield_invoke_anim: "FORCSHLD".to_string(),
+            psychic_reveal_radius: 15,
+            mutate_warhead: "Mutate".to_string(),
+            mutate_explosion_warhead: "MutateExplosion".to_string(),
+            mutate_explosion: true,
         }
     }
 }
@@ -541,6 +579,8 @@ impl GeneralRules {
         };
         // ConditionYellow/ConditionRed live in [AudioVisual], not [General].
         let audio_visual = ini.section("AudioVisual");
+        // IronCurtainDuration, MutateWarhead, MutateExplosionWarhead live in [CombatDamage].
+        let combat_damage = ini.section("CombatDamage");
         // WarpIn/WarpOut/WarpAway values may contain semicolons with secondary
         // anims (e.g., "WARPIN;WAKE2"). We only use the primary anim name.
         let parse_anim_name = |key: &str, default: &str| -> String {
@@ -701,6 +741,35 @@ impl GeneralRules {
                 .get("LightningWarhead")
                 .unwrap_or("IonWH")
                 .to_string(),
+            iron_curtain_duration: combat_damage
+                .and_then(|s| s.get_i32("IronCurtainDuration"))
+                .unwrap_or(750) as u32,
+            iron_curtain_invoke_anim: general
+                .get("IronCurtainInvokeAnim")
+                .unwrap_or("IRONBLST")
+                .to_string(),
+            force_shield_radius: general.get_i32("ForceShieldRadius").unwrap_or(4) as u32,
+            force_shield_duration: general.get_i32("ForceShieldDuration").unwrap_or(500) as u32,
+            force_shield_blackout_duration: general
+                .get_i32("ForceShieldBlackoutDuration")
+                .unwrap_or(1000) as u32,
+            force_shield_fade_sound_time: general
+                .get_i32("ForceShieldPlayFadeSoundTime")
+                .unwrap_or(75) as u32,
+            force_shield_invoke_anim: general
+                .get("ForceShieldInvokeAnim")
+                .unwrap_or("FORCSHLD")
+                .to_string(),
+            psychic_reveal_radius: general.get_i32("PsychicRevealRadius").unwrap_or(15) as u32,
+            mutate_warhead: combat_damage
+                .and_then(|s| s.get("MutateWarhead"))
+                .unwrap_or("Mutate")
+                .to_string(),
+            mutate_explosion_warhead: combat_damage
+                .and_then(|s| s.get("MutateExplosionWarhead"))
+                .unwrap_or("MutateExplosion")
+                .to_string(),
+            mutate_explosion: general.get_bool("MutateExplosion").unwrap_or(true),
         }
     }
 
@@ -1436,6 +1505,31 @@ CellSpread=0
         assert!((rules.production.max_low_power_production_speed - 0.85).abs() < 0.0001);
         assert_eq!(rules.bridge_rules.strength, 250);
         assert!(rules.bridge_rules.destroyable_by_default);
+    }
+
+    #[test]
+    fn parse_tier1_superweapon_rules() {
+        let ini_text = "[General]\n\
+ForceShieldRadius=5\n\
+ForceShieldDuration=600\n\
+PsychicRevealRadius=12\n\
+MutateExplosion=no\n\
+[CombatDamage]\n\
+IronCurtainDuration=900\n\
+MutateWarhead=MyMutate\n\
+";
+        let ini = IniFile::from_str(ini_text);
+        let general = GeneralRules::from_ini(&ini);
+        assert_eq!(general.iron_curtain_duration, 900);
+        assert_eq!(general.force_shield_radius, 5);
+        assert_eq!(general.force_shield_duration, 600);
+        assert_eq!(general.psychic_reveal_radius, 12);
+        assert_eq!(general.mutate_warhead, "MyMutate");
+        assert!(!general.mutate_explosion);
+        // Unspecified keys fall back to defaults.
+        assert_eq!(general.iron_curtain_invoke_anim, "IRONBLST");
+        assert_eq!(general.force_shield_invoke_anim, "FORCSHLD");
+        assert_eq!(general.mutate_explosion_warhead, "MutateExplosion");
     }
 
     #[test]

@@ -8,7 +8,13 @@
 //! - Part of sim/ — depends on rules/, sim/power_system, sim/components.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+pub mod cell_grid;
+pub mod force_shield;
+pub mod genetic_converter;
+pub mod invulnerability;
+pub mod iron_curtain;
 pub mod lightning_storm;
+pub mod psychic_reveal;
 
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;

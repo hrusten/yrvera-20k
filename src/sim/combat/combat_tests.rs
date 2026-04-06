@@ -121,6 +121,7 @@ fn test_tick_combat_applies_damage() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -129,6 +130,40 @@ fn test_tick_combat_applies_damage() {
         target_health,
         300 - 48,
         "Should take 48 damage (65 * 75 / 100)"
+    );
+}
+
+#[test]
+fn ic_target_takes_zero_damage() {
+    use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
+    let rules: RuleSet = test_rules();
+    let mut store = EntityStore::new();
+    store.insert(make_entity(1, "MTNK", 5, 5, 300));
+    store.insert(make_entity(2, "MTNK", 8, 5, 300));
+    let mut interner = test_interner();
+    issue_attack_command(&mut store, 1, 2, None, &interner);
+    // Apply IronCurtain invulnerability to the target.
+    if let Some(target) = store.get_mut(2) {
+        target.invulnerability = Some(InvulnerabilityState {
+            start_frame: 0,
+            duration_frames: 1000,
+            kind: InvulnKind::IronCurtain,
+        });
+    }
+    let initial_hp = store.get(2).expect("target alive").health.current;
+    tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        &mut BTreeMap::new(),
+        10u64,
+        100,
+    );
+    assert_eq!(
+        store.get(2).expect("target alive").health.current,
+        initial_hp,
+        "IC-invulnerable target must take zero damage"
     );
 }
 
@@ -149,6 +184,7 @@ fn test_tick_combat_only_emits_bridge_damage_for_wall_warheads() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
     assert!(
@@ -179,6 +215,7 @@ fn test_tick_combat_only_emits_bridge_damage_for_wall_warheads() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
     assert_eq!(
@@ -207,6 +244,7 @@ fn test_tick_combat_respects_cooldown() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
     let h1: u16 = store.get(2).unwrap().health.current;
@@ -218,6 +256,7 @@ fn test_tick_combat_respects_cooldown() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
     let h2: u16 = store.get(2).unwrap().health.current;
@@ -231,6 +270,7 @@ fn test_tick_combat_respects_cooldown() {
             &rules,
             &mut interner,
             &mut BTreeMap::new(),
+        0u64,
             100,
         );
     }
@@ -253,6 +293,7 @@ fn test_tick_combat_kills_target() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -279,6 +320,7 @@ fn test_tick_combat_out_of_range() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -311,6 +353,7 @@ fn test_infantry_vs_heavy_armor() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -354,6 +397,7 @@ fn test_prone_infantry_takes_scaled_direct_damage() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -396,6 +440,7 @@ fn test_prone_infantry_takes_scaled_aoe_damage() {
         &rules,
         &mut interner,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -432,6 +477,7 @@ fn test_tick_combat_visibility_blocks_fire() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -465,6 +511,7 @@ fn test_tick_combat_retargets_by_distance_then_stable_id() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -505,6 +552,7 @@ fn test_tick_combat_retargets_prefers_threat_class_when_distance_equal() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut BTreeMap::new(),
+        0u64,
         100,
     );
 
@@ -574,6 +622,7 @@ fn test_weapon_fire_destroys_ore_in_spread() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut resource_nodes,
+        0u64,
         100,
     );
 
@@ -625,6 +674,7 @@ fn test_direct_hit_weapon_destroys_center_ore() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut resource_nodes,
+        0u64,
         100,
     );
 
@@ -671,6 +721,7 @@ fn test_weak_weapon_partial_ore_reduction() {
         &BTreeMap::<InternedId, PowerState>::new(),
         None,
         &mut resource_nodes,
+        0u64,
         100,
     );
 

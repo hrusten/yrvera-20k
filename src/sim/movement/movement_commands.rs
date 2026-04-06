@@ -66,7 +66,8 @@ pub fn issue_move_command(
     queue: bool,
     terrain_costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&std::collections::HashMap<(u16, u16), crate::sim::pathfinding::EntityBlockEntry>>,
+    mover_is_crusher: bool,
 ) -> bool {
     issue_move_command_with_layered(
         entities,
@@ -78,7 +79,8 @@ pub fn issue_move_command(
         terrain_costs,
         entity_blocks,
         None, // resolved_terrain — per-tick repath has it
-        penalty_cells,
+        entity_block_map,
+        mover_is_crusher,
     )
 }
 
@@ -149,7 +151,8 @@ pub fn issue_move_command_with_layered(
     terrain_costs: Option<&TerrainCostGrid>,
     entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    penalty_cells: Option<&BTreeSet<(u16, u16)>>,
+    entity_block_map: Option<&std::collections::HashMap<(u16, u16), crate::sim::pathfinding::EntityBlockEntry>>,
+    mover_is_crusher: bool,
 ) -> bool {
     // Read the entity's current position and locomotor state.
     let Some(entity) = entities.get(entity_id) else {
@@ -235,7 +238,9 @@ pub fn issue_move_command_with_layered(
                     zone_mz,
                     movement_zone,
                     too_big_to_fit_under_bridge,
-                    penalty_cells,
+                    entity_block_map,
+                    0, // urgency=0: initial move command
+                    mover_is_crusher,
                 ) else {
                     return false;
                 };
@@ -275,7 +280,9 @@ pub fn issue_move_command_with_layered(
         zone_mz,
         movement_zone,
         too_big_to_fit_under_bridge,
-        penalty_cells,
+        entity_block_map,
+        0, // urgency=0: initial move command
+        mover_is_crusher,
     ) else {
         let eb_count = merged_entity_blocks_ref.map_or(0, |s| s.len());
         log::warn!(
