@@ -23,7 +23,7 @@ Thumbs.db
 /ini/
 
 # RE docs (kept locally outside the repo)
-/docs/
+/infodocs/
 
 # Local dev config (personal paths, Claude setup)
 CLAUDE.md
