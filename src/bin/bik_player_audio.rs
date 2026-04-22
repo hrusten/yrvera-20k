@@ -124,6 +124,60 @@ impl Source for BinkAudioSource {
     fn total_duration(&self) -> Option<Duration> { None } // streaming — unbounded
 }
 
+use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
+
+/// One-second-or-more ring buffer per channel (interleaved). Tuned at
+/// startup so we have headroom against egui repaint stalls.
+const RING_TARGET_SAMPLES_PER_CHANNEL: usize = 32_768; // ~1.5s @ 22050 Hz
+
+pub struct BinkAudioSink {
+    _device: MixerDeviceSink,
+    player: Player,
+    ring: Arc<SpscRing>,
+    sample_rate: u32,
+    channels: u16,
+}
+
+impl BinkAudioSink {
+    pub fn new(sample_rate: u32, channels: u16) -> Option<Self> {
+        let device = DeviceSinkBuilder::open_default_sink()
+            .map_err(|e| log::error!("bik-player: failed to open audio device: {}", e))
+            .ok()?;
+        let ring = SpscRing::new(RING_TARGET_SAMPLES_PER_CHANNEL * channels as usize);
+        let source = BinkAudioSource::new(ring.clone(), sample_rate, channels)?;
+        let player = Player::connect_new(device.mixer());
+        player.set_volume(1.0);
+        player.append(source);
+        Some(Self {
+            _device: device,
+            player,
+            ring,
+            sample_rate,
+            channels,
+        })
+    }
+
+    /// Push samples into the ring. Returns count actually pushed (caller can ignore overflow).
+    pub fn push(&self, samples: &[f32]) -> usize {
+        self.ring.push(samples)
+    }
+
+    /// Clear the ring (for seek). Safe to call only when paused.
+    pub fn drain(&self) {
+        self.ring.drain();
+    }
+
+    pub fn pause(&self) { self.player.pause(); }
+    pub fn resume(&self) { self.player.play(); }
+
+    pub fn position(&self) -> Duration { self.player.get_pos() }
+
+    pub fn set_volume(&self, v: f32) { self.player.set_volume(v.clamp(0.0, 1.0)); }
+
+    pub fn sample_rate(&self) -> u32 { self.sample_rate }
+    pub fn channels(&self) -> u16 { self.channels }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
