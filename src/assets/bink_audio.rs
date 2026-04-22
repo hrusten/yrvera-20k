@@ -14,6 +14,7 @@
 //!   and `error::AssetError`. No game-module deps.
 
 use crate::assets::bink_audio_data::WMA_CRITICAL_FREQS;
+use crate::assets::bink_bits::BitReader;
 use crate::assets::bink_file::AudioTrack;
 use crate::assets::error::AssetError;
 
@@ -165,6 +166,67 @@ impl BinkAudioDecoder {
         for ch in &mut self.prev {
             for s in ch.iter_mut() { *s = 0.0; }
         }
+    }
+
+    /// Decode one audio packet. Returns interleaved f32 samples (stereo: L,R,L,R,...).
+    ///
+    /// Per packet, exactly `(frame_len - overlap_len) * channels` samples are produced
+    /// after overlap-add (the overlap_len tail is buffered for the next call).
+    pub fn decode_packet(&mut self, bytes: &[u8]) -> Result<Vec<f32>, AssetError> {
+        if bytes.len() < 4 {
+            return Err(AssetError::BinkAudioError {
+                reason: format!("audio packet too small: {} bytes", bytes.len()),
+            });
+        }
+
+        let mut gb = BitReader::from_bytes(bytes);
+        // Skip reported size (32 bits) per binkaudio.c:322.
+        gb.read_bits(32)?;
+
+        // Skip 2-bit header for DCT variant per binkaudio.c:183-184.
+        if self.use_dct {
+            gb.read_bits(2)?;
+        }
+
+        // Decode each channel's coefficients + inverse-transform into self.out_per_ch[ch].
+        for ch in 0..self.channels as usize {
+            self.decode_channel_block(&mut gb, ch)?;
+        }
+
+        // Apply overlap-add with previous block's tail.
+        self.apply_overlap_add();
+
+        // Interleave channels into output.
+        let usable = self.frame_len - self.overlap_len;
+        let mut out = Vec::with_capacity(usable * self.channels as usize);
+        for i in 0..usable {
+            for ch in 0..self.channels as usize {
+                out.push(self.out_per_ch[ch][i]);
+            }
+        }
+
+        // Stash the last `overlap_len` samples per channel for next call's cross-fade.
+        for ch in 0..self.channels as usize {
+            let start = self.frame_len - self.overlap_len;
+            self.prev[ch].copy_from_slice(&self.out_per_ch[ch][start..self.frame_len]);
+        }
+
+        self.first = false;
+        Ok(out)
+    }
+
+    /// Stub — filled in Tasks 9-10.
+    fn decode_channel_block(&mut self, _gb: &mut BitReader, ch: usize) -> Result<(), AssetError> {
+        // Placeholder: zero-fill the channel buffer so the rest of the pipeline is testable.
+        for s in self.out_per_ch[ch].iter_mut() {
+            *s = 0.0;
+        }
+        Ok(())
+    }
+
+    /// Stub — filled in Task 11.
+    fn apply_overlap_add(&mut self) {
+        // Placeholder: no-op for now.
     }
 }
 
