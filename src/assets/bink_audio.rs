@@ -302,10 +302,31 @@ impl BinkAudioDecoder {
         Ok(())
     }
 
-    /// Stub — filled in Task 10.
     fn inverse_transform_channel(&mut self, ch: usize) {
-        for s in self.out_per_ch[ch].iter_mut() {
-            *s = 0.0;
+        if self.use_dct {
+            // Pre-double DC per binkaudio.c:253.
+            self.coeffs[0] *= 2.0;
+            // Inverse DCT-II of size frame_len consumes coeffs[0..frame_len]
+            // and writes frame_len samples. Task 7 sized self.fft to frame_len
+            // for this mode.
+            let coeffs_in: Vec<f32> = self.coeffs[..self.frame_len].to_vec();
+            inverse_dct_ii(&coeffs_in, &mut self.out_per_ch[ch], &self.fft);
+        } else {
+            // RDFT input layout shuffle per binkaudio.c:255-261.
+            // Negate imaginary halves of bins 1..N/2-1.
+            let mut i = 2;
+            while i < self.frame_len {
+                self.coeffs[i + 1] = -self.coeffs[i + 1];
+                i += 2;
+            }
+            // Move Nyquist (coeffs[1]) to coeffs[frame_len]; zero the placeholder.
+            self.coeffs[self.frame_len] = self.coeffs[1];
+            self.coeffs[self.frame_len + 1] = 0.0;
+            self.coeffs[1] = 0.0;
+
+            // Inverse RDFT writes frame_len real samples.
+            let coeffs_in: Vec<f32> = self.coeffs.clone();
+            inverse_rdft(&coeffs_in, &mut self.out_per_ch[ch], &self.fft);
         }
     }
 
