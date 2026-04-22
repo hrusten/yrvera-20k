@@ -747,12 +747,106 @@ impl BinkDecoder {
         self.bundles[bundle_num].cur_dec = dec_end;
         Ok(())
     }
+
+    /// Decode delta-coded 16-bit DC bundle. `start_bits` bits for the leading
+    /// value (minus 1 if signed), then runs of 8 deltas with a 4-bit width
+    /// prefix per run. `has_sign = 1` for inter DC, 0 for intra.
+    /// Port of `read_dcs` at libavcodec/bink.c:503-549.
+    fn read_dcs(
+        &mut self,
+        r: &mut BitReader<'_>,
+        bundle_num: usize,
+        start_bits: u32,
+        has_sign: bool,
+    ) -> Result<(), AssetError> {
+        let (len_bits, buf_end, cur_dec_start) = {
+            let b = &self.bundles[bundle_num];
+            if b.skip_fills || b.cur_dec > b.cur_ptr {
+                return Ok(());
+            }
+            (b.len_bits, b.buf_end, b.cur_dec)
+        };
+        let mut len = r.read_bits(len_bits)? as i32;
+        if len == 0 {
+            self.bundles[bundle_num].skip_fills = true;
+            return Ok(());
+        }
+        let first_bits = start_bits - if has_sign { 1 } else { 0 };
+        if r.bits_left() < first_bits as isize {
+            return Err(AssetError::BinkError {
+                reason: "read_dcs EOF at first value".to_string(),
+            });
+        }
+        let mut v = r.read_bits(first_bits)? as i32;
+        if v != 0 && has_sign {
+            let sign = if r.read_bit()? { -1 } else { 0 };
+            v = (v ^ sign) - sign;
+        }
+
+        let remaining_i16s = (buf_end - cur_dec_start) / 2;
+        if remaining_i16s < 1 {
+            return Err(AssetError::BinkError {
+                reason: "DC buffer full".to_string(),
+            });
+        }
+        let mut dec = cur_dec_start;
+        write_i16(&mut self.bundle_data, dec, v as i16);
+        dec += 2;
+        len -= 1;
+
+        let mut i = 0i32;
+        while i < len {
+            let len2 = (len - i).min(8);
+            let remaining = (buf_end - dec) / 2;
+            if (remaining as i32) < len2 {
+                return Err(AssetError::BinkError {
+                    reason: "DC run out of bounds".to_string(),
+                });
+            }
+            let bsize = r.read_bits(4)?;
+            if bsize != 0 {
+                for _ in 0..len2 {
+                    let mut v2 = r.read_bits(bsize)? as i32;
+                    if v2 != 0 {
+                        let sign = if r.read_bit()? { -1 } else { 0 };
+                        v2 = (v2 ^ sign) - sign;
+                    }
+                    v += v2;
+                    if !(-32768..=32767).contains(&v) {
+                        return Err(AssetError::BinkError {
+                            reason: format!("DC value out of range: {}", v),
+                        });
+                    }
+                    write_i16(&mut self.bundle_data, dec, v as i16);
+                    dec += 2;
+                }
+            } else {
+                for _ in 0..len2 {
+                    write_i16(&mut self.bundle_data, dec, v as i16);
+                    dec += 2;
+                }
+            }
+            i += 8;
+        }
+        self.bundles[bundle_num].cur_dec = dec;
+        Ok(())
+    }
 }
 
 #[inline]
 fn log2_floor(x: u32) -> u32 {
     debug_assert!(x > 0);
     31 - x.leading_zeros()
+}
+
+#[inline]
+fn write_i16(buf: &mut [u8], byte_off: usize, v: i16) {
+    buf[byte_off..byte_off + 2].copy_from_slice(&v.to_ne_bytes());
+}
+
+#[inline]
+fn read_i16(buf: &[u8], byte_off: usize) -> i16 {
+    i16::from_ne_bytes([buf[byte_off], buf[byte_off + 1]])
 }
 
 /// Interleave two adjacent halves (size + size) based on bits read. Port of
