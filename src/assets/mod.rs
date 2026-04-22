@@ -12,6 +12,7 @@
 //! - `.tmp` — Isometric terrain tiles (theater-specific tilesets)
 //! - `.csf` — String tables (localized text for UI/EVA)
 //! - `.aud` — Audio files (IMA ADPCM compressed)
+//! - `.bik` — Bink 1 video (BIKi / BIKk revisions) from RA2/YR MOVIES mixes
 //!
 //! ## Dependency rules
 //! - assets/ has NO dependencies on other game modules.
@@ -21,6 +22,10 @@
 pub mod asset_manager;
 pub mod aud_file;
 pub mod audio_bag;
+pub mod bink_bits;
+pub mod bink_data;
+pub mod bink_decode;
+pub mod bink_file;
 pub mod csf_file;
 pub mod error;
 pub mod fnt_file;
