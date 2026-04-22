@@ -13,6 +13,7 @@ mod bik_player_ui;
 use eframe::egui;
 use std::sync::Arc;
 use vera20k::assets::asset_manager::AssetManager;
+use vera20k::assets::bink_audio::BinkAudioDecoder;
 use vera20k::assets::bink_decode::BinkDecoder;
 use vera20k::assets::bink_file::BinkFile;
 use vera20k::assets::xcc_database::XccDatabase;
@@ -36,6 +37,9 @@ pub struct BikPlayerApp {
     pub source_name: String,
     pub file: Option<BinkFile>,
     pub decoder: Option<BinkDecoder>,
+    pub audio_decoder: Option<BinkAudioDecoder>,
+    pub audio_sink: Option<bik_player_audio::BinkAudioSink>,
+    pub audio_volume: f32,
     pub current_frame: usize,
     pub status: String,
     /// Persistent input buffer for the "MIX asset" text field. Must live on
@@ -70,6 +74,9 @@ impl BikPlayerApp {
             source_name: String::new(),
             file: None,
             decoder: None,
+            audio_decoder: None,
+            audio_sink: None,
+            audio_volume: 0.7,
             current_frame: 0,
             status,
             asset_name_input: String::new(),
@@ -105,6 +112,8 @@ impl BikPlayerApp {
         // decoder paired with no file (or vice versa).
         self.file = None;
         self.decoder = None;
+        self.audio_decoder = None;
+        self.audio_sink = None;
         self.current_frame = 0;
         self.source_name = name;
 
@@ -119,6 +128,26 @@ impl BikPlayerApp {
                         file.header.fps(),
                         file.header.num_frames
                     );
+                    if let Some(track) = file.header.audio_tracks.first().copied() {
+                        match BinkAudioDecoder::new(track) {
+                            Ok(ad) => {
+                                let sr = ad.sample_rate();
+                                let ch = ad.channels();
+                                self.audio_sink = bik_player_audio::BinkAudioSink::new(sr, ch);
+                                if let Some(s) = &self.audio_sink {
+                                    s.set_volume(self.audio_volume);
+                                }
+                                self.audio_decoder = Some(ad);
+                            }
+                            Err(e) => log::warn!("bik-player: audio init failed: {}", e),
+                        }
+                        if file.header.audio_tracks.len() > 1 {
+                            log::warn!(
+                                "bik-player: {} audio tracks; using track 0 only",
+                                file.header.audio_tracks.len(),
+                            );
+                        }
+                    }
                     self.file = Some(file);
                     self.decoder = Some(d);
                 }
