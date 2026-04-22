@@ -169,6 +169,16 @@ pub(crate) fn add_pixels8(dst: &mut [u8], block: &[i16; 64], stride: usize) {
     }
 }
 
+/// Fill an `n x n` square at `dst` with the constant value `v`.
+/// `n` must be 8 or 16.
+pub(crate) fn fill_block(dst: &mut [u8], v: u8, stride: usize, n: usize) {
+    debug_assert!(n == 8 || n == 16);
+    for row in 0..n {
+        let base = row * stride;
+        dst[base..base + n].fill(v);
+    }
+}
+
 /// Pixel-double an 8x8 ublock into a 16x16 region at `dst` with `stride`.
 /// Each source pixel becomes a 2x2 square. Port of `scale_block_c` in binkdsp.c.
 pub(crate) fn scale_block_8x8_to_16x16(src: &[u8; 64], dst: &mut [u8], stride: usize) {
@@ -236,6 +246,25 @@ mod tests {
         assert_eq!(dst[0], 150);
         assert_eq!(dst[63], 0); // clipped
         assert_eq!(dst[10], 255); // clipped
+    }
+
+    #[test]
+    fn fill_block_writes_square() {
+        let mut dst = [0u8; 32 * 16];
+        fill_block(&mut dst, 0xAA, 32, 8);
+        for r in 0..8 {
+            for c in 0..8 {
+                assert_eq!(dst[r * 32 + c], 0xAA);
+            }
+            for c in 8..32 {
+                assert_eq!(dst[r * 32 + c], 0);
+            }
+        }
+        for r in 8..16 {
+            for c in 0..32 {
+                assert_eq!(dst[r * 32 + c], 0);
+            }
+        }
     }
 
     #[test]
