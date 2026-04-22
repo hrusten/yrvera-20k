@@ -158,6 +158,17 @@ pub(crate) fn bink_idct_add(dst: &mut [u8], stride: usize, block: &mut [i32; 64]
     let _ = block;
 }
 
+/// Add an 8x8 i16 residue block to a dst area, clipping to u8.
+/// Port of `add_pixels8_c` in binkdsp.c.
+pub(crate) fn add_pixels8(dst: &mut [u8], block: &[i16; 64], stride: usize) {
+    for row in 0..8 {
+        for col in 0..8 {
+            let v = dst[row * stride + col] as i32 + block[row * 8 + col] as i32;
+            dst[row * stride + col] = v.clamp(0, 255) as u8;
+        }
+    }
+}
+
 /// Pixel-double an 8x8 ublock into a 16x16 region at `dst` with `stride`.
 /// Each source pixel becomes a 2x2 square. Port of `scale_block_c` in binkdsp.c.
 pub(crate) fn scale_block_8x8_to_16x16(src: &[u8; 64], dst: &mut [u8], stride: usize) {
@@ -212,6 +223,19 @@ mod tests {
         for &p in &dst {
             assert!(p == 255);
         }
+    }
+
+    #[test]
+    fn add_pixels8_accumulates_and_clips() {
+        let mut dst = [100u8; 64];
+        let mut block = [0i16; 64];
+        block[0] = 50;
+        block[63] = -200;
+        block[10] = 300;
+        add_pixels8(&mut dst, &block, 8);
+        assert_eq!(dst[0], 150);
+        assert_eq!(dst[63], 0); // clipped
+        assert_eq!(dst[10], 255); // clipped
     }
 
     #[test]
