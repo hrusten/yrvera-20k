@@ -584,6 +584,62 @@ impl BinkDecoder {
         Ok(())
     }
 
+    /// Decode signed motion offsets (X_OFF / Y_OFF bundles). Either all-same
+    /// (one value + optional sign, memset) or Huffman-per-entry with an
+    /// optional sign bit after each non-zero symbol. Stored as i8.
+    /// Port of `read_motion_values` at libavcodec/bink.c:355-387.
+    fn read_motion_values(
+        &mut self,
+        r: &mut BitReader<'_>,
+        bundle_num: usize,
+    ) -> Result<(), AssetError> {
+        let (len_bits, buf_end, tree, cur_dec_start) = {
+            let b = &self.bundles[bundle_num];
+            if b.skip_fills || b.cur_dec > b.cur_ptr {
+                return Ok(());
+            }
+            (b.len_bits, b.buf_end, b.tree.clone(), b.cur_dec)
+        };
+        let t = r.read_bits(len_bits)? as usize;
+        if t == 0 {
+            self.bundles[bundle_num].skip_fills = true;
+            return Ok(());
+        }
+        let dec_end = cur_dec_start + t;
+        if dec_end > buf_end {
+            return Err(AssetError::BinkError {
+                reason: "Too many motion values".to_string(),
+            });
+        }
+        if r.bits_left() < 1 {
+            return Err(AssetError::BinkError {
+                reason: "read_motion_values EOF".to_string(),
+            });
+        }
+        if r.read_bit()? {
+            let mut v = r.read_bits(4)? as i32;
+            if v != 0 {
+                let sign = if r.read_bit()? { -1 } else { 0 };
+                v = (v ^ sign) - sign;
+            }
+            let byte = v as i8 as u8;
+            self.bundle_data[cur_dec_start..dec_end].fill(byte);
+        } else {
+            let mut dec = cur_dec_start;
+            while dec < dec_end {
+                let idx = self.vlc_tables[tree.vlc_num as usize].decode_vlc(r)? as usize;
+                let mut v = tree.syms[idx] as i32;
+                if v != 0 {
+                    let sign = if r.read_bit()? { -1 } else { 0 };
+                    v = (v ^ sign) - sign;
+                }
+                self.bundle_data[dec] = v as i8 as u8;
+                dec += 1;
+            }
+        }
+        self.bundles[bundle_num].cur_dec = dec_end;
+        Ok(())
+    }
 }
 
 #[inline]
