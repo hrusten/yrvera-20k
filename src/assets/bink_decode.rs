@@ -169,6 +169,34 @@ pub(crate) fn add_pixels8(dst: &mut [u8], block: &[i16; 64], stride: usize) {
     }
 }
 
+/// Copy an 8x8 block from `src` to `dst` at the given strides.
+///
+/// Caller must ensure the src and dst rectangles do not overlap.
+pub(crate) fn copy_block8(
+    dst: &mut [u8],
+    src: &[u8],
+    dst_stride: usize,
+    src_stride: usize,
+) {
+    for row in 0..8 {
+        dst[row * dst_stride..row * dst_stride + 8]
+            .copy_from_slice(&src[row * src_stride..row * src_stride + 8]);
+    }
+}
+
+/// Copy an 8x8 block where source and destination live in the same buffer and
+/// may overlap. Stages through a stack scratch array.
+/// Port of `put_pixels8x8_overlapped` in FFmpeg bink.c.
+pub(crate) fn copy_block8_overlapped(dst: &mut [u8], src: &[u8], stride: usize) {
+    let mut tmp = [0u8; 64];
+    for row in 0..8 {
+        tmp[row * 8..row * 8 + 8].copy_from_slice(&src[row * stride..row * stride + 8]);
+    }
+    for row in 0..8 {
+        dst[row * stride..row * stride + 8].copy_from_slice(&tmp[row * 8..row * 8 + 8]);
+    }
+}
+
 /// Fill an `n x n` square at `dst` with the constant value `v`.
 /// `n` must be 8 or 16.
 pub(crate) fn fill_block(dst: &mut [u8], v: u8, stride: usize, n: usize) {
@@ -246,6 +274,23 @@ mod tests {
         assert_eq!(dst[0], 150);
         assert_eq!(dst[63], 0); // clipped
         assert_eq!(dst[10], 255); // clipped
+    }
+
+    #[test]
+    fn copy_block8_copies_with_stride() {
+        let mut buf = [0u8; 16 * 16];
+        for r in 0..8 {
+            for c in 0..16 {
+                buf[r * 16 + c] = (r * 10 + c) as u8;
+            }
+        }
+        let (src, dst) = buf.split_at_mut(8 * 16);
+        copy_block8(dst, src, 16, 16);
+        for r in 0..8 {
+            for c in 0..8 {
+                assert_eq!(buf[(8 + r) * 16 + c], (r * 10 + c) as u8);
+            }
+        }
     }
 
     #[test]
