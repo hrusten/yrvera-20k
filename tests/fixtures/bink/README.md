@@ -50,3 +50,17 @@ default `cargo test -p vera20k` run stays green.
 
         cargo test -p vera20k --test bink_first_frame
         cargo test -p vera20k --test bink_frame_diff
+
+## Audio oracle
+
+`fixture_audio.f32` is the PCM oracle for the audio decoder integration test
+(`tests/bink_audio_samples.rs`). It contains interleaved 32-bit float samples
+matching the audio stream in `fixture.bik`. Produce it with:
+
+    ffmpeg -i fixture.bik -c:a pcm_f32le -f f32le fixture_audio.f32
+
+The integration test compares our decoded samples against this file with a
+peak-error tolerance of 1e-4. SKIP if the file is absent.
+
+If `fixture.bik` has multiple audio tracks, FFmpeg's default selects track 0,
+which matches our decoder's track-0-only behavior.
