@@ -55,6 +55,29 @@ pub fn draw_top_panel(app: &mut BikPlayerApp, ctx: &egui::Context) {
                 let name = app.asset_name_input.clone();
                 app.load_asset(&name);
             }
+
+            ui.separator();
+            ui.label("Vol");
+            let mut v = app.audio_volume;
+            if ui.add(egui::Slider::new(&mut v, 0.0..=1.0).show_value(false)).changed() {
+                app.audio_volume = v;
+                if let Some(sink) = app.audio_sink.as_ref() {
+                    sink.set_volume(v);
+                }
+            }
+            if ui
+                .button(if app.audio_volume > 0.0 { "Mute" } else { "Unmute" })
+                .clicked()
+            {
+                if app.audio_volume > 0.0 {
+                    app.audio_volume = 0.0;
+                } else {
+                    app.audio_volume = 0.7;
+                }
+                if let Some(sink) = app.audio_sink.as_ref() {
+                    sink.set_volume(app.audio_volume);
+                }
+            }
         });
         ui.label(&app.status);
     });
