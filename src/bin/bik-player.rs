@@ -6,6 +6,7 @@
 //! If the argument is a filesystem path it's loaded directly; otherwise it's
 //! looked up via AssetManager (MOVIES*.MIX + movmd03.mix).
 
+mod bik_player_audio;
 mod bik_player_playback;
 mod bik_player_ui;
 
