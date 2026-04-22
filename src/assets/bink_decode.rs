@@ -308,6 +308,9 @@ struct Bundle {
     buf_end: usize,
     cur_dec: usize,
     cur_ptr: usize,
+    /// FFmpeg's `cur_dec = NULL` sentinel — set when a refill returned 0 or
+    /// BIKk XORed the length to zero. CHECK_READ_VAL skips further refills.
+    skip_fills: bool,
 }
 
 #[derive(Default, Clone)]
@@ -364,6 +367,7 @@ impl BinkDecoder {
             buf_end: (i + 1) * block_per_bundle,
             cur_dec: i * block_per_bundle,
             cur_ptr: i * block_per_bundle,
+            skip_fills: false,
         });
 
         let mut vlc_tables = Vec::with_capacity(16);
@@ -438,6 +442,7 @@ impl BinkDecoder {
         for b in &mut self.bundles {
             b.cur_dec = b.buf_start;
             b.cur_ptr = b.buf_start;
+            b.skip_fills = false;
         }
     }
 
@@ -461,6 +466,78 @@ impl BinkDecoder {
         let b = &mut self.bundles[bundle_num];
         b.cur_dec = b.buf_start;
         b.cur_ptr = b.buf_start;
+        b.skip_fills = false;
+        Ok(())
+    }
+
+    /// Decode block-type bundle. Values < 12 are written literally; 12..15
+    /// are RLE of the last literal using `BINK_RLELENS[v - 12]`. For BIKk
+    /// the length field is XORed with `0xBB` after the read.
+    /// Port of `read_block_types` at libavcodec/bink.c:391-434.
+    fn read_block_types(
+        &mut self,
+        r: &mut BitReader<'_>,
+        bundle_num: usize,
+    ) -> Result<(), AssetError> {
+        let (len_bits, buf_end, tree, cur_dec_start) = {
+            let b = &self.bundles[bundle_num];
+            if b.skip_fills || b.cur_dec > b.cur_ptr {
+                return Ok(());
+            }
+            (b.len_bits, b.buf_end, b.tree.clone(), b.cur_dec)
+        };
+        let t_raw = r.read_bits(len_bits)?;
+        if t_raw == 0 {
+            self.bundles[bundle_num].skip_fills = true;
+            return Ok(());
+        }
+        let t = if self.version == BinkVersion::BikK {
+            let xored = t_raw ^ 0xBB;
+            if xored == 0 {
+                self.bundles[bundle_num].skip_fills = true;
+                return Ok(());
+            }
+            xored
+        } else {
+            t_raw
+        } as usize;
+        let dec_end = cur_dec_start + t;
+        if dec_end > buf_end {
+            return Err(AssetError::BinkError {
+                reason: "Too many block type values".to_string(),
+            });
+        }
+        if r.bits_left() < 1 {
+            return Err(AssetError::BinkError {
+                reason: "read_block_types EOF".to_string(),
+            });
+        }
+        if r.read_bit()? {
+            let v = r.read_bits(4)? as u8;
+            self.bundle_data[cur_dec_start..dec_end].fill(v);
+        } else {
+            let mut last: u8 = 0;
+            let mut dec = cur_dec_start;
+            while dec < dec_end {
+                let idx = self.vlc_tables[tree.vlc_num as usize].decode_vlc(r)? as usize;
+                let v = tree.syms[idx];
+                if v < 12 {
+                    last = v;
+                    self.bundle_data[dec] = v;
+                    dec += 1;
+                } else {
+                    let run = BINK_RLELENS[(v - 12) as usize] as usize;
+                    if dec_end.saturating_sub(dec) < run {
+                        return Err(AssetError::BinkError {
+                            reason: "block-type RLE out of bounds".to_string(),
+                        });
+                    }
+                    self.bundle_data[dec..dec + run].fill(last);
+                    dec += run;
+                }
+            }
+        }
+        self.bundles[bundle_num].cur_dec = dec_end;
         Ok(())
     }
 }
@@ -756,6 +833,54 @@ mod tests {
         for i in 0..16 {
             assert_eq!(t.syms[i], i as u8);
         }
+    }
+
+    #[test]
+    fn read_block_types_bikk_xor_nulls_bundle() {
+        let h = crate::assets::bink_file::BinkHeader {
+            version: BinkVersion::BikK,
+            file_size: 1000,
+            num_frames: 1,
+            largest_frame: 100,
+            width: 8,
+            height: 8,
+            fps_num: 30,
+            fps_den: 1,
+            video_flags: 0,
+            num_audio_tracks: 0,
+            audio_tracks: vec![],
+            frame_index_offset: 0,
+        };
+        let mut d = BinkDecoder::new(&h).unwrap();
+        d.bundles[Src::BlockTypes as usize].len_bits = 8;
+        let data = [0xBBu8];
+        let mut r = crate::assets::bink_bits::BitReader::from_bytes(&data);
+        d.read_block_types(&mut r, Src::BlockTypes as usize).unwrap();
+        assert!(d.bundles[Src::BlockTypes as usize].skip_fills);
+    }
+
+    #[test]
+    fn read_block_types_biki_zero_length_nulls_bundle() {
+        let h = crate::assets::bink_file::BinkHeader {
+            version: BinkVersion::BikI,
+            file_size: 1000,
+            num_frames: 1,
+            largest_frame: 100,
+            width: 8,
+            height: 8,
+            fps_num: 30,
+            fps_den: 1,
+            video_flags: 0,
+            num_audio_tracks: 0,
+            audio_tracks: vec![],
+            frame_index_offset: 0,
+        };
+        let mut d = BinkDecoder::new(&h).unwrap();
+        d.bundles[Src::BlockTypes as usize].len_bits = 8;
+        let data = [0x00u8];
+        let mut r = crate::assets::bink_bits::BitReader::from_bytes(&data);
+        d.read_block_types(&mut r, Src::BlockTypes as usize).unwrap();
+        assert!(d.bundles[Src::BlockTypes as usize].skip_fills);
     }
 
     #[test]
