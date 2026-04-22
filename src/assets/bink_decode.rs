@@ -1120,6 +1120,32 @@ fn log2_floor(x: u32) -> u32 {
     31 - x.leading_zeros()
 }
 
+/// Copy an 8×8 block from `prev` to `dst` at the computed motion-compensated
+/// offset. The reference `prev[prev_off] + xoff + yoff*stride` must fall
+/// within `[ref_start, ref_end]` (inclusive), matching FFmpeg's bounds check.
+/// Port of `bink_put_pixels` at libavcodec/bink.c:1002-1018.
+fn motion_copy_8x8(
+    dst: &mut [u8],
+    prev: &[u8],
+    dst_off: usize,
+    prev_off: usize,
+    xoff: i32,
+    yoff: i32,
+    stride: usize,
+    ref_start: usize,
+    ref_end: usize,
+) -> Result<(), AssetError> {
+    let ref_signed = prev_off as isize + xoff as isize + yoff as isize * stride as isize;
+    if ref_signed < ref_start as isize || ref_signed > ref_end as isize {
+        return Err(AssetError::BinkError {
+            reason: format!("motion copy out of bounds @{}, {}", xoff, yoff),
+        });
+    }
+    let src_off = ref_signed as usize;
+    copy_block8(&mut dst[dst_off..], &prev[src_off..], stride, stride);
+    Ok(())
+}
+
 #[inline]
 fn write_i16(buf: &mut [u8], byte_off: usize, v: i16) {
     buf[byte_off..byte_off + 2].copy_from_slice(&v.to_ne_bytes());
