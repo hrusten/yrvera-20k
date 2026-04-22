@@ -624,6 +624,30 @@ mod tests {
     }
 
     #[test]
+    fn rejects_descending_frame_offsets() {
+        let mut h = make_biki_header();
+        h[0x04..0x08].copy_from_slice(&1016u32.to_le_bytes());
+        h[0x08..0x0C].copy_from_slice(&2u32.to_le_bytes()); // 2 frames
+        h.extend_from_slice(&0x200u32.to_le_bytes());
+        h.extend_from_slice(&0x100u32.to_le_bytes()); // descending!
+        let (mut hdr, next) = parse_fixed_header(&h).unwrap();
+        let end = parse_audio_tracks(&h, &mut hdr, next).unwrap();
+        assert!(parse_frame_index(&h, &hdr, end).is_err());
+    }
+
+    #[test]
+    fn first_frame_is_always_keyframe() {
+        let mut h = make_biki_header();
+        h[0x04..0x08].copy_from_slice(&1016u32.to_le_bytes());
+        h[0x08..0x0C].copy_from_slice(&1u32.to_le_bytes());
+        h.extend_from_slice(&0x40u32.to_le_bytes()); // no kf bit
+        let (mut hdr, next) = parse_fixed_header(&h).unwrap();
+        let end = parse_audio_tracks(&h, &mut hdr, next).unwrap();
+        let idx = parse_frame_index(&h, &hdr, end).unwrap();
+        assert!(idx[0].is_keyframe); // frame 0 is always treated as kf
+    }
+
+    #[test]
     fn video_packet_skips_audio_blocks() {
         // 1 audio track, 1 frame. Frame packet: [u32 audio_size=8][8 audio bytes][video bytes].
         let mut h = make_header_with_1_track();
