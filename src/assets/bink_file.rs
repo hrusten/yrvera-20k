@@ -262,6 +262,64 @@ pub(crate) fn parse_audio_tracks(
     Ok(off)
 }
 
+/// One entry in the frame index table.
+#[derive(Debug, Clone, Copy)]
+pub struct FrameIndexEntry {
+    /// Byte offset of this frame's packet in the file. Keyframe bit is cleared.
+    pub offset: u32,
+    /// Size of this frame's packet in bytes (offset[i+1] - offset[i]).
+    pub size: u32,
+    /// True if this frame is a keyframe. Frame 0 is always a keyframe; for
+    /// others the low bit of the raw index entry encodes the flag.
+    pub is_keyframe: bool,
+}
+
+/// Parse the frame index table. `start` is the offset of the first uint32.
+pub(crate) fn parse_frame_index(
+    data: &[u8],
+    header: &BinkHeader,
+    start: usize,
+) -> Result<Vec<FrameIndexEntry>, AssetError> {
+    let n = header.num_frames as usize;
+    let needed = 4 * n;
+
+    if data.len() < start + needed {
+        return Err(AssetError::BinkError {
+            reason: "frame index table truncated".to_string(),
+        });
+    }
+
+    // Read raw offsets (with keyframe bits).
+    let mut raw = Vec::with_capacity(n + 1);
+    for i in 0..n {
+        raw.push(read_u32_le(data, start + 4 * i));
+    }
+    // Synthesize trailing sentinel using file_size.
+    raw.push(header.file_size as u32);
+
+    let mut entries = Vec::with_capacity(n);
+    for i in 0..n {
+        let cur = raw[i];
+        let next = raw[i + 1] & !1;
+        let offset = cur & !1;
+        // Per FFmpeg: frame 0 is always a keyframe; for subsequent frames the
+        // low bit of entry i encodes whether frame i is a keyframe.
+        let is_keyframe = if i == 0 { true } else { (raw[i] & 1) != 0 };
+        if next <= offset {
+            return Err(AssetError::BinkError {
+                reason: format!("invalid frame index at {}: next <= current", i),
+            });
+        }
+        entries.push(FrameIndexEntry {
+            offset,
+            size: next - offset,
+            is_keyframe,
+        });
+    }
+
+    Ok(entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +431,36 @@ mod tests {
         let end = parse_audio_tracks(&h, &mut hdr, next).unwrap();
         assert_eq!(hdr.audio_tracks.len(), 0);
         assert_eq!(end, next);
+    }
+
+    #[test]
+    fn parses_three_frame_index() {
+        // Header with 3 frames, file_size = 1024.
+        let mut h = make_biki_header();
+        h[0x04..0x08].copy_from_slice(&1016u32.to_le_bytes()); // file_size - 8
+        h[0x08..0x0C].copy_from_slice(&3u32.to_le_bytes()); // num_frames = 3
+        // Raw entries: 0x40, 0x101 (low bit = keyframe), 0x200.
+        // Synthesized sentinel = file_size = 1024.
+        // Frame 0: offset=0x40, size=0x100-0x40=0xC0, keyframe=true (always).
+        // Frame 1: offset=0x100, size=0x200-0x100=0x100, keyframe = 0x101 & 1 = true.
+        // Frame 2: offset=0x200, size=0x400-0x200=0x200, keyframe = 0x200 & 1 = false.
+        h.extend_from_slice(&0x40u32.to_le_bytes());
+        h.extend_from_slice(&0x101u32.to_le_bytes());
+        h.extend_from_slice(&0x200u32.to_le_bytes());
+
+        let (mut hdr, next) = parse_fixed_header(&h).unwrap();
+        let end = parse_audio_tracks(&h, &mut hdr, next).unwrap();
+        let index = parse_frame_index(&h, &hdr, end).unwrap();
+
+        assert_eq!(index.len(), 3);
+        assert_eq!(index[0].offset, 0x40);
+        assert_eq!(index[0].size, 0xC0);
+        assert!(index[0].is_keyframe);
+        assert_eq!(index[1].offset, 0x100);
+        assert_eq!(index[1].size, 0x100);
+        assert!(index[1].is_keyframe);
+        assert_eq!(index[2].offset, 0x200);
+        assert_eq!(index[2].size, 0x200);
+        assert!(!index[2].is_keyframe);
     }
 }
