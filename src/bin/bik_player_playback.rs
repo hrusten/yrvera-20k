@@ -128,12 +128,14 @@ impl Playback {
 /// Seek the decoder to `target`: flush state, re-decode from the nearest
 /// preceding keyframe up to and including `target`.
 pub fn seek_to_frame(app: &mut BikPlayerApp, target: usize) -> Result<(), String> {
-    let Some(file) = app.file.as_ref() else {
+    if app.file.is_none() {
         return Err("no file".to_string());
-    };
-    let Some(decoder) = app.decoder.as_mut() else {
+    }
+    if app.decoder.is_none() {
         return Err("no decoder".to_string());
-    };
+    }
+
+    let file = app.file.as_ref().unwrap();
     let n = file.frame_index.len();
     if target >= n {
         return Err(format!("target {} >= {}", target, n));
@@ -145,11 +147,40 @@ pub fn seek_to_frame(app: &mut BikPlayerApp, target: usize) -> Result<(), String
         kf -= 1;
     }
 
+    // Reset audio state before video flush so a post-seek audio push starts clean.
+    if let Some(adec) = app.audio_decoder.as_mut() {
+        adec.reset();
+    }
+    if let Some(sink) = app.audio_sink.as_ref() {
+        sink.pause();
+        sink.drain();
+    }
+
+    let decoder = app.decoder.as_mut().unwrap();
     decoder.flush();
+    let file = app.file.as_ref().unwrap();
     for i in kf..=target {
         let pkt = file.video_packet(i).map_err(|e| e.to_string())?;
         decoder.decode_frame(pkt).map_err(|e| e.to_string())?;
     }
+
+    // Push audio for [kf..=target] so playback resumes in sync.
+    if let (Some(adec), Some(sink)) = (app.audio_decoder.as_mut(), app.audio_sink.as_ref()) {
+        let file = app.file.as_ref().unwrap();
+        for i in kf..=target {
+            if let Ok(pkts) = file.audio_packets(i) {
+                for ap in pkts {
+                    if ap.track_index == 0 {
+                        if let Ok(samples) = adec.decode_packet(ap.bytes) {
+                            sink.push(&samples);
+                        }
+                    }
+                }
+            }
+        }
+        sink.resume();
+    }
+
     app.current_frame = target + 1; // next frame to play
     Ok(())
 }
