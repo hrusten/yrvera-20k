@@ -440,6 +440,29 @@ impl BinkDecoder {
             b.cur_ptr = b.buf_start;
         }
     }
+
+    /// Prepare one bundle for decoding: reads its Huffman tree (or 16
+    /// col_high trees for COLORS) and resets the bundle's cursors.
+    /// Port of `read_bundle` at libavcodec/bink.c:285-313.
+    fn read_bundle(
+        &mut self,
+        r: &mut BitReader<'_>,
+        bundle_num: usize,
+    ) -> Result<(), AssetError> {
+        if bundle_num == Src::Colors as usize {
+            for i in 0..16 {
+                self.col_high[i] = HuffmanTree::read(r)?;
+            }
+            self.col_lastval = 0;
+        }
+        if bundle_num != Src::IntraDc as usize && bundle_num != Src::InterDc as usize {
+            self.bundles[bundle_num].tree = HuffmanTree::read(r)?;
+        }
+        let b = &mut self.bundles[bundle_num];
+        b.cur_dec = b.buf_start;
+        b.cur_ptr = b.buf_start;
+        Ok(())
+    }
 }
 
 #[inline]
