@@ -832,6 +832,106 @@ impl BinkDecoder {
         Ok(())
     }
 
+    /// Decode one plane of a frame. `plane_idx` indexes into cur/prev
+    /// buffers; `is_chroma` selects chroma dimensions. Scaffolding only:
+    /// handles BIKk whole-plane fill, bundle setup, the row loop, and
+    /// SKIP_BLOCK. Remaining block-type handlers come in a follow-up commit.
+    /// Port of `bink_decode_plane` at libavcodec/bink.c:1020-1253.
+    fn decode_plane(
+        &mut self,
+        r: &mut BitReader<'_>,
+        plane_idx: usize,
+        is_chroma: bool,
+    ) -> Result<(), AssetError> {
+        let shift = if is_chroma { 1u32 } else { 0 };
+        let width = (self.width >> shift) as usize;
+        let height = (self.height >> shift) as usize;
+        let bw = if is_chroma {
+            ((self.width + 15) >> 4) as usize
+        } else {
+            ((self.width + 7) >> 3) as usize
+        };
+        let bh = if is_chroma {
+            ((self.height + 15) >> 4) as usize
+        } else {
+            ((self.height + 7) >> 3) as usize
+        };
+        let stride = if plane_idx == 0 {
+            self.cur.stride_y
+        } else {
+            self.cur.stride_uv
+        };
+
+        if self.version == BinkVersion::BikK && r.read_bit()? {
+            let fill = r.read_bits(8)? as u8;
+            let (plane, _) = plane_mut_for(&mut self.cur, plane_idx);
+            for row in 0..height {
+                plane[row * stride..row * stride + width].fill(fill);
+            }
+            r.align_to_dword();
+            return Ok(());
+        }
+
+        self.init_bundle_lengths(width.max(8) as u32, bw as u32);
+        for i in 0..NB_SRC {
+            self.read_bundle(r, i)?;
+        }
+
+        let ref_start: usize = 0;
+        let ref_end = (bw - 1 + stride * (bh - 1)) * 8;
+        let _ = ref_start;
+        let _ = ref_end;
+
+        let mut coordmap = [0usize; 64];
+        for i in 0..64 {
+            coordmap[i] = (i & 7) + (i >> 3) * stride;
+        }
+        let _ = coordmap;
+
+        for by in 0..bh {
+            self.read_block_types(r, Src::BlockTypes as usize)?;
+            self.read_block_types(r, Src::SubBlockTypes as usize)?;
+            self.read_colors(r, Src::Colors as usize)?;
+            self.read_patterns(r, Src::Pattern as usize)?;
+            self.read_motion_values(r, Src::XOff as usize)?;
+            self.read_motion_values(r, Src::YOff as usize)?;
+            self.read_dcs(r, Src::IntraDc as usize, DC_START_BITS, false)?;
+            self.read_dcs(r, Src::InterDc as usize, DC_START_BITS, true)?;
+            self.read_runs(r, Src::Run as usize)?;
+
+            let mut bx = 0usize;
+            while bx < bw {
+                let dst_base = by * 8 * stride + bx * 8;
+                let blk = self.get_value(Src::BlockTypes as usize);
+
+                if ((by & 1) != 0 || (bx & 1) != 0) && blk == SCALED_BLOCK {
+                    bx += 2;
+                    continue;
+                }
+
+                match blk {
+                    SKIP_BLOCK => {
+                        let src = plane_ref_for(&self.prev, plane_idx);
+                        let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                        copy_block8(&mut dst[dst_base..], &src[dst_base..], stride, stride);
+                    }
+                    _ => {
+                        return Err(AssetError::BinkError {
+                            reason: format!(
+                                "unimplemented block type {} at ({}, {})",
+                                blk, bx, by
+                            ),
+                        });
+                    }
+                }
+                bx += 1;
+            }
+        }
+
+        r.align_to_dword();
+        Ok(())
+    }
+
     /// Decode a sparse DCT coefficient list into `block`. Returns the
     /// 4-bit quant index. The dual-ended `coef_list`/`mode_list` stacks form
     /// the hierarchical scan state machine.
@@ -1118,6 +1218,36 @@ impl BinkDecoder {
 fn log2_floor(x: u32) -> u32 {
     debug_assert!(x > 0);
     31 - x.leading_zeros()
+}
+
+/// Bink block types (from libavcodec/bink.c:135-146).
+const SKIP_BLOCK: i32 = 0;
+const SCALED_BLOCK: i32 = 1;
+const MOTION_BLOCK: i32 = 2;
+const RUN_BLOCK: i32 = 3;
+const RESIDUE_BLOCK: i32 = 4;
+const INTRA_BLOCK: i32 = 5;
+const FILL_BLOCK: i32 = 6;
+const INTER_BLOCK: i32 = 7;
+const PATTERN_BLOCK: i32 = 8;
+const RAW_BLOCK: i32 = 9;
+
+fn plane_mut_for(frame: &mut BinkFrame, plane_idx: usize) -> (&mut [u8], usize) {
+    match plane_idx {
+        0 => (&mut frame.y[..], frame.stride_y),
+        1 => (&mut frame.u[..], frame.stride_uv),
+        2 => (&mut frame.v[..], frame.stride_uv),
+        _ => unreachable!(),
+    }
+}
+
+fn plane_ref_for(frame: &BinkFrame, plane_idx: usize) -> &[u8] {
+    match plane_idx {
+        0 => &frame.y[..],
+        1 => &frame.u[..],
+        2 => &frame.v[..],
+        _ => unreachable!(),
+    }
 }
 
 /// Copy an 8×8 block from `prev` to `dst` at the computed motion-compensated
