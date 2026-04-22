@@ -224,6 +224,194 @@ pub(crate) fn scale_block_8x8_to_16x16(src: &[u8; 64], dst: &mut [u8], stride: u
     }
 }
 
+use crate::assets::bink_bits::{BitReader, VlcTable};
+use crate::assets::bink_data::{
+    BINK_INTER_QUANT, BINK_INTRA_QUANT, BINK_PATTERNS, BINK_RLELENS, BINK_SCAN,
+    BINK_TREE_BITS, BINK_TREE_LENS, DC_START_BITS,
+};
+use crate::assets::bink_file::{BinkHeader, BinkVersion};
+use crate::assets::error::AssetError;
+
+/// Bundle IDs for modern Bink (BIKi/BIKk).
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+#[repr(usize)]
+enum Src {
+    BlockTypes = 0,
+    SubBlockTypes = 1,
+    Colors = 2,
+    Pattern = 3,
+    XOff = 4,
+    YOff = 5,
+    IntraDc = 6,
+    InterDc = 7,
+    Run = 8,
+}
+const NB_SRC: usize = 9;
+
+/// YUV frame buffer; planes have their own strides (Y stride = rounded-up
+/// width, UV stride = rounded-up width/2).
+pub struct BinkFrame {
+    pub width: u32,
+    pub height: u32,
+    pub color_range: ColorRange,
+    pub y: Box<[u8]>,
+    pub stride_y: usize,
+    pub u: Box<[u8]>,
+    pub stride_uv: usize,
+    pub v: Box<[u8]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorRange {
+    /// BT.601 limited (MPEG): Y in 16..235, UV in 16..240.
+    Mpeg,
+    /// BT.601 full (JPEG): Y/U/V in 0..255.
+    Jpeg,
+}
+
+impl BinkFrame {
+    fn alloc(width: u32, height: u32, color_range: ColorRange) -> Self {
+        let stride_y = ((width + 7) & !7) as usize;
+        let stride_uv = (((width + 15) & !15) / 2) as usize;
+        let y_size = stride_y * ((height + 7) & !7) as usize;
+        let uv_size = stride_uv * (((height + 15) & !15) / 2) as usize;
+        Self {
+            width,
+            height,
+            color_range,
+            y: vec![0u8; y_size].into_boxed_slice(),
+            stride_y,
+            u: vec![0u8; uv_size].into_boxed_slice(),
+            stride_uv,
+            v: vec![0u8; uv_size].into_boxed_slice(),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn plane_mut(&mut self, idx: usize) -> (&mut [u8], usize) {
+        match idx {
+            0 => (&mut self.y, self.stride_y),
+            1 => (&mut self.u, self.stride_uv),
+            2 => (&mut self.v, self.stride_uv),
+            _ => panic!("invalid plane idx"),
+        }
+    }
+}
+
+/// Per-bundle state.
+#[allow(dead_code)]
+struct Bundle {
+    len_bits: u32,
+    tree: HuffmanTree,
+    buf_start: usize,
+    buf_end: usize,
+    cur_dec: usize,
+    cur_ptr: usize,
+}
+
+#[derive(Default, Clone)]
+struct HuffmanTree {
+    vlc_num: u32,
+    syms: [u8; 16],
+}
+
+#[allow(dead_code)]
+pub struct BinkDecoder {
+    version: BinkVersion,
+    width: u32,
+    height: u32,
+    has_alpha: bool,
+    color_range: ColorRange,
+
+    vlc_tables: Vec<VlcTable>,
+    col_high: [HuffmanTree; 16],
+    col_lastval: u8,
+
+    bundles: [Bundle; NB_SRC],
+    bundle_data: Vec<u8>,
+
+    frame_num: u32,
+    pub cur: BinkFrame,
+    pub prev: BinkFrame,
+    has_prev: bool,
+}
+
+impl BinkDecoder {
+    pub fn new(header: &BinkHeader) -> Result<Self, AssetError> {
+        if header.is_gray() {
+            return Err(AssetError::BinkError {
+                reason: "grayscale Bink not supported".to_string(),
+            });
+        }
+
+        let color_range = match header.version {
+            BinkVersion::BikK => ColorRange::Jpeg,
+            _ => ColorRange::Mpeg,
+        };
+
+        let bw = ((header.width + 7) >> 3) as usize;
+        let bh = ((header.height + 7) >> 3) as usize;
+        let blocks = bw * bh;
+        let total_bytes = blocks.saturating_mul(64 * NB_SRC);
+        let bundle_data = vec![0u8; total_bytes];
+
+        let block_per_bundle = blocks * 64;
+        let bundles: [Bundle; NB_SRC] = std::array::from_fn(|i| Bundle {
+            len_bits: 0,
+            tree: HuffmanTree::default(),
+            buf_start: i * block_per_bundle,
+            buf_end: (i + 1) * block_per_bundle,
+            cur_dec: i * block_per_bundle,
+            cur_ptr: i * block_per_bundle,
+        });
+
+        let mut vlc_tables = Vec::with_capacity(16);
+        for t in 0..16 {
+            let mut codes = [0u8; 16];
+            let mut lens = [0u8; 16];
+            for i in 0..16 {
+                codes[i] = BINK_TREE_BITS[t][i];
+                lens[i] = BINK_TREE_LENS[t][i];
+            }
+            vlc_tables.push(VlcTable::build(&codes, &lens)?);
+        }
+
+        Ok(Self {
+            version: header.version,
+            width: header.width,
+            height: header.height,
+            has_alpha: header.has_alpha(),
+            color_range,
+            vlc_tables,
+            col_high: std::array::from_fn(|_| HuffmanTree::default()),
+            col_lastval: 0,
+            bundles,
+            bundle_data,
+            frame_num: 0,
+            cur: BinkFrame::alloc(header.width, header.height, color_range),
+            prev: BinkFrame::alloc(header.width, header.height, color_range),
+            has_prev: false,
+        })
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+    pub fn color_range(&self) -> ColorRange {
+        self.color_range
+    }
+
+    /// Reset ping-pong state; caller must call this after seeking.
+    pub fn flush(&mut self) {
+        self.frame_num = 0;
+        self.has_prev = false;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,6 +530,33 @@ mod tests {
                 assert_eq!(dst[r * 32 + c], 0);
             }
         }
+    }
+
+    #[test]
+    fn new_decoder_allocates_planes_correctly() {
+        let mut h = crate::assets::bink_file::BinkHeader {
+            version: BinkVersion::BikI,
+            file_size: 1000,
+            num_frames: 1,
+            largest_frame: 100,
+            width: 320,
+            height: 240,
+            fps_num: 30,
+            fps_den: 1,
+            video_flags: 0,
+            num_audio_tracks: 0,
+            audio_tracks: vec![],
+            frame_index_offset: 0,
+        };
+        let d = BinkDecoder::new(&h).unwrap();
+        assert_eq!(d.width, 320);
+        assert_eq!(d.height, 240);
+        assert_eq!(d.color_range, ColorRange::Mpeg);
+        assert!(d.cur.y.len() >= 320 * 240);
+        assert!(d.cur.u.len() >= 160 * 120);
+        h.version = BinkVersion::BikK;
+        let dk = BinkDecoder::new(&h).unwrap();
+        assert_eq!(dk.color_range, ColorRange::Jpeg);
     }
 
     #[test]
