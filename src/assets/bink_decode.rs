@@ -158,6 +158,23 @@ pub(crate) fn bink_idct_add(dst: &mut [u8], stride: usize, block: &mut [i32; 64]
     let _ = block;
 }
 
+/// Pixel-double an 8x8 ublock into a 16x16 region at `dst` with `stride`.
+/// Each source pixel becomes a 2x2 square. Port of `scale_block_c` in binkdsp.c.
+pub(crate) fn scale_block_8x8_to_16x16(src: &[u8; 64], dst: &mut [u8], stride: usize) {
+    for sy in 0..8 {
+        let row0 = sy * 2;
+        let row1 = sy * 2 + 1;
+        for sx in 0..8 {
+            let v = src[sy * 8 + sx];
+            let dx = sx * 2;
+            dst[row0 * stride + dx] = v;
+            dst[row0 * stride + dx + 1] = v;
+            dst[row1 * stride + dx] = v;
+            dst[row1 * stride + dx + 1] = v;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,5 +212,24 @@ mod tests {
         for &p in &dst {
             assert!(p == 255);
         }
+    }
+
+    #[test]
+    fn scale_block_doubles_each_pixel() {
+        let mut src = [0u8; 64];
+        for i in 0..64 {
+            src[i] = i as u8;
+        }
+        let mut dst = [0u8; 16 * 16];
+        scale_block_8x8_to_16x16(&src, &mut dst, 16);
+
+        assert_eq!(dst[0 * 16 + 0], 0);
+        assert_eq!(dst[0 * 16 + 1], 0);
+        assert_eq!(dst[1 * 16 + 0], 0);
+        assert_eq!(dst[1 * 16 + 1], 0);
+
+        // src[3,4] = src[3*8+4] = 28. Doubled into dst rows 6..8 cols 8..10.
+        assert_eq!(dst[6 * 16 + 8], 28);
+        assert_eq!(dst[7 * 16 + 9], 28);
     }
 }
