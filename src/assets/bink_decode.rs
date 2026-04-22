@@ -253,6 +253,38 @@ mod tests {
     }
 
     #[test]
+    fn idct_all_zeros_produces_all_zeros() {
+        let block = [0i32; 64];
+        let mut dst = [0u8; 64];
+        bink_idct_put(&mut dst, 8, &block);
+        for &p in &dst {
+            assert_eq!(p, 0);
+        }
+    }
+
+    #[test]
+    fn idct_symmetric_input_produces_smooth_output() {
+        // DC + a few AC coefficients. Output should vary smoothly, not jump.
+        let mut block = [0i32; 64];
+        block[0] = 1024;
+        block[1] = 256;
+        block[2] = 128;
+        let mut dst = [0u8; 64];
+        bink_idct_put(&mut dst, 8, &block);
+        for r in 0..8 {
+            for c in 0..7 {
+                let diff = (dst[r * 8 + c] as i32 - dst[r * 8 + c + 1] as i32).abs();
+                assert!(
+                    diff < 128,
+                    "IDCT output has huge jump at row {} col {}",
+                    r,
+                    c
+                );
+            }
+        }
+    }
+
+    #[test]
     fn idct_clips_to_u8_range() {
         let mut block = [0i32; 64];
         block[0] = 1_000_000;
