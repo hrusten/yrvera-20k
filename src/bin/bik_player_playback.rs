@@ -105,23 +105,12 @@ impl Playback {
         }
 
         self.tick_counter = self.tick_counter.wrapping_add(1);
-        if self.tick_counter % DRIFT_CHECK_INTERVAL == 0 {
-            if let Some(sink) = audio_sink {
-                let audio_secs = sink.position().as_secs_f64();
-                let video_secs = (*current_frame as f64) / fps;
-                let drift = audio_secs - video_secs;
-                if drift > frame_dt && *current_frame + 1 < file.frame_index.len() {
-                    // Audio is ahead — skip one video frame.
-                    if let Ok(pkt) = file.video_packet(*current_frame) {
-                        let _ = decoder.decode_frame(pkt);
-                        *current_frame += 1;
-                    }
-                } else if drift < -frame_dt {
-                    // Video is ahead — stall by absorbing one frame's accumulator.
-                    self.accumulator_secs -= frame_dt;
-                }
-            }
-        }
+        // Drift correction disabled: rodio's get_pos() includes silence consumed
+        // between sink creation and first audio push, so using it as the audio
+        // clock produces a stale comparison against video time. Video is driven
+        // by the UI clock at file.fps; audio packets are pushed per frame, so
+        // total_audio_duration == total_video_duration over the file.
+        let _ = (audio_sink, fps, frame_dt);
     }
 }
 
