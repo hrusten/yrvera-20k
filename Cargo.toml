@@ -43,6 +43,8 @@ egui-wgpu = "0.33"
 egui-winit = { version = "0.33", default-features = false }
 # eframe is egui's standalone app framework — used by tool binaries (mix-browser GUI).
 eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+# Native file-open dialog — used by the bik-player binary.
+rfd = "0.14"
 
 # --- Math ---
 # glam provides fast vector/matrix math for rendering (screen coords, camera).
