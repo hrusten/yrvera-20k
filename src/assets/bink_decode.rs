@@ -951,6 +951,26 @@ impl BinkDecoder {
         Ok(quant_idx)
     }
 
+    /// Apply per-coefficient quantization to the DC/AC entries stored in
+    /// `block`. Matches the 32-bit wrapping behavior of FFmpeg's plain
+    /// multiply before the `>> 11` shift.
+    /// Port of `unquantize_dct_coeffs` at libavcodec/bink.c:737-747.
+    fn unquantize_dct_coeffs(
+        &self,
+        block: &mut [i32; 64],
+        quant: &[i32; 64],
+        coef_count: i32,
+        coef_idx: &[i32; 64],
+        scan: &[u8; 64],
+    ) {
+        block[0] = block[0].wrapping_mul(quant[0]) >> 11;
+        for i in 0..coef_count as usize {
+            let idx = coef_idx[i] as usize;
+            let pos = scan[idx] as usize;
+            block[pos] = block[pos].wrapping_mul(quant[idx]) >> 11;
+        }
+    }
+
     /// Pull one value from a bundle's buffer, advancing `cur_ptr`.
     ///   - BLOCK_TYPES / SUB_BLOCK_TYPES / COLORS / PATTERN / RUN: u8.
     ///   - X_OFF / Y_OFF: i8 (motion offsets).
