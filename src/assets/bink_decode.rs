@@ -448,6 +448,112 @@ fn log2_floor(x: u32) -> u32 {
     31 - x.leading_zeros()
 }
 
+/// Interleave two adjacent halves (size + size) based on bits read. Port of
+/// `merge` at libavcodec/bink.c:220-239. Writes `2*size` bytes to `dst`,
+/// consuming up to `2*size` bits from `r`.
+fn merge_lists(
+    r: &mut BitReader<'_>,
+    dst: &mut [u8],
+    src: &[u8],
+    size: usize,
+) -> Result<(), AssetError> {
+    let mut src1 = 0usize;
+    let mut src2 = size;
+    let mut size1 = size;
+    let mut size2 = size;
+    let mut d = 0usize;
+
+    while size1 > 0 && size2 > 0 {
+        if !r.read_bit()? {
+            dst[d] = src[src1];
+            src1 += 1;
+            size1 -= 1;
+        } else {
+            dst[d] = src[src2];
+            src2 += 1;
+            size2 -= 1;
+        }
+        d += 1;
+    }
+    while size1 > 0 {
+        dst[d] = src[src1];
+        src1 += 1;
+        size1 -= 1;
+        d += 1;
+    }
+    while size2 > 0 {
+        dst[d] = src[src2];
+        src2 += 1;
+        size2 -= 1;
+        d += 1;
+    }
+    Ok(())
+}
+
+impl HuffmanTree {
+    /// Read a Huffman-tree descriptor from the bitstream.
+    /// Port of `read_tree` at libavcodec/bink.c:247-283.
+    fn read(r: &mut BitReader<'_>) -> Result<Self, AssetError> {
+        if r.bits_left() < 4 {
+            return Err(AssetError::BinkError {
+                reason: "tree descriptor EOF".to_string(),
+            });
+        }
+        let vlc_num = r.read_bits(4)?;
+        if vlc_num == 0 {
+            let mut syms = [0u8; 16];
+            for i in 0..16 {
+                syms[i] = i as u8;
+            }
+            return Ok(Self { vlc_num, syms });
+        }
+
+        if r.read_bit()? {
+            let mut len = r.read_bits(3)? as usize;
+            let mut seen = [false; 16];
+            let mut syms = [0u8; 16];
+            for i in 0..=len {
+                let s = r.read_bits(4)? as u8;
+                syms[i] = s;
+                seen[s as usize] = true;
+            }
+            let mut i = 0usize;
+            while i < 16 && len < 15 {
+                if !seen[i] {
+                    len += 1;
+                    syms[len] = i as u8;
+                }
+                i += 1;
+            }
+            Ok(Self { vlc_num, syms })
+        } else {
+            let len = r.read_bits(2)? as usize;
+            let mut tmp1 = [0u8; 16];
+            let mut tmp2 = [0u8; 16];
+            let (mut in_arr, mut out_arr) = (&mut tmp1, &mut tmp2);
+            for i in 0..16 {
+                in_arr[i] = i as u8;
+            }
+            for i in 0..=len {
+                let size = 1usize << i;
+                let mut t = 0usize;
+                while t < 16 {
+                    let mut src_window = [0u8; 16];
+                    src_window[..2 * size].copy_from_slice(&in_arr[t..t + 2 * size]);
+                    let mut dst_window = [0u8; 16];
+                    merge_lists(r, &mut dst_window[..2 * size], &src_window[..2 * size], size)?;
+                    out_arr[t..t + 2 * size].copy_from_slice(&dst_window[..2 * size]);
+                    t += size << 1;
+                }
+                std::mem::swap(&mut in_arr, &mut out_arr);
+            }
+            let mut syms = [0u8; 16];
+            syms.copy_from_slice(in_arr);
+            Ok(Self { vlc_num, syms })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -616,6 +722,17 @@ mod tests {
         d.init_bundle_lengths(320, bw);
         assert_eq!(d.bundles[Src::BlockTypes as usize].len_bits, 10);
         assert_eq!(d.bundles[Src::SubBlockTypes as usize].len_bits, 10);
+    }
+
+    #[test]
+    fn huffman_tree_vlc_num_zero_gives_identity() {
+        let data = [0x00u8; 4];
+        let mut r = crate::assets::bink_bits::BitReader::from_bytes(&data);
+        let t = HuffmanTree::read(&mut r).unwrap();
+        assert_eq!(t.vlc_num, 0);
+        for i in 0..16 {
+            assert_eq!(t.syms[i], i as u8);
+        }
     }
 
     #[test]
