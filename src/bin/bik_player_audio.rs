@@ -85,6 +85,45 @@ impl SpscRing {
     pub fn capacity(&self) -> usize { self.capacity }
 }
 
+use std::num::NonZero;
+use std::time::Duration;
+
+use rodio::Source;
+
+/// rodio Source pulling samples from an `SpscRing`. Returns 0.0 (silence)
+/// when the buffer is empty so the audio thread never stalls.
+pub(crate) struct BinkAudioSource {
+    ring: Arc<SpscRing>,
+    sample_rate: NonZero<u32>,
+    channels: NonZero<u16>,
+}
+
+impl BinkAudioSource {
+    pub fn new(ring: Arc<SpscRing>, sample_rate: u32, channels: u16) -> Option<Self> {
+        Some(Self {
+            ring,
+            sample_rate: NonZero::new(sample_rate)?,
+            channels: NonZero::new(channels)?,
+        })
+    }
+}
+
+impl Iterator for BinkAudioSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        // Always Some — silence-fill on underrun. The Source must never end
+        // unless we want rodio to drop the player.
+        Some(self.ring.pop().unwrap_or(0.0))
+    }
+}
+
+impl Source for BinkAudioSource {
+    fn current_span_len(&self) -> Option<usize> { None }
+    fn channels(&self) -> NonZero<u16> { self.channels }
+    fn sample_rate(&self) -> NonZero<u32> { self.sample_rate }
+    fn total_duration(&self) -> Option<Duration> { None } // streaming — unbounded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
