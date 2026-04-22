@@ -22,6 +22,7 @@
 pub mod asset_manager;
 pub mod aud_file;
 pub mod audio_bag;
+pub mod bink_audio;
 pub mod bink_audio_data;
 pub mod bink_bits;
 pub mod bink_data;
