@@ -12,4 +12,188 @@
 //! ## Dependency rules
 //! - Part of assets/ — no dependencies on game modules.
 
-// (empty — implementation in Tasks 11-32)
+// IDCT constants from FFmpeg's binkdsp.c.
+const IDCT_A1: i32 = 2896;
+const IDCT_A2: i32 = 2217;
+const IDCT_A3: i32 = 3784;
+const IDCT_A4: i32 = -5352;
+
+#[inline]
+fn idct_mul(x: i32, y: i32) -> i32 {
+    // Use wrapping multiply to match FFmpeg's unsigned-cast intermediate.
+    x.wrapping_mul(y) >> 11
+}
+
+/// Core 8-point IDCT used by both column and row passes.
+#[inline]
+fn idct8(
+    src: &[i32],
+    dst: &mut [i32],
+    s_idx: [usize; 8],
+    d_idx: [usize; 8],
+    munge: impl Fn(i32) -> i32,
+) {
+    let a0 = src[s_idx[0]] + src[s_idx[4]];
+    let a1 = src[s_idx[0]] - src[s_idx[4]];
+    let a2 = src[s_idx[2]] + src[s_idx[6]];
+    let a3 = idct_mul(IDCT_A1, src[s_idx[2]] - src[s_idx[6]]);
+    let a4 = src[s_idx[5]] + src[s_idx[3]];
+    let a5 = src[s_idx[5]] - src[s_idx[3]];
+    let a6 = src[s_idx[1]] + src[s_idx[7]];
+    let a7 = src[s_idx[1]] - src[s_idx[7]];
+
+    let b0 = a4 + a6;
+    let b1 = idct_mul(IDCT_A3, a5 + a7);
+    let b2 = idct_mul(IDCT_A4, a5) - b0 + b1;
+    let b3 = idct_mul(IDCT_A1, a6 - a4) - b2;
+    let b4 = idct_mul(IDCT_A2, a7) + b3 - b1;
+
+    dst[d_idx[0]] = munge(a0 + a2 + b0);
+    dst[d_idx[1]] = munge(a1 + a3 - a2 + b2);
+    dst[d_idx[2]] = munge(a1 - a3 + a2 + b3);
+    dst[d_idx[3]] = munge(a0 - a2 - b4);
+    dst[d_idx[4]] = munge(a0 - a2 + b4);
+    dst[d_idx[5]] = munge(a1 - a3 + a2 - b3);
+    dst[d_idx[6]] = munge(a1 + a3 - a2 - b2);
+    dst[d_idx[7]] = munge(a0 + a2 - b0);
+}
+
+/// Column IDCT: 8-point transform on each column of a 64-entry block.
+fn idct_col(scratch: &mut [i32; 64], src: &[i32; 64], col: usize) {
+    let s_idx = [
+        col,
+        col + 8,
+        col + 16,
+        col + 24,
+        col + 32,
+        col + 40,
+        col + 48,
+        col + 56,
+    ];
+    // Fast path: if all non-DC entries in this column are zero, broadcast DC.
+    if src[s_idx[1]]
+        | src[s_idx[2]]
+        | src[s_idx[3]]
+        | src[s_idx[4]]
+        | src[s_idx[5]]
+        | src[s_idx[6]]
+        | src[s_idx[7]]
+        == 0
+    {
+        let v = src[s_idx[0]];
+        for &i in &s_idx {
+            scratch[i] = v;
+        }
+        return;
+    }
+    idct8(src, scratch, s_idx, s_idx, |x| x);
+}
+
+#[inline]
+fn idct_row_munge(v: i32) -> i32 {
+    (v + 0x7F) >> 8
+}
+
+fn idct_row_to_u8(scratch: &[i32; 64], dst: &mut [u8], row: usize, stride: usize) {
+    let s_idx = [
+        row * 8,
+        row * 8 + 1,
+        row * 8 + 2,
+        row * 8 + 3,
+        row * 8 + 4,
+        row * 8 + 5,
+        row * 8 + 6,
+        row * 8 + 7,
+    ];
+    let mut tmp = [0i32; 8];
+    let d_idx = [0, 1, 2, 3, 4, 5, 6, 7];
+    idct8(scratch, &mut tmp, s_idx, d_idx, idct_row_munge);
+    let base = row * stride;
+    for k in 0..8 {
+        dst[base + k] = tmp[k].clamp(0, 255) as u8;
+    }
+}
+
+fn idct_row_add_u8(scratch: &[i32; 64], dst: &mut [u8], row: usize, stride: usize) {
+    let s_idx = [
+        row * 8,
+        row * 8 + 1,
+        row * 8 + 2,
+        row * 8 + 3,
+        row * 8 + 4,
+        row * 8 + 5,
+        row * 8 + 6,
+        row * 8 + 7,
+    ];
+    let mut tmp = [0i32; 8];
+    let d_idx = [0, 1, 2, 3, 4, 5, 6, 7];
+    idct8(scratch, &mut tmp, s_idx, d_idx, idct_row_munge);
+    let base = row * stride;
+    for k in 0..8 {
+        let v = dst[base + k] as i32 + tmp[k];
+        dst[base + k] = v.clamp(0, 255) as u8;
+    }
+}
+
+/// Full 2D IDCT: column-first then row-first. Writes 8x8 result into `dst`.
+pub(crate) fn bink_idct_put(dst: &mut [u8], stride: usize, block: &[i32; 64]) {
+    let mut scratch = [0i32; 64];
+    for col in 0..8 {
+        idct_col(&mut scratch, block, col);
+    }
+    for row in 0..8 {
+        idct_row_to_u8(&scratch, dst, row, stride);
+    }
+}
+
+/// Full 2D IDCT and add to existing pixels.
+pub(crate) fn bink_idct_add(dst: &mut [u8], stride: usize, block: &mut [i32; 64]) {
+    let mut scratch = [0i32; 64];
+    for col in 0..8 {
+        idct_col(&mut scratch, block, col);
+    }
+    for row in 0..8 {
+        idct_row_add_u8(&scratch, dst, row, stride);
+    }
+    let _ = block;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn idct_of_dc_only_produces_flat_block() {
+        let mut block = [0i32; 64];
+        block[0] = 2048;
+        let mut dst = [0u8; 64];
+        bink_idct_put(&mut dst, 8, &block);
+        let v = dst[0];
+        for &p in &dst {
+            assert_eq!(p, v, "IDCT of DC-only block should be flat");
+        }
+    }
+
+    #[test]
+    fn idct_add_accumulates() {
+        let mut dst = [100u8; 64];
+        let mut block = [0i32; 64];
+        block[0] = 2048;
+        bink_idct_add(&mut dst, 8, &mut block);
+        let v = dst[0];
+        for &p in &dst {
+            assert_eq!(p, v);
+        }
+    }
+
+    #[test]
+    fn idct_clips_to_u8_range() {
+        let mut block = [0i32; 64];
+        block[0] = 1_000_000;
+        let mut dst = [0u8; 64];
+        bink_idct_put(&mut dst, 8, &block);
+        for &p in &dst {
+            assert!(p == 255);
+        }
+    }
+}
