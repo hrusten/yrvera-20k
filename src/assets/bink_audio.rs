@@ -89,6 +89,85 @@ impl Fft {
     }
 }
 
+/// Inverse real-output DFT.
+///
+/// Input layout (length `frame_len + 2`, matching FFmpeg's `AV_TX_FLOAT_RDFT`):
+/// - `input[0]` = DC bin (real).
+/// - `input[1]` = 0 (placeholder; Nyquist is at the end).
+/// - `input[2k], input[2k+1]` for k in 1..N/2 = (real, imag) of bin k.
+/// - `input[frame_len]` = Nyquist bin (real).
+/// - `input[frame_len+1]` = 0.
+///
+/// Note: caller must have already negated `input[2k+1]` halves to flip the
+/// sign convention (see binkaudio.c:255-261); this function expects the
+/// post-shuffle layout. `fft` must be an FFT instance sized `n / 2` (not `n`).
+///
+/// Output: `frame_len` real samples in `output[0..frame_len]`.
+fn inverse_rdft(input: &[f32], output: &mut [f32], fft: &Fft) {
+    let half = fft.n;
+    let n = half * 2;
+    assert_eq!(input.len(), n + 2);
+    assert_eq!(output.len(), n);
+
+    // Build the half-size complex spectrum from the real-input layout.
+    // Split an N-point real IDFT into an (N/2)-point complex IDFT:
+    //   x[2m]   = Re(y[m]), x[2m+1] = Im(y[m])
+    // where y[m] = IDFT_{N/2}(G[k] + j * W[k] * H[k]), with
+    //   G[k] = X[k] + conj(X[N/2-k])
+    //   H[k] = X[k] - conj(X[N/2-k])
+    //   W[k] = exp(2πi k / N)
+    // This gives an un-normalized result (no 1/N).
+    let mut buf = vec![Complex32::default(); half];
+
+    let dc = input[0];
+    let nyq = input[n];
+    // Bin 0: G = X[0] + X[N/2] (both real); H = X[0] - X[N/2]; W = 1, so j*W*H = j*(dc-nyq).
+    buf[0] = Complex32::new(dc + nyq, dc - nyq);
+
+    for m in 1..half {
+        let xr = input[2 * m];
+        let xi = input[2 * m + 1];
+        let yr = input[2 * (half - m)];
+        let yi = input[2 * (half - m) + 1];
+        // Pre-twiddle: W[m] = exp(2πi m / N) = exp(j * π * m / (N/2)).
+        let theta = std::f32::consts::PI * (m as f32) / (half as f32);
+        let wr = theta.cos();
+        let wi = theta.sin();
+
+        // G[m] = X[m] + conj(X[N/2-m]) = (xr + yr) + j*(xi - yi)
+        let gr = xr + yr;
+        let gi = xi - yi;
+        // H[m] = X[m] - conj(X[N/2-m]) = (xr - yr) + j*(xi + yi)
+        let hr = xr - yr;
+        let hi = xi + yi;
+        // j*W*H = j*(wr + j*wi)*(hr + j*hi)
+        //       = -(wr*hi + wi*hr) + j*(wr*hr - wi*hi)
+        let jwhr = -(wr * hi + wi * hr);
+        let jwhi = wr * hr - wi * hi;
+
+        buf[m] = Complex32::new(gr + jwhr, gi + jwhi);
+    }
+
+    // Un-normalized inverse complex FFT of size half (conjugate-forward-conjugate).
+    // We deliberately omit the 1/half scaling: FFmpeg's AV_TX_FLOAT_RDFT produces
+    // un-normalized output too, and the decoder's `root` factor absorbs the
+    // per-sample normalization. The remaining overall 0.5 scaling vs. FFmpeg's
+    // scale=0.5 convention is applied in the dispatch.
+    for c in buf.iter_mut() {
+        c.im = -c.im;
+    }
+    fft.forward_inplace(&mut buf);
+    for c in buf.iter_mut() {
+        c.im = -c.im;
+    }
+
+    // Unpack: output[2m] = re, output[2m+1] = im.
+    for m in 0..half {
+        output[2 * m] = buf[m].re;
+        output[2 * m + 1] = buf[m].im;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,4 +211,27 @@ mod tests {
     fn fft_round_trip_1024() { assert_round_trip(1024); }
     #[test]
     fn fft_round_trip_2048() { assert_round_trip(2048); }
+
+    /// A pure-tone spectrum (single non-zero bin) inverse-transforms to
+    /// a sinusoid whose peak amplitude matches our expected scaling.
+    #[test]
+    fn rdft_pure_tone_round_trip() {
+        let n = 512;
+        let half_fft = Fft::new(n / 2);
+        // Build spectrum: real sinusoid of bin index 5 amplitude 1.
+        // Hermitian: X[5] = (0, -0.5), X[N-5] = (0, 0.5), all else 0.
+        // Bink-storage layout has imag halves negated, so input[2*5+1] = +0.5.
+        let mut input = vec![0.0f32; n + 2];
+        input[2 * 5] = 0.0;
+        input[2 * 5 + 1] = 0.5; // post-negate
+        let mut output = vec![0.0f32; n];
+        inverse_rdft(&input, &mut output, &half_fft);
+
+        // The output should be approximately sin(2π * 5 * t / N).
+        // We just check the peak amplitude is in a sane range.
+        let max = output.iter().cloned().fold(0.0f32, f32::max);
+        let min = output.iter().cloned().fold(0.0f32, f32::min);
+        assert!(max > 0.5 && max < 1.5, "max amplitude out of range: {}", max);
+        assert!(min < -0.5 && min > -1.5, "min amplitude out of range: {}", min);
+    }
 }
