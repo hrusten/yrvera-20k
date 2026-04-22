@@ -115,6 +115,7 @@ impl BikPlayerApp {
 impl eframe::App for BikPlayerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         bik_player_ui::draw_top_panel(self, ctx);
+        bik_player_ui::draw_timeline(self, ctx);
 
         if let (Some(file), Some(decoder)) = (self.file.as_ref(), self.decoder.as_mut()) {
             self.playback.step(
