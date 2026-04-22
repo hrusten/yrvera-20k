@@ -521,6 +521,40 @@ mod tests {
         assert!(!hdr.is_gray());
     }
 
+    #[test]
+    fn rejects_truncated_header() {
+        let h = make_biki_header();
+        for cutoff in 0..0x2C {
+            assert!(
+                parse_fixed_header(&h[..cutoff]).is_err(),
+                "should fail at cutoff {}",
+                cutoff,
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_zero_frames() {
+        let mut h = make_biki_header();
+        h[0x08..0x0C].copy_from_slice(&0u32.to_le_bytes());
+        assert!(parse_fixed_header(&h).is_err());
+    }
+
+    #[test]
+    fn rejects_more_than_1m_frames() {
+        let mut h = make_biki_header();
+        h[0x08..0x0C].copy_from_slice(&2_000_000u32.to_le_bytes());
+        assert!(parse_fixed_header(&h).is_err());
+    }
+
+    #[test]
+    fn bikk_header_without_extra_4_bytes_fails() {
+        let mut h = make_biki_header();
+        h[3] = b'k';
+        // No extra 4 bytes appended.
+        assert!(parse_fixed_header(&h).is_err());
+    }
+
     pub(super) fn make_header_with_1_track() -> Vec<u8> {
         let mut h = make_biki_header();
         h[0x28..0x2C].copy_from_slice(&1u32.to_le_bytes()); // num_audio_tracks = 1
