@@ -951,6 +951,126 @@ impl BinkDecoder {
         Ok(quant_idx)
     }
 
+    /// Decode bit-plane residue coefficients into `block`. Iterates masks
+    /// from MSB to LSB; for each mask, adds the current mask to every
+    /// previously-established non-zero coefficient that elects to update,
+    /// then runs the same hierarchical scan state machine as
+    /// `read_dct_coeffs` to introduce new non-zero positions. `masks_count`
+    /// is the bit-budget from the 7-bit RESIDUE header — decode stops early
+    /// when exhausted.
+    /// Port of `read_residue` at libavcodec/bink.c:757-837.
+    fn read_residue(
+        &self,
+        r: &mut BitReader<'_>,
+        block: &mut [i16; 64],
+        mut masks_count: i32,
+    ) -> Result<(), AssetError> {
+        let mut coef_list = [0i32; 128];
+        let mut mode_list = [0i32; 128];
+        let mut list_start: usize = 64;
+        let mut list_end: usize = 64;
+        let mut nz_coeff = [0i32; 64];
+        let mut nz_coeff_count: usize = 0;
+
+        coef_list[list_end] = 4;
+        mode_list[list_end] = 0;
+        list_end += 1;
+        coef_list[list_end] = 24;
+        mode_list[list_end] = 0;
+        list_end += 1;
+        coef_list[list_end] = 44;
+        mode_list[list_end] = 0;
+        list_end += 1;
+        coef_list[list_end] = 0;
+        mode_list[list_end] = 2;
+        list_end += 1;
+
+        let start_bits = r.read_bits(3)? as i32;
+        let mut mask: i32 = 1 << start_bits;
+        while mask != 0 {
+            for i in 0..nz_coeff_count {
+                if !r.read_bit()? {
+                    continue;
+                }
+                let p = nz_coeff[i] as usize;
+                if block[p] < 0 {
+                    block[p] = block[p].wrapping_sub(mask as i16);
+                } else {
+                    block[p] = block[p].wrapping_add(mask as i16);
+                }
+                masks_count -= 1;
+                if masks_count < 0 {
+                    return Ok(());
+                }
+            }
+            let mut list_pos = list_start;
+            while list_pos < list_end {
+                if (coef_list[list_pos] | mode_list[list_pos]) == 0 || !r.read_bit()? {
+                    list_pos += 1;
+                    continue;
+                }
+                let mut ccoef = coef_list[list_pos];
+                let mode = mode_list[list_pos];
+                match mode {
+                    0 | 2 => {
+                        if mode == 0 {
+                            coef_list[list_pos] = ccoef + 4;
+                            mode_list[list_pos] = 1;
+                        } else {
+                            coef_list[list_pos] = 0;
+                            mode_list[list_pos] = 0;
+                            list_pos += 1;
+                        }
+                        for _ in 0..4 {
+                            if r.read_bit()? {
+                                list_start -= 1;
+                                coef_list[list_start] = ccoef;
+                                mode_list[list_start] = 3;
+                            } else {
+                                let scan_pos = BINK_SCAN[ccoef as usize] as usize;
+                                nz_coeff[nz_coeff_count] = scan_pos as i32;
+                                nz_coeff_count += 1;
+                                let sign = if r.read_bit()? { -1i32 } else { 0i32 };
+                                block[scan_pos] = ((mask ^ sign) - sign) as i16;
+                                masks_count -= 1;
+                                if masks_count < 0 {
+                                    return Ok(());
+                                }
+                            }
+                            ccoef += 1;
+                        }
+                    }
+                    1 => {
+                        mode_list[list_pos] = 2;
+                        for _ in 0..3 {
+                            ccoef += 4;
+                            coef_list[list_end] = ccoef;
+                            mode_list[list_end] = 2;
+                            list_end += 1;
+                        }
+                    }
+                    3 => {
+                        let scan_pos = BINK_SCAN[ccoef as usize] as usize;
+                        nz_coeff[nz_coeff_count] = scan_pos as i32;
+                        nz_coeff_count += 1;
+                        let sign = if r.read_bit()? { -1i32 } else { 0i32 };
+                        block[scan_pos] = ((mask ^ sign) - sign) as i16;
+                        coef_list[list_pos] = 0;
+                        mode_list[list_pos] = 0;
+                        list_pos += 1;
+                        masks_count -= 1;
+                        if masks_count < 0 {
+                            return Ok(());
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            mask >>= 1;
+        }
+        Ok(())
+    }
+
     /// Apply per-coefficient quantization to the DC/AC entries stored in
     /// `block`. Matches the 32-bit wrapping behavior of FFmpeg's plain
     /// multiply before the `>> 11` shift.
