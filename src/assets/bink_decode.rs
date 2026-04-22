@@ -410,6 +410,42 @@ impl BinkDecoder {
         self.frame_num = 0;
         self.has_prev = false;
     }
+
+    /// Compute bundle `len_bits` from plane width and block-width.
+    /// Port of `init_lengths` at libavcodec/bink.c:155-173.
+    fn init_bundle_lengths(&mut self, width: u32, bw: u32) {
+        let width = (width + 7) & !7;
+        let log2_bw_plus_511 = log2_floor((width >> 3) + 511) + 1;
+        let log2_bw16_plus_511 = log2_floor((width >> 4) + 511) + 1;
+        let log2_bw_cols_plus_511 = log2_floor(bw * 64 + 511) + 1;
+        let log2_pattern_plus_511 = log2_floor((bw << 3) + 511) + 1;
+        let log2_run_plus_511 = log2_floor(bw * 48 + 511) + 1;
+
+        self.bundles[Src::BlockTypes as usize].len_bits = log2_bw_plus_511;
+        self.bundles[Src::SubBlockTypes as usize].len_bits = log2_bw16_plus_511;
+        self.bundles[Src::Colors as usize].len_bits = log2_bw_cols_plus_511;
+        self.bundles[Src::IntraDc as usize].len_bits = log2_bw_plus_511;
+        self.bundles[Src::InterDc as usize].len_bits = log2_bw_plus_511;
+        self.bundles[Src::XOff as usize].len_bits = log2_bw_plus_511;
+        self.bundles[Src::YOff as usize].len_bits = log2_bw_plus_511;
+        self.bundles[Src::Pattern as usize].len_bits = log2_pattern_plus_511;
+        self.bundles[Src::Run as usize].len_bits = log2_run_plus_511;
+    }
+
+    /// Reset all bundle cursors to the start of their allocated region.
+    #[allow(dead_code)]
+    fn reset_bundle_cursors(&mut self) {
+        for b in &mut self.bundles {
+            b.cur_dec = b.buf_start;
+            b.cur_ptr = b.buf_start;
+        }
+    }
+}
+
+#[inline]
+fn log2_floor(x: u32) -> u32 {
+    debug_assert!(x > 0);
+    31 - x.leading_zeros()
 }
 
 #[cfg(test)]
@@ -557,6 +593,29 @@ mod tests {
         h.version = BinkVersion::BikK;
         let dk = BinkDecoder::new(&h).unwrap();
         assert_eq!(dk.color_range, ColorRange::Jpeg);
+    }
+
+    #[test]
+    fn init_bundle_lengths_matches_ffmpeg_formula() {
+        let h = crate::assets::bink_file::BinkHeader {
+            version: BinkVersion::BikI,
+            file_size: 1000,
+            num_frames: 1,
+            largest_frame: 100,
+            width: 320,
+            height: 240,
+            fps_num: 30,
+            fps_den: 1,
+            video_flags: 0,
+            num_audio_tracks: 0,
+            audio_tracks: vec![],
+            frame_index_offset: 0,
+        };
+        let mut d = BinkDecoder::new(&h).unwrap();
+        let bw = (320u32 + 7) >> 3;
+        d.init_bundle_lengths(320, bw);
+        assert_eq!(d.bundles[Src::BlockTypes as usize].len_bits, 10);
+        assert_eq!(d.bundles[Src::SubBlockTypes as usize].len_bits, 10);
     }
 
     #[test]
