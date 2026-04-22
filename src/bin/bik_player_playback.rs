@@ -1,6 +1,7 @@
 //! Playback state machine, frame pacing, YUV->RGBA conversion.
 // Implementation in Tasks 35, 36, 38.
 
+use crate::BikPlayerApp;
 use std::time::Instant;
 use vera20k::assets::bink_decode::{BinkDecoder, BinkFrame, ColorRange};
 use vera20k::assets::bink_file::BinkFile;
@@ -69,6 +70,35 @@ impl Playback {
             }
         }
     }
+}
+
+/// Seek the decoder to `target`: flush state, re-decode from the nearest
+/// preceding keyframe up to and including `target`.
+pub fn seek_to_frame(app: &mut BikPlayerApp, target: usize) -> Result<(), String> {
+    let Some(file) = app.file.as_ref() else {
+        return Err("no file".to_string());
+    };
+    let Some(decoder) = app.decoder.as_mut() else {
+        return Err("no decoder".to_string());
+    };
+    let n = file.frame_index.len();
+    if target >= n {
+        return Err(format!("target {} >= {}", target, n));
+    }
+
+    // Walk backwards to find the nearest keyframe at or before `target`.
+    let mut kf = target;
+    while kf > 0 && !file.frame_index[kf].is_keyframe {
+        kf -= 1;
+    }
+
+    decoder.flush();
+    for i in kf..=target {
+        let pkt = file.video_packet(i).map_err(|e| e.to_string())?;
+        decoder.decode_frame(pkt).map_err(|e| e.to_string())?;
+    }
+    app.current_frame = target + 1; // next frame to play
+    Ok(())
 }
 
 /// Convert a YUV420P frame to interleaved RGBA bytes (width*height*4 bytes).

@@ -34,10 +34,12 @@ pub fn draw_top_panel(app: &mut BikPlayerApp, ctx: &egui::Context) {
 
 pub fn draw_timeline(app: &mut BikPlayerApp, ctx: &egui::Context) {
     egui::TopBottomPanel::bottom("timeline").show(ctx, |ui| {
-        let Some(file) = &app.file else {
-            return;
+        // Read frame count + keyframe indices up front so we don't hold a
+        // borrow on `app.file` while seek_to_frame needs `&mut app`.
+        let n = match &app.file {
+            Some(f) => f.frame_index.len(),
+            None => return,
         };
-        let n = file.frame_index.len();
         if n == 0 {
             return;
         }
@@ -47,14 +49,17 @@ pub fn draw_timeline(app: &mut BikPlayerApp, ctx: &egui::Context) {
             egui::Slider::new(&mut idx, 0..=(n - 1)).text(format!("frame / {}", n)),
         );
         if slider_resp.changed() {
-            app.current_frame = idx;
-            // Seek: just re-decode from most recent keyframe up to idx.
-            // Implementation in Task 38.
+            if let Err(e) = crate::bik_player_playback::seek_to_frame(app, idx) {
+                app.status = format!("seek error: {}", e);
+            }
         }
 
         // Keyframe markers (simple overlay).
         let bar_rect = slider_resp.rect;
         let painter = ui.painter();
+        let Some(file) = &app.file else {
+            return;
+        };
         for (i, entry) in file.frame_index.iter().enumerate() {
             if !entry.is_keyframe {
                 continue;
