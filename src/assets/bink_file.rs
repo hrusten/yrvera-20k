@@ -15,6 +15,8 @@
 //! - Part of assets/ — no dependencies on game modules.
 //! - Uses util/read_helpers for binary reading.
 
+use std::sync::Arc;
+
 use crate::assets::error::AssetError;
 use crate::util::read_helpers::{read_u16_le, read_u32_le};
 
@@ -320,6 +322,129 @@ pub(crate) fn parse_frame_index(
     Ok(entries)
 }
 
+/// One audio packet within a frame. Borrows from the parent BinkFile.
+#[derive(Debug, Clone, Copy)]
+pub struct AudioPacket<'a> {
+    pub track_index: usize,
+    /// Decompressed sample count (first 4 bytes of the packet payload, little-endian).
+    /// 0 if the packet is shorter than 4 bytes.
+    pub sample_count: u32,
+    /// Audio packet payload bytes. The 4-byte decompressed-sample-count header
+    /// has already been stripped; use `sample_count` for that value.
+    pub bytes: &'a [u8],
+}
+
+/// Parsed Bink file owning its source bytes via `Arc` for cheap shareability.
+pub struct BinkFile {
+    pub header: BinkHeader,
+    pub frame_index: Vec<FrameIndexEntry>,
+    data: Arc<[u8]>,
+}
+
+impl BinkFile {
+    /// Parse a full `.bik` file from owned bytes.
+    pub fn parse(data: Arc<[u8]>) -> Result<Self, AssetError> {
+        let (mut header, next) = parse_fixed_header(&data)?;
+        let next = parse_audio_tracks(&data, &mut header, next)?;
+        header.frame_index_offset = next;
+        let frame_index = parse_frame_index(&data, &header, next)?;
+        Ok(Self {
+            header,
+            frame_index,
+            data,
+        })
+    }
+
+    /// Convenience: parse from a byte slice by copying into an `Arc`.
+    pub fn parse_from_slice(data: &[u8]) -> Result<Self, AssetError> {
+        Self::parse(Arc::<[u8]>::from(data))
+    }
+
+    /// Return the bitstream bytes for video frame `i` (audio already skipped).
+    pub fn video_packet(&self, i: usize) -> Result<&[u8], AssetError> {
+        let entry =
+            self.frame_index
+                .get(i)
+                .ok_or_else(|| AssetError::BinkFrameOutOfRange {
+                    index: i,
+                    count: self.frame_index.len(),
+                })?;
+
+        let start = entry.offset as usize;
+        let end = start + entry.size as usize;
+        if end > self.data.len() {
+            return Err(AssetError::BinkError {
+                reason: format!("frame {} packet extends past EOF", i),
+            });
+        }
+        let mut cur = start;
+
+        // Skip audio packets for each track.
+        for _ in 0..self.header.num_audio_tracks {
+            if cur + 4 > end {
+                return Err(AssetError::BinkError {
+                    reason: format!("frame {} audio header truncated", i),
+                });
+            }
+            let audio_size = read_u32_le(&self.data, cur) as usize;
+            cur += 4;
+            if audio_size > end - cur {
+                return Err(AssetError::BinkError {
+                    reason: format!("frame {} audio size {} overflows packet", i, audio_size),
+                });
+            }
+            cur += audio_size;
+        }
+
+        Ok(&self.data[cur..end])
+    }
+
+    /// Return all audio packets for frame `i`, one per track.
+    pub fn audio_packets(&self, i: usize) -> Result<Vec<AudioPacket<'_>>, AssetError> {
+        let entry =
+            self.frame_index
+                .get(i)
+                .ok_or_else(|| AssetError::BinkFrameOutOfRange {
+                    index: i,
+                    count: self.frame_index.len(),
+                })?;
+
+        let start = entry.offset as usize;
+        let end = start + entry.size as usize;
+        let mut cur = start;
+        let mut out = Vec::with_capacity(self.header.num_audio_tracks as usize);
+
+        for track_index in 0..self.header.num_audio_tracks as usize {
+            if cur + 4 > end {
+                return Err(AssetError::BinkError {
+                    reason: format!("frame {} audio header truncated", i),
+                });
+            }
+            let audio_size = read_u32_le(&self.data, cur) as usize;
+            let packet_start = cur + 4;
+            let packet_end = packet_start + audio_size;
+            if packet_end > end {
+                return Err(AssetError::BinkError {
+                    reason: format!("frame {} audio packet overflows", i),
+                });
+            }
+            let bytes = &self.data[packet_start..packet_end];
+            let sample_count = if bytes.len() >= 4 {
+                u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+            } else {
+                0
+            };
+            out.push(AudioPacket {
+                track_index,
+                sample_count,
+                bytes,
+            });
+            cur = packet_end;
+        }
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,5 +587,34 @@ mod tests {
         assert_eq!(index[2].offset, 0x200);
         assert_eq!(index[2].size, 0x200);
         assert!(!index[2].is_keyframe);
+    }
+
+    #[test]
+    fn video_packet_skips_audio_blocks() {
+        // 1 audio track, 1 frame. Frame packet: [u32 audio_size=8][8 audio bytes][video bytes].
+        let mut h = make_header_with_1_track();
+        let header_end = h.len();
+        let frame_offset = header_end + 4; // index table takes 4 bytes
+        let file_size = frame_offset + 16;
+        h[0x04..0x08].copy_from_slice(&((file_size - 8) as u32).to_le_bytes());
+        h[0x08..0x0C].copy_from_slice(&1u32.to_le_bytes()); // num_frames = 1
+        h[0x0C..0x10].copy_from_slice(&16u32.to_le_bytes()); // largest_frame = 16
+
+        // Frame index: offset=frame_offset (kf by default for i=0).
+        h.extend_from_slice(&(frame_offset as u32).to_le_bytes());
+
+        // Frame packet:
+        h.extend_from_slice(&8u32.to_le_bytes()); // audio_size = 8
+        h.extend_from_slice(&[1u8, 2, 3, 4, 5, 6, 7, 8]); // audio bytes
+        h.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // video bytes
+
+        let f = BinkFile::parse_from_slice(&h).unwrap();
+        let video = f.video_packet(0).unwrap();
+        assert_eq!(video, &[0xAA, 0xBB, 0xCC, 0xDD]);
+
+        let audios = f.audio_packets(0).unwrap();
+        assert_eq!(audios.len(), 1);
+        assert_eq!(audios[0].bytes, &[1u8, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(audios[0].sample_count, 0x04030201);
     }
 }
