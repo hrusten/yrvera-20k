@@ -832,6 +832,125 @@ impl BinkDecoder {
         Ok(())
     }
 
+    /// Decode a sparse DCT coefficient list into `block`. Returns the
+    /// 4-bit quant index. The dual-ended `coef_list`/`mode_list` stacks form
+    /// the hierarchical scan state machine.
+    /// Port of `read_dct_coeffs` at libavcodec/bink.c:641-735.
+    fn read_dct_coeffs(
+        &self,
+        r: &mut BitReader<'_>,
+        block: &mut [i32; 64],
+        scan: &[u8; 64],
+        coef_idx: &mut [i32; 64],
+        coef_count_out: &mut i32,
+    ) -> Result<u32, AssetError> {
+        let mut coef_list = [0i32; 128];
+        let mut mode_list = [0i32; 128];
+        let mut list_start: usize = 64;
+        let mut list_end: usize = 64;
+        let mut coef_count = 0i32;
+
+        if r.bits_left() < 4 {
+            return Err(AssetError::BinkError {
+                reason: "read_dct_coeffs EOF".to_string(),
+            });
+        }
+
+        coef_list[list_end] = 4;
+        mode_list[list_end] = 0;
+        list_end += 1;
+        coef_list[list_end] = 24;
+        mode_list[list_end] = 0;
+        list_end += 1;
+        coef_list[list_end] = 44;
+        mode_list[list_end] = 0;
+        list_end += 1;
+        coef_list[list_end] = 1;
+        mode_list[list_end] = 3;
+        list_end += 1;
+        coef_list[list_end] = 2;
+        mode_list[list_end] = 3;
+        list_end += 1;
+        coef_list[list_end] = 3;
+        mode_list[list_end] = 3;
+        list_end += 1;
+
+        let start_bits = r.read_bits(4)? as i32;
+        let mut bits = start_bits - 1;
+        while bits >= 0 {
+            let mut list_pos = list_start;
+            while list_pos < list_end {
+                if (mode_list[list_pos] | coef_list[list_pos]) == 0 || !r.read_bit()? {
+                    list_pos += 1;
+                    continue;
+                }
+                let mut ccoef = coef_list[list_pos];
+                let mode = mode_list[list_pos];
+                match mode {
+                    0 | 2 => {
+                        if mode == 0 {
+                            coef_list[list_pos] = ccoef + 4;
+                            mode_list[list_pos] = 1;
+                        } else {
+                            coef_list[list_pos] = 0;
+                            mode_list[list_pos] = 0;
+                            list_pos += 1;
+                        }
+                        for _ in 0..4 {
+                            if r.read_bit()? {
+                                list_start -= 1;
+                                coef_list[list_start] = ccoef;
+                                mode_list[list_start] = 3;
+                            } else {
+                                let t = if bits == 0 {
+                                    1 - ((r.read_bit()? as i32) << 1)
+                                } else {
+                                    let raw = (r.read_bits(bits as u32)? as i32) | (1 << bits);
+                                    let sign = if r.read_bit()? { -1 } else { 0 };
+                                    (raw ^ sign) - sign
+                                };
+                                block[scan[ccoef as usize] as usize] = t;
+                                coef_idx[coef_count as usize] = ccoef;
+                                coef_count += 1;
+                            }
+                            ccoef += 1;
+                        }
+                    }
+                    1 => {
+                        mode_list[list_pos] = 2;
+                        for _ in 0..3 {
+                            ccoef += 4;
+                            coef_list[list_end] = ccoef;
+                            mode_list[list_end] = 2;
+                            list_end += 1;
+                        }
+                    }
+                    3 => {
+                        let t = if bits == 0 {
+                            1 - ((r.read_bit()? as i32) << 1)
+                        } else {
+                            let raw = (r.read_bits(bits as u32)? as i32) | (1 << bits);
+                            let sign = if r.read_bit()? { -1 } else { 0 };
+                            (raw ^ sign) - sign
+                        };
+                        block[scan[ccoef as usize] as usize] = t;
+                        coef_idx[coef_count as usize] = ccoef;
+                        coef_count += 1;
+                        coef_list[list_pos] = 0;
+                        mode_list[list_pos] = 0;
+                        list_pos += 1;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            bits -= 1;
+        }
+
+        let quant_idx = r.read_bits(4)?;
+        *coef_count_out = coef_count;
+        Ok(quant_idx)
+    }
+
     /// Pull one value from a bundle's buffer, advancing `cur_ptr`.
     ///   - BLOCK_TYPES / SUB_BLOCK_TYPES / COLORS / PATTERN / RUN: u8.
     ///   - X_OFF / Y_OFF: i8 (motion offsets).
