@@ -540,6 +540,50 @@ impl BinkDecoder {
         self.bundles[bundle_num].cur_dec = dec_end;
         Ok(())
     }
+
+    /// Decode pattern bundle: each byte is two 4-bit Huffman symbols packed
+    /// low | (high << 4).
+    /// Port of `read_patterns` at libavcodec/bink.c:436-456.
+    fn read_patterns(
+        &mut self,
+        r: &mut BitReader<'_>,
+        bundle_num: usize,
+    ) -> Result<(), AssetError> {
+        let (len_bits, buf_end, tree, cur_dec_start) = {
+            let b = &self.bundles[bundle_num];
+            if b.skip_fills || b.cur_dec > b.cur_ptr {
+                return Ok(());
+            }
+            (b.len_bits, b.buf_end, b.tree.clone(), b.cur_dec)
+        };
+        let t = r.read_bits(len_bits)? as usize;
+        if t == 0 {
+            self.bundles[bundle_num].skip_fills = true;
+            return Ok(());
+        }
+        let dec_end = cur_dec_start + t;
+        if dec_end > buf_end {
+            return Err(AssetError::BinkError {
+                reason: "Too many pattern values".to_string(),
+            });
+        }
+        let mut dec = cur_dec_start;
+        while dec < dec_end {
+            if r.bits_left() < 2 {
+                return Err(AssetError::BinkError {
+                    reason: "read_patterns EOF".to_string(),
+                });
+            }
+            let lo_idx = self.vlc_tables[tree.vlc_num as usize].decode_vlc(r)? as usize;
+            let hi_idx = self.vlc_tables[tree.vlc_num as usize].decode_vlc(r)? as usize;
+            let v = tree.syms[lo_idx] | (tree.syms[hi_idx] << 4);
+            self.bundle_data[dec] = v;
+            dec += 1;
+        }
+        self.bundles[bundle_num].cur_dec = dec_end;
+        Ok(())
+    }
+
 }
 
 #[inline]
