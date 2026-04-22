@@ -29,6 +29,8 @@ impl Playback {
         &mut self,
         file: &BinkFile,
         decoder: &mut BinkDecoder,
+        mut audio_decoder: Option<&mut vera20k::assets::bink_audio::BinkAudioDecoder>,
+        audio_sink: Option<&crate::bik_player_audio::BinkAudioSink>,
         current_frame: &mut usize,
         status: &mut String,
     ) {
@@ -59,6 +61,32 @@ impl Playback {
                         *status = format!("decode error at frame {}: {}", *current_frame, e);
                         self.playing = false;
                         break;
+                    }
+                    if let (Some(adec), Some(sink)) = (audio_decoder.as_deref_mut(), audio_sink) {
+                        match file.audio_packets(*current_frame) {
+                            Ok(pkts) => {
+                                for ap in pkts {
+                                    if ap.track_index != 0 {
+                                        continue;
+                                    }
+                                    match adec.decode_packet(ap.bytes) {
+                                        Ok(samples) => {
+                                            sink.push(&samples);
+                                        }
+                                        Err(e) => {
+                                            log::warn!(
+                                                "audio decode error frame {}: {}",
+                                                *current_frame, e,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => log::warn!(
+                                "audio packet error frame {}: {}",
+                                *current_frame, e,
+                            ),
+                        }
                     }
                     *current_frame += 1;
                 }

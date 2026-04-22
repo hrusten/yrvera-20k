@@ -187,6 +187,8 @@ impl eframe::App for BikPlayerApp {
             self.playback.step(
                 file,
                 decoder,
+                self.audio_decoder.as_mut(),
+                self.audio_sink.as_ref(),
                 &mut self.current_frame,
                 &mut self.status,
             );
