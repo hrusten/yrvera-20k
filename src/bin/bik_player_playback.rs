@@ -6,11 +6,16 @@ use std::time::Instant;
 use vera20k::assets::bink_decode::{BinkDecoder, BinkFrame, ColorRange};
 use vera20k::assets::bink_file::BinkFile;
 
+/// Audio/video drift check cadence (UI ticks per check).
+const DRIFT_CHECK_INTERVAL: u32 = 10;
+
 pub struct Playback {
     pub playing: bool,
     pub last_tick: Instant,
     pub accumulator_secs: f64,
     pub speed: f32,
+    /// Counts UI ticks; drift check fires every `DRIFT_CHECK_INTERVAL` ticks.
+    pub tick_counter: u32,
 }
 
 impl Default for Playback {
@@ -20,6 +25,7 @@ impl Default for Playback {
             last_tick: Instant::now(),
             accumulator_secs: 0.0,
             speed: 1.0,
+            tick_counter: 0,
         }
     }
 }
@@ -94,6 +100,25 @@ impl Playback {
                     *status = format!("packet error: {}", e);
                     self.playing = false;
                     break;
+                }
+            }
+        }
+
+        self.tick_counter = self.tick_counter.wrapping_add(1);
+        if self.tick_counter % DRIFT_CHECK_INTERVAL == 0 {
+            if let Some(sink) = audio_sink {
+                let audio_secs = sink.position().as_secs_f64();
+                let video_secs = (*current_frame as f64) / fps;
+                let drift = audio_secs - video_secs;
+                if drift > frame_dt && *current_frame + 1 < file.frame_index.len() {
+                    // Audio is ahead — skip one video frame.
+                    if let Ok(pkt) = file.video_packet(*current_frame) {
+                        let _ = decoder.decode_frame(pkt);
+                        *current_frame += 1;
+                    }
+                } else if drift < -frame_dt {
+                    // Video is ahead — stall by absorbing one frame's accumulator.
+                    self.accumulator_secs -= frame_dt;
                 }
             }
         }
