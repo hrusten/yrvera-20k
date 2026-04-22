@@ -879,14 +879,11 @@ impl BinkDecoder {
 
         let ref_start: usize = 0;
         let ref_end = (bw - 1 + stride * (bh - 1)) * 8;
-        let _ = ref_start;
-        let _ = ref_end;
 
         let mut coordmap = [0usize; 64];
         for i in 0..64 {
             coordmap[i] = (i & 7) + (i >> 3) * stride;
         }
-        let _ = coordmap;
 
         for by in 0..bh {
             self.read_block_types(r, Src::BlockTypes as usize)?;
@@ -915,12 +912,261 @@ impl BinkDecoder {
                         let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
                         copy_block8(&mut dst[dst_base..], &src[dst_base..], stride, stride);
                     }
+                    SCALED_BLOCK => {
+                        let sub = self.get_value(Src::SubBlockTypes as usize);
+                        let mut ublock = [0u8; 64];
+                        match sub {
+                            RUN_BLOCK => {
+                                let pat_idx = r.read_bits(4)? as usize;
+                                let scan = &BINK_PATTERNS[pat_idx];
+                                let mut i: usize = 0;
+                                let mut s: usize = 0;
+                                loop {
+                                    let run = (self.get_value(Src::Run as usize) + 1) as usize;
+                                    if i + run > 64 {
+                                        return Err(AssetError::BinkError {
+                                            reason: "scaled run OOB".to_string(),
+                                        });
+                                    }
+                                    if r.read_bit()? {
+                                        let v = self.get_value(Src::Colors as usize) as u8;
+                                        for _ in 0..run {
+                                            ublock[scan[s] as usize] = v;
+                                            s += 1;
+                                        }
+                                    } else {
+                                        for _ in 0..run {
+                                            let v = self.get_value(Src::Colors as usize) as u8;
+                                            ublock[scan[s] as usize] = v;
+                                            s += 1;
+                                        }
+                                    }
+                                    i += run;
+                                    if i >= 63 {
+                                        break;
+                                    }
+                                }
+                                if i == 63 {
+                                    let v = self.get_value(Src::Colors as usize) as u8;
+                                    ublock[scan[s] as usize] = v;
+                                }
+                            }
+                            INTRA_BLOCK => {
+                                let mut dctblock = [0i32; 64];
+                                dctblock[0] = self.get_value(Src::IntraDc as usize);
+                                let mut coef_idx = [0i32; 64];
+                                let mut coef_count = 0i32;
+                                let quant_idx = self.read_dct_coeffs(
+                                    r,
+                                    &mut dctblock,
+                                    &BINK_SCAN,
+                                    &mut coef_idx,
+                                    &mut coef_count,
+                                )?;
+                                self.unquantize_dct_coeffs(
+                                    &mut dctblock,
+                                    &BINK_INTRA_QUANT[quant_idx as usize],
+                                    coef_count,
+                                    &coef_idx,
+                                    &BINK_SCAN,
+                                );
+                                bink_idct_put(&mut ublock, 8, &dctblock);
+                            }
+                            FILL_BLOCK => {
+                                let v = self.get_value(Src::Colors as usize) as u8;
+                                let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                                fill_block(&mut dst[dst_base..], v, stride, 16);
+                            }
+                            PATTERN_BLOCK => {
+                                let mut col = [0u8; 2];
+                                col[0] = self.get_value(Src::Colors as usize) as u8;
+                                col[1] = self.get_value(Src::Colors as usize) as u8;
+                                for j in 0..8 {
+                                    let mut v = self.get_value(Src::Pattern as usize);
+                                    for i in 0..8 {
+                                        ublock[i + j * 8] = col[(v & 1) as usize];
+                                        v >>= 1;
+                                    }
+                                }
+                            }
+                            RAW_BLOCK => {
+                                for j in 0..8 {
+                                    for i in 0..8 {
+                                        ublock[i + j * 8] =
+                                            self.get_value(Src::Colors as usize) as u8;
+                                    }
+                                }
+                            }
+                            _ => {
+                                return Err(AssetError::BinkError {
+                                    reason: format!("bad scaled sub-block {}", sub),
+                                });
+                            }
+                        }
+                        if sub != FILL_BLOCK {
+                            let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                            scale_block_8x8_to_16x16(&ublock, &mut dst[dst_base..], stride);
+                        }
+                        bx += 2;
+                        continue;
+                    }
+                    MOTION_BLOCK => {
+                        let xoff = self.get_value(Src::XOff as usize);
+                        let yoff = self.get_value(Src::YOff as usize);
+                        let src = plane_ref_for(&self.prev, plane_idx);
+                        let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                        motion_copy_8x8(
+                            dst, src, dst_base, dst_base, xoff, yoff, stride, ref_start, ref_end,
+                        )?;
+                    }
+                    RUN_BLOCK => {
+                        let pat_idx = r.read_bits(4)? as usize;
+                        let scan = &BINK_PATTERNS[pat_idx];
+                        let mut i: usize = 0;
+                        let mut s: usize = 0;
+                        loop {
+                            let run = (self.get_value(Src::Run as usize) + 1) as usize;
+                            if i + run > 64 {
+                                return Err(AssetError::BinkError {
+                                    reason: "run OOB".to_string(),
+                                });
+                            }
+                            if r.read_bit()? {
+                                let v = self.get_value(Src::Colors as usize) as u8;
+                                let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                                for _ in 0..run {
+                                    dst[dst_base + coordmap[scan[s] as usize]] = v;
+                                    s += 1;
+                                }
+                            } else {
+                                for _ in 0..run {
+                                    let v = self.get_value(Src::Colors as usize) as u8;
+                                    let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                                    dst[dst_base + coordmap[scan[s] as usize]] = v;
+                                    s += 1;
+                                }
+                            }
+                            i += run;
+                            if i >= 63 {
+                                break;
+                            }
+                        }
+                        if i == 63 {
+                            let v = self.get_value(Src::Colors as usize) as u8;
+                            let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                            dst[dst_base + coordmap[scan[s] as usize]] = v;
+                        }
+                    }
+                    RESIDUE_BLOCK => {
+                        let xoff = self.get_value(Src::XOff as usize);
+                        let yoff = self.get_value(Src::YOff as usize);
+                        {
+                            let src = plane_ref_for(&self.prev, plane_idx);
+                            let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                            motion_copy_8x8(
+                                dst, src, dst_base, dst_base, xoff, yoff, stride, ref_start,
+                                ref_end,
+                            )?;
+                        }
+                        let mut residue = [0i16; 64];
+                        let v = r.read_bits(7)? as i32;
+                        self.read_residue(r, &mut residue, v)?;
+                        let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                        add_pixels8(&mut dst[dst_base..], &residue, stride);
+                    }
+                    INTRA_BLOCK => {
+                        let mut dctblock = [0i32; 64];
+                        dctblock[0] = self.get_value(Src::IntraDc as usize);
+                        let mut coef_idx = [0i32; 64];
+                        let mut coef_count = 0i32;
+                        let quant_idx = self.read_dct_coeffs(
+                            r,
+                            &mut dctblock,
+                            &BINK_SCAN,
+                            &mut coef_idx,
+                            &mut coef_count,
+                        )?;
+                        self.unquantize_dct_coeffs(
+                            &mut dctblock,
+                            &BINK_INTRA_QUANT[quant_idx as usize],
+                            coef_count,
+                            &coef_idx,
+                            &BINK_SCAN,
+                        );
+                        let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                        bink_idct_put(&mut dst[dst_base..], stride, &dctblock);
+                    }
+                    FILL_BLOCK => {
+                        let v = self.get_value(Src::Colors as usize) as u8;
+                        let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                        fill_block(&mut dst[dst_base..], v, stride, 8);
+                    }
+                    INTER_BLOCK => {
+                        let xoff = self.get_value(Src::XOff as usize);
+                        let yoff = self.get_value(Src::YOff as usize);
+                        {
+                            let src = plane_ref_for(&self.prev, plane_idx);
+                            let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                            motion_copy_8x8(
+                                dst, src, dst_base, dst_base, xoff, yoff, stride, ref_start,
+                                ref_end,
+                            )?;
+                        }
+                        let mut dctblock = [0i32; 64];
+                        dctblock[0] = self.get_value(Src::InterDc as usize);
+                        let mut coef_idx = [0i32; 64];
+                        let mut coef_count = 0i32;
+                        let quant_idx = self.read_dct_coeffs(
+                            r,
+                            &mut dctblock,
+                            &BINK_SCAN,
+                            &mut coef_idx,
+                            &mut coef_count,
+                        )?;
+                        self.unquantize_dct_coeffs(
+                            &mut dctblock,
+                            &BINK_INTER_QUANT[quant_idx as usize],
+                            coef_count,
+                            &coef_idx,
+                            &BINK_SCAN,
+                        );
+                        let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                        bink_idct_add(&mut dst[dst_base..], stride, &mut dctblock);
+                    }
+                    PATTERN_BLOCK => {
+                        let mut col = [0u8; 2];
+                        col[0] = self.get_value(Src::Colors as usize) as u8;
+                        col[1] = self.get_value(Src::Colors as usize) as u8;
+                        for i in 0..8 {
+                            let mut v = self.get_value(Src::Pattern as usize);
+                            let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                            for j in 0..8 {
+                                dst[dst_base + i * stride + j] = col[(v & 1) as usize];
+                                v >>= 1;
+                            }
+                        }
+                    }
+                    RAW_BLOCK => {
+                        let start_off = self.bundles[Src::Colors as usize].cur_ptr;
+                        if start_off + 64 > self.bundle_data.len() {
+                            return Err(AssetError::BinkError {
+                                reason: "RAW block COLORS OOB".to_string(),
+                            });
+                        }
+                        let src_window: [u8; 64] = self.bundle_data
+                            [start_off..start_off + 64]
+                            .try_into()
+                            .unwrap();
+                        self.bundles[Src::Colors as usize].cur_ptr = start_off + 64;
+                        let (dst, _) = plane_mut_for(&mut self.cur, plane_idx);
+                        for i in 0..8 {
+                            dst[dst_base + i * stride..dst_base + i * stride + 8]
+                                .copy_from_slice(&src_window[i * 8..i * 8 + 8]);
+                        }
+                    }
                     _ => {
                         return Err(AssetError::BinkError {
-                            reason: format!(
-                                "unimplemented block type {} at ({}, {})",
-                                blk, bx, by
-                            ),
+                            reason: format!("unknown block type {}", blk),
                         });
                     }
                 }
