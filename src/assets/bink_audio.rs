@@ -13,7 +13,7 @@
 //! - Part of assets/ — depends only on `bink_audio_data`, `bink_file::AudioTrack`,
 //!   and `error::AssetError`. No game-module deps.
 
-use crate::assets::bink_audio_data::WMA_CRITICAL_FREQS;
+use crate::assets::bink_audio_data::{RLE_LENGTH_TAB, WMA_CRITICAL_FREQS};
 use crate::assets::bink_bits::BitReader;
 use crate::assets::bink_file::AudioTrack;
 use crate::assets::error::AssetError;
@@ -215,13 +215,98 @@ impl BinkAudioDecoder {
         Ok(out)
     }
 
-    /// Stub — filled in Tasks 9-10.
-    fn decode_channel_block(&mut self, _gb: &mut BitReader, ch: usize) -> Result<(), AssetError> {
-        // Placeholder: zero-fill the channel buffer so the rest of the pipeline is testable.
+    /// Custom 29-bit float decode used for the two DC coefficients.
+    /// Layout: 5-bit exponent (power), 23-bit mantissa, 1-bit sign.
+    /// See binkaudio.c:156-163.
+    fn get_float(gb: &mut BitReader) -> Result<f32, AssetError> {
+        let power = gb.read_bits(5)? as i32;
+        let mantissa = gb.read_bits(23)? as f32;
+        let mut f = mantissa * 2.0f32.powi(power - 23);
+        if gb.read_bits(1)? != 0 {
+            f = -f;
+        }
+        Ok(f)
+    }
+
+    fn decode_channel_block(&mut self, gb: &mut BitReader, ch: usize) -> Result<(), AssetError> {
+        // Per-channel quantizer scratch.
+        let mut quant = [0f32; 25];
+
+        // Two leading DC samples: custom 29-bit floats, scaled by root.
+        // Per binkaudio.c:192-197.
+        self.coeffs[0] = Self::get_float(gb)? * self.root;
+        self.coeffs[1] = Self::get_float(gb)? * self.root;
+
+        // Band quantizer indices (one byte per band).
+        // Per binkaudio.c:201-204.
+        for i in 0..self.num_bands {
+            let value = gb.read_bits(8)? as usize;
+            let clamped = value.min(95);
+            quant[i] = self.quant_table[clamped];
+        }
+
+        // RLE-coded coefficient decode loop.
+        // Per binkaudio.c:206-250.
+        let mut k: usize = 0;
+        let mut q = quant[0];
+        let mut i: usize = 2;
+        while i < self.frame_len {
+            // Determine run-end `j`.
+            let v_bit = gb.read_bits(1)?;
+            let j: usize = if v_bit != 0 {
+                let v = gb.read_bits(4)? as usize;
+                i + (RLE_LENGTH_TAB[v] as usize) * 8
+            } else {
+                i + 8
+            };
+            let j = j.min(self.frame_len);
+
+            let width = gb.read_bits(4)? as u32;
+            if width == 0 {
+                // Zero-fill the run.
+                for slot in &mut self.coeffs[i..j] {
+                    *slot = 0.0;
+                }
+                i = j;
+                while k < self.num_bands && (self.bands[k] as usize) < i {
+                    k += 1;
+                    if k < self.num_bands {
+                        q = quant[k];
+                    }
+                }
+            } else {
+                // Decode `width`-bit magnitudes + sign per coefficient.
+                while i < j {
+                    if k < self.num_bands && self.bands[k] as usize == i {
+                        q = quant[k];
+                        k += 1;
+                    }
+                    let coeff = gb.read_bits(width)? as i32;
+                    if coeff != 0 {
+                        let sign = gb.read_bits(1)? != 0;
+                        self.coeffs[i] = if sign {
+                            -q * (coeff as f32)
+                        } else {
+                            q * (coeff as f32)
+                        };
+                    } else {
+                        self.coeffs[i] = 0.0;
+                    }
+                    i += 1;
+                }
+            }
+        }
+
+        // Per-channel inverse transform — filled in Task 10.
+        self.inverse_transform_channel(ch);
+        Ok(())
+    }
+
+    /// Stub — filled in Task 10.
+    fn inverse_transform_channel(&mut self, ch: usize) {
         for s in self.out_per_ch[ch].iter_mut() {
             *s = 0.0;
         }
-        Ok(())
     }
 
     /// Stub — filled in Task 11.
