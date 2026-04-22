@@ -831,6 +831,28 @@ impl BinkDecoder {
         self.bundles[bundle_num].cur_dec = dec;
         Ok(())
     }
+
+    /// Pull one value from a bundle's buffer, advancing `cur_ptr`.
+    ///   - BLOCK_TYPES / SUB_BLOCK_TYPES / COLORS / PATTERN / RUN: u8.
+    ///   - X_OFF / Y_OFF: i8 (motion offsets).
+    ///   - INTRA_DC / INTER_DC: i16 (two bytes per value).
+    /// Port of `get_value` at libavcodec/bink.c:557-568.
+    fn get_value(&mut self, bundle_num: usize) -> i32 {
+        let b = &mut self.bundles[bundle_num];
+        if bundle_num == Src::XOff as usize || bundle_num == Src::YOff as usize {
+            let v = self.bundle_data[b.cur_ptr] as i8 as i32;
+            b.cur_ptr += 1;
+            v
+        } else if bundle_num == Src::IntraDc as usize || bundle_num == Src::InterDc as usize {
+            let v = read_i16(&self.bundle_data, b.cur_ptr) as i32;
+            b.cur_ptr += 2;
+            v
+        } else {
+            let v = self.bundle_data[b.cur_ptr] as i32;
+            b.cur_ptr += 1;
+            v
+        }
+    }
 }
 
 #[inline]
