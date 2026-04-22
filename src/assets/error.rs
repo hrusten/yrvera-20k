@@ -61,4 +61,12 @@ pub enum AssetError {
     /// HVA animation file is malformed or truncated.
     #[error("Invalid HVA file: {reason}")]
     InvalidHvaFile { reason: String },
+
+    /// Bink container or video decoder failed.
+    #[error("Bink error: {reason}")]
+    BinkError { reason: String },
+
+    /// Requested video packet index out of range in a Bink file.
+    #[error("Bink frame index {index} out of range (file has {count} frames)")]
+    BinkFrameOutOfRange { index: usize, count: usize },
 }
