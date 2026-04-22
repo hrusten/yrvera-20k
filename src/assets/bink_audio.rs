@@ -13,6 +13,161 @@
 //! - Part of assets/ — depends only on `bink_audio_data`, `bink_file::AudioTrack`,
 //!   and `error::AssetError`. No game-module deps.
 
+use crate::assets::bink_audio_data::WMA_CRITICAL_FREQS;
+use crate::assets::bink_file::AudioTrack;
+use crate::assets::error::AssetError;
+
+const MAX_CHANNELS: usize = 2;
+const MAX_BANDS: usize = 26;
+
+#[allow(dead_code)]
+pub struct BinkAudioDecoder {
+    sample_rate: u32,
+    channels: u16,
+    use_dct: bool,
+    /// Number of samples per inverse-transform output (per channel).
+    /// For RDFT mode this equals the multi-channel-folded `frame_len`.
+    frame_len: usize,
+    /// Cross-fade length (`frame_len / 16`).
+    overlap_len: usize,
+    num_bands: usize,
+    /// Band boundaries in coefficient-index space. `bands[num_bands] = frame_len`.
+    bands: [u32; MAX_BANDS],
+    /// Dequantization multipliers, indexed by 8-bit quantizer value (clamped to 95).
+    quant_table: [f32; 96],
+    /// Global scaling factor; differs DCT vs RDFT.
+    root: f32,
+    /// True until the first block is decoded; suppresses overlap-add on first call.
+    first: bool,
+    /// Per-channel overlap-tail buffer. Length `channels`, each entry `overlap_len`.
+    prev: Vec<Vec<f32>>,
+    /// Scratch buffer of length `frame_len + 2` (the +2 holds the Nyquist
+    /// bin moved out of `coeffs[1]` for RDFT input layout).
+    coeffs: Vec<f32>,
+    /// Per-channel inverse-transform output buffer, length `frame_len`.
+    out_per_ch: Vec<Vec<f32>>,
+    /// FFT plan sized for the selected transform. RDFT uses `frame_len / 2`
+    /// (real-input via half-size complex FFT). DCT uses `frame_len` (our
+    /// `inverse_dct_ii` operates on N coefficients producing N samples).
+    fft: Fft,
+}
+
+impl BinkAudioDecoder {
+    pub fn new(track: AudioTrack) -> Result<Self, AssetError> {
+        let sample_rate_in = track.sample_rate as u32;
+        let channels_in = if track.is_stereo() { 2u16 } else { 1u16 };
+        let use_dct = track.uses_dct();
+
+        if !(1..=MAX_CHANNELS as u16).contains(&channels_in) {
+            return Err(AssetError::BinkAudioError {
+                reason: format!("invalid channel count: {}", channels_in),
+            });
+        }
+        if sample_rate_in == 0 {
+            return Err(AssetError::BinkAudioError {
+                reason: "zero sample rate".to_string(),
+            });
+        }
+
+        // Determine frame_len from sample rate.
+        let mut frame_len_bits: u32 = if sample_rate_in < 22050 {
+            9
+        } else if sample_rate_in < 44100 {
+            10
+        } else {
+            11
+        };
+
+        // Per binkaudio.c:99-111: RDFT mode treats audio as interleaved
+        // single-channel by multiplying sample_rate by channel count and
+        // scaling frame_len up.
+        let (sample_rate, channels) = if use_dct {
+            (sample_rate_in, channels_in)
+        } else {
+            // RDFT: fold channels into one logical stream.
+            if channels_in > 1 {
+                frame_len_bits += (channels_in as u32).trailing_zeros();
+            }
+            let folded_sr = sample_rate_in.checked_mul(channels_in as u32).ok_or_else(|| {
+                AssetError::BinkAudioError { reason: "sample-rate overflow".to_string() }
+            })?;
+            (folded_sr, 1u16)
+        };
+
+        let frame_len = 1usize << frame_len_bits;
+        let overlap_len = frame_len / 16;
+        let sample_rate_half = (sample_rate as u64 + 1) / 2;
+
+        // Scaling factor differs by transform.
+        let root = if use_dct {
+            (frame_len as f32) / ((frame_len as f32).sqrt() * 32768.0)
+        } else {
+            2.0 / ((frame_len as f32).sqrt() * 32768.0)
+        };
+
+        // Quantization table.
+        let mut quant_table = [0f32; 96];
+        for i in 0..96 {
+            quant_table[i] = (i as f32 * 0.15289164787221953823f32).exp() * root;
+        }
+
+        // Number of bands.
+        let mut num_bands: usize = 1;
+        while num_bands < 25 {
+            if sample_rate_half <= WMA_CRITICAL_FREQS[num_bands - 1] as u64 {
+                break;
+            }
+            num_bands += 1;
+        }
+
+        // Band boundaries.
+        let mut bands = [0u32; MAX_BANDS];
+        bands[0] = 2;
+        for i in 1..num_bands {
+            let v = (WMA_CRITICAL_FREQS[i - 1] as u64 * frame_len as u64) / sample_rate_half;
+            bands[i] = (v as u32) & !1;
+        }
+        bands[num_bands] = frame_len as u32;
+
+        // FFT plan: size depends on transform variant.
+        // RDFT: real-input IDFT decomposes to a complex FFT of N/2.
+        // DCT:  our inverse_dct_ii uses an N-point FFT internally.
+        let fft = Fft::new(if use_dct { frame_len } else { frame_len / 2 });
+
+        let prev = (0..channels).map(|_| vec![0.0f32; overlap_len]).collect();
+        let out_per_ch = (0..channels).map(|_| vec![0.0f32; frame_len]).collect();
+        let coeffs = vec![0.0f32; frame_len + 2];
+
+        Ok(Self {
+            sample_rate,
+            channels,
+            use_dct,
+            frame_len,
+            overlap_len,
+            num_bands,
+            bands,
+            quant_table,
+            root,
+            first: true,
+            prev,
+            coeffs,
+            out_per_ch,
+            fft,
+        })
+    }
+
+    pub fn sample_rate(&self) -> u32 { self.sample_rate }
+    pub fn channels(&self) -> u16 { self.channels }
+    pub fn frame_len(&self) -> usize { self.frame_len }
+    pub fn use_dct(&self) -> bool { self.use_dct }
+    pub fn reset(&mut self) {
+        self.first = true;
+        for ch in &mut self.prev {
+            for s in ch.iter_mut() { *s = 0.0; }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 struct Complex32 {
     re: f32,
