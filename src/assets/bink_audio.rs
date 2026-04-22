@@ -168,6 +168,48 @@ fn inverse_rdft(input: &[f32], output: &mut [f32], fft: &Fft) {
     }
 }
 
+/// Inverse DCT-II (= DCT-III) of length `n`.
+///
+/// Input: `n` DCT coefficients.
+/// Output: `n` time-domain samples.
+///
+/// Caller must pre-multiply `input[0]` by 2.0 to match the binkaudio.c
+/// convention (see binkaudio.c:252-254). `fft` must be sized `n` for this
+/// implementation.
+fn inverse_dct_ii(input: &[f32], output: &mut [f32], fft: &Fft) {
+    let n = fft.n;
+    assert_eq!(input.len(), n);
+    assert_eq!(output.len(), n);
+
+    // Reduce inverse DCT-II to a length-N complex FFT via the standard
+    // pre-twiddle. For an inverse DCT (DCT-III):
+    //   X[k] = input[k] * exp(j * π * k / (2N))
+    // then complex IFFT, then de-interleave even/odd.
+    let mut buf = vec![Complex32::default(); n];
+    for k in 0..n {
+        let theta = std::f32::consts::PI * (k as f32) / (2.0 * n as f32);
+        let cr = theta.cos();
+        let ci = theta.sin();
+        buf[k] = Complex32::new(input[k] * cr, input[k] * ci);
+    }
+
+    // Un-normalized inverse complex FFT (conjugate-forward-conjugate).
+    for c in buf.iter_mut() {
+        c.im = -c.im;
+    }
+    fft.forward_inplace(&mut buf);
+    for c in buf.iter_mut() {
+        c.im = -c.im;
+    }
+
+    // De-interleave: output[2k] = buf[k].re, output[2k+1] = buf[N-1-k].re
+    // (standard DCT-III bit-reverse-style unscramble).
+    for k in 0..n / 2 {
+        output[2 * k] = buf[k].re;
+        output[2 * k + 1] = buf[n - 1 - k].re;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +253,28 @@ mod tests {
     fn fft_round_trip_1024() { assert_round_trip(1024); }
     #[test]
     fn fft_round_trip_2048() { assert_round_trip(2048); }
+
+    /// IDCT of [c, 0, 0, ..., 0] is a constant signal proportional to c.
+    #[test]
+    fn idct_dc_only_constant_output() {
+        let n = 512;
+        let fft = Fft::new(n);
+        let mut input = vec![0.0f32; n];
+        input[0] = 2.0; // pre-doubled per binkaudio.c convention
+        let mut output = vec![0.0f32; n];
+        inverse_dct_ii(&input, &mut output, &fft);
+
+        // All samples should be equal (within rounding) since input is DC-only.
+        let first = output[0];
+        for (i, &s) in output.iter().enumerate() {
+            assert!(
+                (s - first).abs() < 1e-4,
+                "non-constant output at i={}: got {}, expected {}", i, s, first,
+            );
+        }
+        // And nonzero — DC input shouldn't yield silence.
+        assert!(first.abs() > 1e-3, "DC output is silent: {}", first);
+    }
 
     /// A pure-tone spectrum (single non-zero bin) inverse-transforms to
     /// a sinusoid whose peak amplitude matches our expected scaling.
