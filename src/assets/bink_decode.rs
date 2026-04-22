@@ -832,6 +832,47 @@ impl BinkDecoder {
         Ok(())
     }
 
+    /// Decode one video packet into `self.cur`. The cur/prev buffers
+    /// ping-pong across calls — prev (as motion-compensation reference)
+    /// holds the previous call's output; cur is overwritten.
+    /// Port of `decode_frame` at libavcodec/bink.c:1255-1309 (BIKi/BIKk only).
+    pub fn decode_frame(&mut self, packet: &[u8]) -> Result<&BinkFrame, AssetError> {
+        if self.has_alpha {
+            return Err(AssetError::BinkError {
+                reason: "alpha Bink not supported".to_string(),
+            });
+        }
+
+        std::mem::swap(&mut self.cur, &mut self.prev);
+
+        let bits_count = packet.len() * 8;
+        let mut r = BitReader::new(packet, bits_count);
+
+        // BIKi/BIKk: skip 32 bits before the first plane (audio-size field
+        // was stripped by the demuxer, so this is the 32-bit alignment slot
+        // FFmpeg skips unconditionally for version ≥ 'i').
+        if r.bits_left() < 32 {
+            return Err(AssetError::BinkError {
+                reason: "video packet too short".to_string(),
+            });
+        }
+        r.skip(32);
+
+        self.frame_num += 1;
+
+        for plane in 0..3usize {
+            let plane_idx = if plane == 0 { 0 } else { plane ^ 3 };
+            let is_chroma = plane != 0;
+            self.decode_plane(&mut r, plane_idx, is_chroma)?;
+            if r.pos() >= bits_count {
+                break;
+            }
+        }
+
+        self.has_prev = true;
+        Ok(&self.cur)
+    }
+
     /// Decode one plane of a frame. `plane_idx` indexes into cur/prev
     /// buffers; `is_chroma` selects chroma dimensions. Scaffolding only:
     /// handles BIKk whole-plane fill, bundle setup, the row loop, and
