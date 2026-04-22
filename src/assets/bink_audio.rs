@@ -589,6 +589,103 @@ mod tests {
     #[test]
     fn fft_round_trip_2048() { assert_round_trip(2048); }
 
+    fn make_track(sample_rate: u16, stereo: bool, dct: bool) -> AudioTrack {
+        let mut flags = 0u16;
+        if stereo { flags |= 0x2000; }
+        if dct { flags |= 0x1000; }
+        AudioTrack { sample_rate, flags, track_id: 0 }
+    }
+
+    /// Build the smallest possible packet that decodes to silence: 4-byte
+    /// reported-size header + (DCT only: 2 padding bits) + DC = 0 + DC = 0
+    /// + all bands quantizer 0 + zero-width RLE runs to fill the frame.
+    fn make_silent_packet(d: &BinkAudioDecoder) -> Vec<u8> {
+        let mut bits: Vec<u8> = Vec::new();
+        let mut acc: u32 = 0;
+        let mut nbits: u32 = 0;
+        fn push(
+            val: u32,
+            n: u32,
+            acc: &mut u32,
+            nbits: &mut u32,
+            bits: &mut Vec<u8>,
+        ) {
+            *acc |= val << *nbits;
+            *nbits += n;
+            while *nbits >= 8 {
+                bits.push((*acc & 0xFF) as u8);
+                *acc >>= 8;
+                *nbits -= 8;
+            }
+        }
+
+        // 4-byte reported size (placeholder).
+        bits.extend_from_slice(&[0u8; 4]);
+
+        if d.use_dct {
+            push(0, 2, &mut acc, &mut nbits, &mut bits);
+        }
+        for _ in 0..d.channels as usize {
+            // get_float = 0: power=0, mantissa=0, sign=0 → 29 bits of zero.
+            push(0, 29, &mut acc, &mut nbits, &mut bits);
+            push(0, 29, &mut acc, &mut nbits, &mut bits);
+            // num_bands × 8-bit quantizer indices = 0.
+            for _ in 0..d.num_bands {
+                push(0, 8, &mut acc, &mut nbits, &mut bits);
+            }
+            // Fill from i=2 to frame_len with zero-width runs.
+            // Each run: bit 0 (no RLE escape), then 4-bit width=0, advances by 8 coefficients.
+            let runs = (d.frame_len - 2 + 7) / 8;
+            for _ in 0..runs {
+                push(0, 1, &mut acc, &mut nbits, &mut bits); // no escape
+                push(0, 4, &mut acc, &mut nbits, &mut bits); // width = 0
+            }
+        }
+        // Flush remaining bits.
+        if nbits > 0 {
+            bits.push((acc & 0xFF) as u8);
+        }
+        bits
+    }
+
+    #[test]
+    fn decode_silent_packet_yields_silence_dct() {
+        let track = make_track(22050, true, true);
+        let mut dec = BinkAudioDecoder::new(track).unwrap();
+        let pkt = make_silent_packet(&dec);
+        let samples = dec.decode_packet(&pkt).expect("decode silent packet");
+        assert!(!samples.is_empty(), "should produce some samples");
+        for &s in &samples {
+            assert!(s.abs() < 1e-3, "non-silent sample: {}", s);
+        }
+    }
+
+    #[test]
+    fn decode_silent_packet_yields_silence_rdft() {
+        let track = make_track(22050, true, false);
+        let mut dec = BinkAudioDecoder::new(track).unwrap();
+        let pkt = make_silent_packet(&dec);
+        let samples = dec.decode_packet(&pkt).expect("decode silent packet");
+        assert!(!samples.is_empty());
+        for &s in &samples {
+            assert!(s.abs() < 1e-3, "non-silent sample: {}", s);
+        }
+    }
+
+    #[test]
+    fn reset_restores_first_flag() {
+        let track = make_track(22050, true, false);
+        let mut dec = BinkAudioDecoder::new(track).unwrap();
+        let pkt = make_silent_packet(&dec);
+        dec.decode_packet(&pkt).unwrap();
+        assert!(!dec.first);
+        dec.reset();
+        assert!(dec.first);
+        for ch in &dec.prev {
+            for &s in ch { assert_eq!(s, 0.0); }
+        }
+    }
+
     /// IDCT of [c, 0, 0, ..., 0] is a constant signal proportional to c.
     #[test]
     fn idct_dc_only_constant_output() {
