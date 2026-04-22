@@ -52,6 +52,9 @@ const OPTIONAL_TOP_LEVEL: &[&str] = &[
     "thememd.mix",
     "multi.mix",
     "multimd.mix",
+    "movies01.mix",
+    "movies02.mix",
+    "movmd03.mix",
 ];
 
 /// Yuri's Revenge expansion archives on disk.
