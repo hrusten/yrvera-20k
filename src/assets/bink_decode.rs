@@ -686,6 +686,67 @@ impl BinkDecoder {
         self.bundles[bundle_num].cur_dec = dec_end;
         Ok(())
     }
+
+    /// Decode color bundle using a two-level Huffman Markov chain.
+    /// `col_high[col_lastval]` picks the new high nibble; the bundle's own
+    /// tree picks the low nibble. The signed-bias transform for `version < 'i'`
+    /// is skipped since BIKi+ does not use it.
+    /// Port of `read_colors` at libavcodec/bink.c:458-498.
+    fn read_colors(
+        &mut self,
+        r: &mut BitReader<'_>,
+        bundle_num: usize,
+    ) -> Result<(), AssetError> {
+        let (len_bits, buf_end, tree, cur_dec_start) = {
+            let b = &self.bundles[bundle_num];
+            if b.skip_fills || b.cur_dec > b.cur_ptr {
+                return Ok(());
+            }
+            (b.len_bits, b.buf_end, b.tree.clone(), b.cur_dec)
+        };
+        let t = r.read_bits(len_bits)? as usize;
+        if t == 0 {
+            self.bundles[bundle_num].skip_fills = true;
+            return Ok(());
+        }
+        let dec_end = cur_dec_start + t;
+        if dec_end > buf_end {
+            return Err(AssetError::BinkError {
+                reason: "Too many color values".to_string(),
+            });
+        }
+        if r.bits_left() < 1 {
+            return Err(AssetError::BinkError {
+                reason: "read_colors EOF".to_string(),
+            });
+        }
+        if r.read_bit()? {
+            let high_tree = self.col_high[self.col_lastval as usize].clone();
+            let hi_idx = self.vlc_tables[high_tree.vlc_num as usize].decode_vlc(r)? as usize;
+            self.col_lastval = high_tree.syms[hi_idx];
+            let lo_idx = self.vlc_tables[tree.vlc_num as usize].decode_vlc(r)? as usize;
+            let v = (self.col_lastval << 4) | tree.syms[lo_idx];
+            self.bundle_data[cur_dec_start..dec_end].fill(v);
+        } else {
+            let mut dec = cur_dec_start;
+            while dec < dec_end {
+                if r.bits_left() < 2 {
+                    return Err(AssetError::BinkError {
+                        reason: "read_colors EOF mid-stream".to_string(),
+                    });
+                }
+                let high_tree = self.col_high[self.col_lastval as usize].clone();
+                let hi_idx = self.vlc_tables[high_tree.vlc_num as usize].decode_vlc(r)? as usize;
+                self.col_lastval = high_tree.syms[hi_idx];
+                let lo_idx = self.vlc_tables[tree.vlc_num as usize].decode_vlc(r)? as usize;
+                let v = (self.col_lastval << 4) | tree.syms[lo_idx];
+                self.bundle_data[dec] = v;
+                dec += 1;
+            }
+        }
+        self.bundles[bundle_num].cur_dec = dec_end;
+        Ok(())
+    }
 }
 
 #[inline]
