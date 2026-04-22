@@ -330,9 +330,21 @@ impl BinkAudioDecoder {
         }
     }
 
-    /// Stub — filled in Task 11.
     fn apply_overlap_add(&mut self) {
-        // Placeholder: no-op for now.
+        if self.first {
+            return;
+        }
+        let count = (self.overlap_len as i32) * (self.channels as i32);
+        for ch in 0..self.channels as usize {
+            let mut j = ch as i32;
+            for i in 0..self.overlap_len {
+                let prev = self.prev[ch][i];
+                let cur = self.out_per_ch[ch][i];
+                self.out_per_ch[ch][i] =
+                    (prev * (count - j) as f32 + cur * j as f32) / count as f32;
+                j += self.channels as i32;
+            }
+        }
     }
 }
 
