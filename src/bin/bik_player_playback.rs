@@ -2,7 +2,7 @@
 // Implementation in Tasks 35, 36, 38.
 
 use std::time::Instant;
-use vera20k::assets::bink_decode::BinkDecoder;
+use vera20k::assets::bink_decode::{BinkDecoder, BinkFrame, ColorRange};
 use vera20k::assets::bink_file::BinkFile;
 
 pub struct Playback {
@@ -68,5 +68,83 @@ impl Playback {
                 }
             }
         }
+    }
+}
+
+/// Convert a YUV420P frame to interleaved RGBA bytes (width*height*4 bytes).
+pub fn frame_to_rgba(frame: &BinkFrame) -> Vec<u8> {
+    let w = frame.width as usize;
+    let h = frame.height as usize;
+    let mut out = vec![0u8; w * h * 4];
+    let stride_y = frame.stride_y;
+    let stride_uv = frame.stride_uv;
+
+    for y in 0..h {
+        for x in 0..w {
+            let yv = frame.y[y * stride_y + x] as i32;
+            let uv_off = (y / 2) * stride_uv + (x / 2);
+            let u = frame.u[uv_off] as i32;
+            let v = frame.v[uv_off] as i32;
+            let (r, g, b) = match frame.color_range {
+                ColorRange::Mpeg => yuv_to_rgb_mpeg(yv, u, v),
+                ColorRange::Jpeg => yuv_to_rgb_jpeg(yv, u, v),
+            };
+            let base = (y * w + x) * 4;
+            out[base] = r;
+            out[base + 1] = g;
+            out[base + 2] = b;
+            out[base + 3] = 255;
+        }
+    }
+    out
+}
+
+#[inline]
+fn clip(v: i32) -> u8 {
+    v.clamp(0, 255) as u8
+}
+
+#[inline]
+fn yuv_to_rgb_mpeg(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
+    let c = (y - 16) * 298;
+    let d = u - 128;
+    let e = v - 128;
+    (
+        clip((c + 409 * e + 128) >> 8),
+        clip((c - 100 * d - 208 * e + 128) >> 8),
+        clip((c + 516 * d + 128) >> 8),
+    )
+}
+
+#[inline]
+fn yuv_to_rgb_jpeg(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
+    let d = u - 128;
+    let e = v - 128;
+    (
+        clip(y + ((359 * e + 128) >> 8)),
+        clip(y + ((-88 * d - 183 * e + 128) >> 8)),
+        clip(y + ((454 * d + 128) >> 8)),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mpeg_black_and_white() {
+        assert_eq!(yuv_to_rgb_mpeg(16, 128, 128), (0, 0, 0));
+        assert_eq!(yuv_to_rgb_mpeg(235, 128, 128), (255, 255, 255));
+    }
+
+    #[test]
+    fn jpeg_black_and_white() {
+        assert_eq!(yuv_to_rgb_jpeg(0, 128, 128), (0, 0, 0));
+        assert_eq!(yuv_to_rgb_jpeg(255, 128, 128), (255, 255, 255));
+    }
+
+    #[test]
+    fn jpeg_mid_grey() {
+        assert_eq!(yuv_to_rgb_jpeg(128, 128, 128), (128, 128, 128));
     }
 }

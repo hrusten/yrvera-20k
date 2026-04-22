@@ -40,6 +40,7 @@ pub struct BikPlayerApp {
     /// the struct — declaring it inside the egui closure would reset every frame.
     pub asset_name_input: String,
     pub playback: bik_player_playback::Playback,
+    pub texture: Option<egui::TextureHandle>,
 }
 
 impl BikPlayerApp {
@@ -57,6 +58,7 @@ impl BikPlayerApp {
             status: String::from("Load a .bik file or a MIX asset name."),
             asset_name_input: String::new(),
             playback: bik_player_playback::Playback::default(),
+            texture: None,
         }
     }
 
@@ -124,16 +126,44 @@ impl eframe::App for BikPlayerApp {
         }
         ctx.request_repaint();
 
+        if let Some(decoder) = &self.decoder {
+            let rgba = bik_player_playback::frame_to_rgba(&decoder.cur);
+            let img = egui::ColorImage::from_rgba_unmultiplied(
+                [decoder.width() as usize, decoder.height() as usize],
+                &rgba,
+            );
+            let handle = match self.texture.as_mut() {
+                Some(h) => {
+                    h.set(img, egui::TextureOptions::LINEAR);
+                    h.clone()
+                }
+                None => ctx.load_texture("bink-frame", img, egui::TextureOptions::LINEAR),
+            };
+            self.texture = Some(handle);
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(f) = &self.file {
-                ui.label(format!(
-                    "Frame {} / {}",
-                    self.current_frame,
-                    f.frame_index.len()
-                ));
-            } else {
-                ui.label("No file loaded.");
+            if let Some(tex) = &self.texture {
+                let size = tex.size_vec2();
+                ui.image((tex.id(), size));
             }
+            ui.horizontal(|ui| {
+                if let Some(f) = &self.file {
+                    ui.label(format!(
+                        "Frame {} / {}",
+                        self.current_frame,
+                        f.frame_index.len()
+                    ));
+                } else {
+                    ui.label("No file loaded.");
+                }
+                if ui
+                    .button(if self.playback.playing { "Pause" } else { "Play" })
+                    .clicked()
+                {
+                    self.playback.playing = !self.playback.playing;
+                }
+            });
         });
     }
 }
