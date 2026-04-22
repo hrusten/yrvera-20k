@@ -231,6 +231,13 @@ impl eframe::App for BikPlayerApp {
                     .clicked()
                 {
                     self.playback.playing = !self.playback.playing;
+                    if let Some(sink) = self.audio_sink.as_ref() {
+                        if self.playback.playing {
+                            sink.resume();
+                        } else {
+                            sink.pause();
+                        }
+                    }
                 }
             });
         });
