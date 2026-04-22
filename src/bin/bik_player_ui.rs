@@ -16,6 +16,34 @@ pub fn draw_top_panel(app: &mut BikPlayerApp, ctx: &egui::Context) {
                 }
             }
             ui.separator();
+
+            // Dropdown of .bik assets discovered in loaded MIX archives.
+            if !app.available_assets.is_empty() {
+                let current = if app.source_name.is_empty() {
+                    "— pick a .bik —".to_string()
+                } else {
+                    app.source_name.clone()
+                };
+                let mut picked: Option<String> = None;
+                egui::ComboBox::from_label(format!("({} .bik)", app.available_assets.len()))
+                    .selected_text(current)
+                    .width(240.0)
+                    .show_ui(ui, |ui| {
+                        for name in &app.available_assets {
+                            if ui
+                                .selectable_label(app.source_name == *name, name)
+                                .clicked()
+                            {
+                                picked = Some(name.clone());
+                            }
+                        }
+                    });
+                if let Some(name) = picked {
+                    app.load_asset(&name);
+                }
+                ui.separator();
+            }
+
             ui.label("MIX asset:");
             // Bind to the struct field, not a closure-local — otherwise user
             // input is reset on every egui repaint.

@@ -14,6 +14,7 @@ use std::sync::Arc;
 use vera20k::assets::asset_manager::AssetManager;
 use vera20k::assets::bink_decode::BinkDecoder;
 use vera20k::assets::bink_file::BinkFile;
+use vera20k::assets::xcc_database::XccDatabase;
 use vera20k::util::config::GameConfig;
 
 fn main() -> Result<(), eframe::Error> {
@@ -39,6 +40,9 @@ pub struct BikPlayerApp {
     /// Persistent input buffer for the "MIX asset" text field. Must live on
     /// the struct — declaring it inside the egui closure would reset every frame.
     pub asset_name_input: String,
+    /// `.bik` asset names resolvable via AssetManager, sorted. Populated at
+    /// startup by intersecting the XCC filename database with loaded archives.
+    pub available_assets: Vec<String>,
     pub playback: bik_player_playback::Playback,
     pub texture: Option<egui::TextureHandle>,
 }
@@ -49,14 +53,26 @@ impl BikPlayerApp {
         let asset_manager = GameConfig::load()
             .ok()
             .and_then(|cfg| AssetManager::new(&cfg.paths.ra2_dir).ok());
+
+        let available_assets = asset_manager
+            .as_ref()
+            .map(discover_bik_assets)
+            .unwrap_or_default();
+        let status = match (&asset_manager, available_assets.len()) {
+            (None, _) => "No AssetManager (config.toml missing?). Use Open .bik… to load from disk.".to_string(),
+            (Some(_), 0) => "No .bik assets found in loaded archives. Use Open .bik… to load from disk.".to_string(),
+            (Some(_), n) => format!("{} .bik assets available. Pick one or Open .bik… from disk.", n),
+        };
+
         Self {
             asset_manager,
             source_name: String::new(),
             file: None,
             decoder: None,
             current_frame: 0,
-            status: String::from("Load a .bik file or a MIX asset name."),
+            status,
             asset_name_input: String::new(),
+            available_assets,
             playback: bik_player_playback::Playback::default(),
             texture: None,
         }
@@ -110,6 +126,26 @@ impl BikPlayerApp {
             Err(e) => self.status = format!("parse error: {}", e),
         }
     }
+}
+
+/// Enumerate `.bik` filenames that AssetManager can resolve. Uses the XCC
+/// global mix database as the candidate name source; falls back to an empty
+/// list if XCC isn't installed.
+fn discover_bik_assets(mgr: &AssetManager) -> Vec<String> {
+    let Ok(xcc) = XccDatabase::load_from_disk() else {
+        log::warn!("XCC database not available — no asset picker population");
+        return Vec::new();
+    };
+    let mut names: Vec<String> = xcc
+        .by_extension(".bik")
+        .into_iter()
+        .map(|e| e.filename.clone())
+        .filter(|n| mgr.get_ref(n).is_some())
+        .collect();
+    names.sort_unstable_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+    names.dedup();
+    log::info!("bik-player: {} .bik assets discovered in loaded archives", names.len());
+    names
 }
 
 impl eframe::App for BikPlayerApp {
