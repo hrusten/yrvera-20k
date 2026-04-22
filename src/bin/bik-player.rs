@@ -39,6 +39,7 @@ pub struct BikPlayerApp {
     /// Persistent input buffer for the "MIX asset" text field. Must live on
     /// the struct — declaring it inside the egui closure would reset every frame.
     pub asset_name_input: String,
+    pub playback: bik_player_playback::Playback,
 }
 
 impl BikPlayerApp {
@@ -55,6 +56,7 @@ impl BikPlayerApp {
             current_frame: 0,
             status: String::from("Load a .bik file or a MIX asset name."),
             asset_name_input: String::new(),
+            playback: bik_player_playback::Playback::default(),
         }
     }
 
@@ -111,6 +113,17 @@ impl BikPlayerApp {
 impl eframe::App for BikPlayerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         bik_player_ui::draw_top_panel(self, ctx);
+
+        if let (Some(file), Some(decoder)) = (self.file.as_ref(), self.decoder.as_mut()) {
+            self.playback.step(
+                file,
+                decoder,
+                &mut self.current_frame,
+                &mut self.status,
+            );
+        }
+        ctx.request_repaint();
+
         egui::CentralPanel::default().show(ctx, |ui| {
             if let Some(f) = &self.file {
                 ui.label(format!(
