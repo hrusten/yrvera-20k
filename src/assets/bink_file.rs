@@ -16,7 +16,7 @@
 //! - Uses util/read_helpers for binary reading.
 
 use crate::assets::error::AssetError;
-use crate::util::read_helpers::read_u32_le;
+use crate::util::read_helpers::{read_u16_le, read_u32_le};
 
 /// Bink file revision byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -216,6 +216,52 @@ pub(crate) fn parse_fixed_header(data: &[u8]) -> Result<(BinkHeader, usize), Ass
     Ok((header, next_offset))
 }
 
+/// Parse the audio-track descriptors, returning the offset where the frame
+/// index table starts.
+pub(crate) fn parse_audio_tracks(
+    data: &[u8],
+    header: &mut BinkHeader,
+    start: usize,
+) -> Result<usize, AssetError> {
+    if header.num_audio_tracks == 0 {
+        return Ok(start);
+    }
+
+    let n = header.num_audio_tracks as usize;
+    // Layout: uint32 max_decoded_bytes[n] ; (u16 sample_rate + u16 flags) [n] ; uint32 track_id[n]
+    let needed = 4 * n + 4 * n + 4 * n;
+    if data.len() < start + needed {
+        return Err(AssetError::BinkError {
+            reason: "audio track descriptors truncated".to_string(),
+        });
+    }
+
+    // Skip max_decoded_bytes[n] — FFmpeg does the same.
+    let mut off = start + 4 * n;
+
+    let mut tracks_partial: Vec<(u16, u16)> = Vec::with_capacity(n);
+    for _ in 0..n {
+        let sample_rate = read_u16_le(data, off);
+        let flags = read_u16_le(data, off + 2);
+        tracks_partial.push((sample_rate, flags));
+        off += 4;
+    }
+
+    let mut tracks = Vec::with_capacity(n);
+    for &(sample_rate, flags) in &tracks_partial {
+        let track_id = read_u32_le(data, off);
+        off += 4;
+        tracks.push(AudioTrack {
+            sample_rate,
+            flags,
+            track_id,
+        });
+    }
+
+    header.audio_tracks = tracks;
+    Ok(off)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,5 +336,42 @@ mod tests {
         let (hdr, _) = parse_fixed_header(&h).unwrap();
         assert!(hdr.has_alpha());
         assert!(!hdr.is_gray());
+    }
+
+    pub(super) fn make_header_with_1_track() -> Vec<u8> {
+        let mut h = make_biki_header();
+        h[0x28..0x2C].copy_from_slice(&1u32.to_le_bytes()); // num_audio_tracks = 1
+        // max_decoded_bytes[0] = 16384
+        h.extend_from_slice(&16384u32.to_le_bytes());
+        // sample_rate = 22050, flags = stereo(0x2000) | dct(0x1000)
+        h.extend_from_slice(&22050u16.to_le_bytes());
+        h.extend_from_slice(&0x3000u16.to_le_bytes());
+        // track_id = 42
+        h.extend_from_slice(&42u32.to_le_bytes());
+        h
+    }
+
+    #[test]
+    fn parses_single_audio_track() {
+        let h = make_header_with_1_track();
+        let (mut hdr, next) = parse_fixed_header(&h).unwrap();
+        let end = parse_audio_tracks(&h, &mut hdr, next).unwrap();
+        assert_eq!(hdr.audio_tracks.len(), 1);
+        let t = hdr.audio_tracks[0];
+        assert_eq!(t.sample_rate, 22050);
+        assert_eq!(t.track_id, 42);
+        assert!(t.is_stereo());
+        assert!(t.uses_dct());
+        assert!(!t.is_16bit());
+        assert_eq!(end, h.len());
+    }
+
+    #[test]
+    fn zero_audio_tracks_skips_descriptor_block() {
+        let h = make_biki_header();
+        let (mut hdr, next) = parse_fixed_header(&h).unwrap();
+        let end = parse_audio_tracks(&h, &mut hdr, next).unwrap();
+        assert_eq!(hdr.audio_tracks.len(), 0);
+        assert_eq!(end, next);
     }
 }
