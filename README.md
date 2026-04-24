@@ -8,7 +8,7 @@ Red Alert 2: Yuri's Revenge — rebuilt from scratch in Rust for large multiplay
 
 Those who contribute the most get to decide the most. As long as it aligns with projects vision described below.
 
-Main repository for the **vera20k Engine** and **vera20k: Allied Uprising**, a standalone game built on RA2:YR game assets.
+Main repository for the **vera20k Engine**
 
 This project stands on the shoulders of giants. Thanks to OpenRA, XCC mixer, ModEnc website, PPM website, EA for open source RA1, World Altering Editor, Final Alert,YRpp, Ares, Phobos and much more.
 
@@ -24,34 +24,10 @@ A drop-in replacement for `gamemd.exe` that stays 100% true to the original West
 **2. Built for Scale**
 Constructed from the ground up for large multiplayer — targeting support for up to **30 players** and **20,000 units** on significantly bigger maps.
 
-**3. Integrated Multiplayer Client**
-A multiplayer client embedded directly into the game, supporting both original RA2:YR and Allied Uprising. Built to handle 30-player lobbies and designed to minimize cheating, lag, and toxic behavior.
-
-**4. Allied Uprising**
-A full game built on the Vera 20k engine using RA2:YR game assets. Same Westwood RA2 atmosphere and core gameplay, but with added strategic depth tailored for large team games, co-op, and FFA.
-
-All new art assets stay true to the original Westwood RA2 style.
-
-Feature scope is still being defined:
-
-- Enhanced economy and combat systems
-- New domains of war
-- Asymmetric game modes (General / Commander)
-- Advanced fog of war
-- New units not possible in the original engine
-- Upscaled graphics faithful to the original look
-- Improved battle controls
-- Redesigned HUD and sidebar
-- New map features and systems
-- Camera zoom
-- Advanced minimap
-
-</small>
-
 
 ## Current Status
  
-**Early development** — Work is focused on the core engine. Approximately 15% complete.
+**Early development** — Work is focused on the core engine. Approximately 20% complete.
 
 
 ## Requirements
