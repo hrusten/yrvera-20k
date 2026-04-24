@@ -22,6 +22,10 @@ path = "src/bin/extract-ini.rs"
 name = "bik-player"
 path = "src/bin/bik-player.rs"
 
+[[bin]]
+name = "bik-survey"
+path = "src/bin/bik-survey.rs"
+
 [dependencies]
 # --- GPU rendering ---
 # wgpu 27 is the latest version compatible with egui-wgpu 0.33 (requires ^27.0.1).
