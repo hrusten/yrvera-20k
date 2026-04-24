@@ -6,15 +6,11 @@ use std::time::Instant;
 use vera20k::assets::bink_decode::{BinkDecoder, BinkFrame, ColorRange};
 use vera20k::assets::bink_file::BinkFile;
 
-/// Audio/video drift check cadence (UI ticks per check).
-const DRIFT_CHECK_INTERVAL: u32 = 10;
-
 pub struct Playback {
     pub playing: bool,
     pub last_tick: Instant,
     pub accumulator_secs: f64,
     pub speed: f32,
-    /// Counts UI ticks; drift check fires every `DRIFT_CHECK_INTERVAL` ticks.
     pub tick_counter: u32,
 }
 
@@ -105,11 +101,6 @@ impl Playback {
         }
 
         self.tick_counter = self.tick_counter.wrapping_add(1);
-        // Drift correction disabled: rodio's get_pos() includes silence consumed
-        // between sink creation and first audio push, so using it as the audio
-        // clock produces a stale comparison against video time. Video is driven
-        // by the UI clock at file.fps; audio packets are pushed per frame, so
-        // total_audio_duration == total_video_duration over the file.
         let _ = (audio_sink, fps, frame_dt);
     }
 }
