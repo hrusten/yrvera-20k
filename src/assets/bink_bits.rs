@@ -205,13 +205,31 @@ impl VlcTable {
 }
 
 /// Read up to 16 bits without advancing. Helper for VLC peeking.
+///
+/// Zero-pads past end-of-stream. FFmpeg's `GetBitContext` requires callers to
+/// over-allocate the input buffer by `AV_INPUT_BUFFER_PADDING_SIZE` so a VLC
+/// lookup near EOF can peek the table's full width and match a *short* code
+/// whose real bits fit within the stream. We don't over-allocate, so we
+/// emulate the padding here: if fewer than `n` bits remain, the missing
+/// high bits read as zero. `decode_vlc` only advances `bit_pos` by the
+/// matched code's real length, so this never consumes padding bits.
 #[inline]
 fn peek_bits(r: &mut BitReader<'_>, n: u32) -> Result<u32, AssetError> {
-    let saved = r.pos();
-    let v = r.read_bits(n)?;
-    // Rewind. We cheat by exposing a small private helper on BitReader below.
-    r.rewind(r.pos() - saved);
-    Ok(v)
+    let have = r.bits_left();
+    if have >= n as isize {
+        let saved = r.pos();
+        let v = r.read_bits(n)?;
+        r.rewind(r.pos() - saved);
+        Ok(v)
+    } else if have <= 0 {
+        Ok(0)
+    } else {
+        let saved = r.pos();
+        let real = have as u32;
+        let v = r.read_bits(real)?;
+        r.rewind(r.pos() - saved);
+        Ok(v)
+    }
 }
 
 #[cfg(test)]
@@ -312,6 +330,34 @@ mod tests {
         let sym = table.decode_vlc(&mut r).unwrap();
         assert_eq!(sym, 5);
         assert_eq!(r.pos(), 4); // Consumed 4 bits.
+    }
+
+    #[test]
+    fn vlc_decode_short_code_at_eof_with_zero_padding() {
+        // Real Bink trees peek up to 7 bits but codes can be as short as 1.
+        // Simplified: peek width 2, with a 1-bit code for sym 0. A stream
+        // with fewer bits left than the peek width must still decode when
+        // the matched code's real length fits.
+        // sym 0: len 1, code "0"  → slots 0, 2 (bit 0 == 0)
+        // sym 1: len 2, code "01" → slot 1       (bits 10)
+        // sym 2: len 2, code "11" → slot 3       (bits 11)
+        let mut codes = [0u8; 16];
+        let mut lens = [0u8; 16];
+        codes[0] = 0b0;  lens[0] = 1;
+        codes[1] = 0b01; lens[1] = 2;
+        codes[2] = 0b11; lens[2] = 2;
+        let table = VlcTable::build(&codes, &lens).unwrap();
+
+        // 1 real bit = 0. Peek wants 2 bits. Zero-padded peek = 0b00 → sym 0.
+        let data = [0b1111_1110u8];
+        let mut r = BitReader::new(&data, 1);
+        assert_eq!(table.decode_vlc(&mut r).unwrap(), 0);
+        assert_eq!(r.pos(), 1);
+
+        // 0 bits left: peek returns 0 → sym 0.
+        let data = [0u8];
+        let mut r = BitReader::new(&data, 0);
+        assert_eq!(table.decode_vlc(&mut r).unwrap(), 0);
     }
 
     #[test]
