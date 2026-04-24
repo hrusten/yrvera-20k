@@ -1,7 +1,7 @@
 //! egui UI panels for the bik-player binary.
 // Implementation in Tasks 34-37.
 
-use crate::BikPlayerApp;
+use crate::{BikPlayerApp, PickerEntry};
 use eframe::egui;
 
 pub fn draw_top_panel(app: &mut BikPlayerApp, ctx: &egui::Context) {
@@ -17,46 +17,33 @@ pub fn draw_top_panel(app: &mut BikPlayerApp, ctx: &egui::Context) {
             }
             ui.separator();
 
-            // Dropdown of .bik assets discovered in loaded MIX archives.
-            if !app.available_assets.is_empty() {
+            // Dropdown of every physical .bik entry in every loaded MIX archive.
+            if !app.available_entries.is_empty() {
                 let current = if app.source_name.is_empty() {
                     "— pick a .bik —".to_string()
                 } else {
                     app.source_name.clone()
                 };
-                let mut picked: Option<String> = None;
-                egui::ComboBox::from_label(format!("({} .bik)", app.available_assets.len()))
+                let mut picked: Option<PickerEntry> = None;
+                egui::ComboBox::from_label(format!("({} .bik entries)", app.available_entries.len()))
                     .selected_text(current)
-                    .width(240.0)
+                    .width(320.0)
                     .show_ui(ui, |ui| {
-                        for name in &app.available_assets {
+                        for entry in &app.available_entries {
                             if ui
-                                .selectable_label(app.source_name == *name, name)
+                                .selectable_label(app.source_name == entry.display, &entry.display)
                                 .clicked()
                             {
-                                picked = Some(name.clone());
+                                picked = Some(entry.clone());
                             }
                         }
                     });
-                if let Some(name) = picked {
-                    app.load_asset(&name);
+                if let Some(entry) = picked {
+                    app.load_picker_entry(&entry);
                 }
                 ui.separator();
             }
 
-            ui.label("MIX asset:");
-            // Bind to the struct field, not a closure-local — otherwise user
-            // input is reset on every egui repaint.
-            let resp = ui.text_edit_singleline(&mut app.asset_name_input);
-            if resp.lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                && !app.asset_name_input.is_empty()
-            {
-                let name = app.asset_name_input.clone();
-                app.load_asset(&name);
-            }
-
-            ui.separator();
             ui.label("Vol");
             let mut v = app.audio_volume;
             if ui.add(egui::Slider::new(&mut v, 0.0..=1.0).show_value(false)).changed() {
