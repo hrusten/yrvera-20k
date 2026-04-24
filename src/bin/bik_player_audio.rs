@@ -126,9 +126,11 @@ impl Source for BinkAudioSource {
 
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 
-/// One-second-or-more ring buffer per channel (interleaved). Tuned at
-/// startup so we have headroom against egui repaint stalls.
-const RING_TARGET_SAMPLES_PER_CHANNEL: usize = 32_768; // ~1.5s @ 22050 Hz
+/// Ring buffer size per channel. Must comfortably hold a Bink file's frame 0
+/// audio preload burst (up to ~1s, or ~88200 samples at 88200 Hz folded RDFT
+/// stereo) plus headroom for egui repaint stalls. Sized for ~3s of audio so
+/// even pathological preload sizes fit without dropping samples.
+const RING_TARGET_SAMPLES_PER_CHANNEL: usize = 262_144;
 
 pub struct BinkAudioSink {
     _device: MixerDeviceSink,
@@ -157,9 +159,20 @@ impl BinkAudioSink {
         })
     }
 
-    /// Push samples into the ring. Returns count actually pushed (caller can ignore overflow).
+    /// Push samples into the ring. Returns count actually pushed; callers
+    /// should keep the ring sized so the return value equals `samples.len()`.
+    /// A short push means the audio thread fell behind and samples were
+    /// dropped — that manifests as A/V desync.
     pub fn push(&self, samples: &[f32]) -> usize {
-        self.ring.push(samples)
+        let n = self.ring.push(samples);
+        if n < samples.len() {
+            log::warn!(
+                "bik-player audio ring overflow: dropped {} / {} samples",
+                samples.len() - n,
+                samples.len(),
+            );
+        }
+        n
     }
 
     /// Clear the ring (for seek). Safe to call only when paused.
