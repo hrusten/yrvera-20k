@@ -1112,7 +1112,10 @@ impl Simulation {
         let vision_config = vision::VisionConfig {
             veteran_sight_bonus: rules.map_or(0, |r| r.general.veteran_sight),
             leptons_per_sight_increase: rules.map_or(0, |r| r.general.leptons_per_sight_increase),
-            reveal_by_height: rules.map_or(true, |r| r.general.reveal_by_height),
+            // Temporarily disabled: vision_height_grid is now populated for shroud
+            // rendering, but enabling RevealByHeight here would also flip on cliff LoS
+            // — a gameplay change shipped separately. Follow-up PR re-enables.
+            reveal_by_height: false,
         };
         self.refresh_fog(path_grid, &vision_config, rules);
 
