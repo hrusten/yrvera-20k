@@ -1776,3 +1776,87 @@ fn test_undeploy_conyard_spawns_mcv() {
     assert_eq!(*ry, 22, "MCV should spawn at foundation center Y");
     assert!(*selected, "MCV should inherit selection from ConYard");
 }
+
+#[test]
+fn refresh_vision_heights_copies_path_cell_ground_levels() {
+    use crate::map::resolved_terrain::ResolvedTerrainCell;
+    use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
+
+    // Build a 3x3 terrain with one elevated cell at (1,1), level=4.
+    let width: u16 = 3;
+    let height: u16 = 3;
+    let mut cells = Vec::with_capacity((width as usize) * (height as usize));
+    for y in 0..height {
+        for x in 0..width {
+            let level: u8 = if x == 1 && y == 1 { 4 } else { 0 };
+            cells.push(ResolvedTerrainCell {
+                rx: x,
+                ry: y,
+                source_tile_index: 0,
+                source_sub_tile: 0,
+                final_tile_index: 0,
+                final_sub_tile: 0,
+                level,
+                filled_clear: false,
+                tileset_index: Some(0),
+                land_type: 0,
+                slope_type: 0,
+                template_height: 0,
+                render_offset_x: 0,
+                render_offset_y: 0,
+                terrain_class: TerrainClass::Clear,
+                speed_costs: SpeedCostProfile::default(),
+                is_water: false,
+                is_cliff_like: false,
+                is_cliff_redraw: false,
+                variant: 0,
+                is_rough: false,
+                is_road: false,
+                has_ramp: false,
+                canonical_ramp: None,
+                ground_walk_blocked: false,
+                terrain_object_blocks: false,
+                overlay_blocks: false,
+                zone_type: 0,
+                base_ground_walk_blocked: false,
+                base_build_blocked: false,
+                build_blocked: false,
+                has_bridge_deck: false,
+                bridge_walkable: false,
+                bridge_transition: false,
+                bridge_deck_level: 0,
+                bridge_layer: None,
+                radar_left: [0, 0, 0],
+                radar_right: [0, 0, 0],
+            });
+        }
+    }
+    let terrain = ResolvedTerrainGrid::from_cells(width, height, cells);
+    let grid = PathGrid::from_resolved_terrain(&terrain);
+
+    let mut sim = Simulation::new();
+    assert!(
+        sim.vision_height_grid.is_none(),
+        "fresh sim should have no height grid"
+    );
+
+    sim.refresh_vision_heights(&grid);
+
+    let heights = sim
+        .vision_height_grid
+        .as_ref()
+        .expect("refresh_vision_heights must populate the grid");
+    assert_eq!(heights.len(), (width as usize) * (height as usize));
+
+    // Index = ry * width + rx; the elevated cell at (1,1) must report level 4.
+    let idx = (1usize) * (width as usize) + 1usize;
+    assert_eq!(heights[idx], 4, "elevated cell should report level 4");
+
+    // Flat cells stay at 0.
+    assert_eq!(heights[0], 0, "(0,0) is flat");
+    assert_eq!(
+        heights[(width as usize) * (height as usize) - 1],
+        0,
+        "(2,2) is flat"
+    );
+}
