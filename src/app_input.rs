@@ -586,6 +586,12 @@ pub(crate) fn load_save_file(state: &mut AppState, path: &std::path::Path) {
     // Rebuild the app-layer dynamic path grid (building footprints + walls).
     crate::app_sim_tick::rebuild_dynamic_path_grid(state);
 
+    // vision_height_grid is #[serde(skip)], so it's None after deserialization.
+    // Repopulate from the freshly-rebuilt path grid before the next render frame.
+    if let (Some(sim), Some(grid)) = (state.simulation.as_mut(), state.path_grid.as_ref()) {
+        sim.refresh_vision_heights(grid);
+    }
+
     // Rebuild sprite/unit atlases so all entity types in the loaded save have
     // atlas entries before the first render frame.
     crate::app_sim_tick::refresh_entity_atlases(state);

@@ -12,6 +12,8 @@
 //! ## Dependency rules
 //! - Part of render/ — reads FogState (no mutation), uses GpuContext.
 
+use std::sync::OnceLock;
+
 use crate::map::terrain::{HEIGHT_STEP, iso_to_screen, screen_to_iso};
 use crate::render::gpu::GpuContext;
 use crate::sim::vision::FogState;
@@ -28,6 +30,11 @@ const BLACK: u8 = 0x00;
 const TRANSPARENT: u8 = 0xFE;
 const SHROUD_CELL_PAD: i32 = 8;
 const SHROUD_HEIGHT_PAD_LEVELS: f32 = 16.0;
+
+/// Warn once if `height_grid` is `None` after world init — this indicates the
+/// app forgot to call `World::refresh_vision_heights` and the shroud will fall
+/// back to z=0 (sea-level) blits, breaking elevated-terrain rendering.
+static MISSING_HEIGHT_GRID_WARNED: OnceLock<()> = OnceLock::new();
 
 /// Shroud edge frame lookup table.
 ///
@@ -296,6 +303,14 @@ impl ShroudBuffer {
         self.last_cam_x = cam_x_r;
         self.last_cam_y = cam_y_r;
         self.last_zoom = zoom;
+
+        if height_grid.is_none() && MISSING_HEIGHT_GRID_WARNED.set(()).is_ok() {
+            log::warn!(
+                "shroud: vision_height_grid is None — shroud edges will render at \
+                 z=0 instead of cell elevation. Did the init path skip \
+                 World::refresh_vision_heights?"
+            );
+        }
 
         // Fill bright, then darken unrevealed cells and blit edge transitions.
         // Blitting in world-pixel coordinates at virtual resolution

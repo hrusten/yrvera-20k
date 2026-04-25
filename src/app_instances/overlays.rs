@@ -196,9 +196,33 @@ pub(crate) fn build_overlay_instances(
     // Playable area bounds — skip overlays outside LocalSize (border filler).
     let local_bounds = state.terrain_grid.as_ref().and_then(|g| g.local_bounds);
 
+    // Cell visibility for the local owner — used to cull overlays and terrain
+    // objects in unrevealed cells. The shroud multiply pass darkens per-pixel,
+    // but tall sprites (bridges, trees) extend their canopy into screen-space
+    // owned by neighboring cells; if those neighbors are revealed, the canopy
+    // shows above the shroud edge. gamemd gates these renders on the cell's
+    // explored bit. Computed once and shared by both loops below.
+    let cell_visibility_fog: Option<(
+        crate::sim::intern::InternedId,
+        &crate::sim::vision::FogState,
+    )> = if state.sandbox_full_visibility {
+        None
+    } else {
+        let local_owner_name = crate::app_commands::preferred_local_owner_name(state);
+        match (&state.simulation, &local_owner_name) {
+            (Some(sim), Some(owner)) => sim.interner.get(owner).map(|id| (id, &sim.fog)),
+            _ => None,
+        }
+    };
+
     // Overlay entries from [OverlayPack].
-    // All overlays are drawn — the shroud multiply pass handles per-pixel darkening.
     for entry in &state.overlays {
+        if let Some((owner_id, fog)) = cell_visibility_fog {
+            if !fog.is_cell_revealed(owner_id, entry.rx, entry.ry) {
+                continue;
+            }
+        }
+
         let Some(name) = state.overlay_names.get(&entry.overlay_id) else {
             continue;
         };
@@ -413,7 +437,14 @@ pub(crate) fn build_overlay_instances(
     // FA2 IsoView.cpp:6389 applies a -3px Y fudge to terrain objects (trees, rocks):
     //   drawy = ... + f_y/2 - 3 - pic.wMaxHeight/2
     const TERRAIN_OBJECT_Y_FUDGE: f32 = -3.0;
+
     for obj in &state.terrain_objects {
+        if let Some((owner_id, fog)) = cell_visibility_fog {
+            if !fog.is_cell_revealed(owner_id, obj.rx, obj.ry) {
+                continue;
+            }
+        }
+
         let z: u8 = state
             .height_map
             .get(&(obj.rx, obj.ry))
