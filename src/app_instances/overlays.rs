@@ -413,7 +413,31 @@ pub(crate) fn build_overlay_instances(
     // FA2 IsoView.cpp:6389 applies a -3px Y fudge to terrain objects (trees, rocks):
     //   drawy = ... + f_y/2 - 3 - pic.wMaxHeight/2
     const TERRAIN_OBJECT_Y_FUDGE: f32 = -3.0;
+
+    // Skip terrain objects in unrevealed cells. Tall sprites (trees) anchored in
+    // a shrouded cell otherwise draw their canopy into screen-space owned by
+    // revealed cells above on screen, where the shroud multiply pass leaves
+    // them visible. gamemd gates terrain objects on the cell's explored bit.
+    let terrain_obj_fog: Option<(
+        crate::sim::intern::InternedId,
+        &crate::sim::vision::FogState,
+    )> = if state.sandbox_full_visibility {
+        None
+    } else {
+        let local_owner_name = crate::app_commands::preferred_local_owner_name(state);
+        match (&state.simulation, &local_owner_name) {
+            (Some(sim), Some(owner)) => sim.interner.get(owner).map(|id| (id, &sim.fog)),
+            _ => None,
+        }
+    };
+
     for obj in &state.terrain_objects {
+        if let Some((owner_id, fog)) = terrain_obj_fog {
+            if !fog.is_cell_revealed(owner_id, obj.rx, obj.ry) {
+                continue;
+            }
+        }
+
         let z: u8 = state
             .height_map
             .get(&(obj.rx, obj.ry))
