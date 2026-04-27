@@ -24,6 +24,8 @@ A drop-in replacement for `gamemd.exe` that stays 100% true to the original West
 **2. Built for Scale**
 Constructed from the ground up for large multiplayer — targeting support for up to **30 players** and **20,000 units** on significantly bigger maps.
 
+**3. Extendable**
+Offer known old and new rts feautures never seen before to enhance the cnc ra2 experience.
 
 ## Current Status
  
